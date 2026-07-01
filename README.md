@@ -20,11 +20,12 @@ A mobile-friendly PWA showing nearby e-scooters from 6 providers on an interacti
 - **Interactive map** with Leaflet + OpenStreetMap / CARTO tiles (light, dark, OSM)
 - **Geocoding** via Nominatim (address search for origin & destination)
 - **Server-side GBFS fetching** — no CORS issues, API responses cached
-- **Provider toggles**, battery filter, search radius slider
+- **Provider chips**, battery filter, search radius slider
 - **Corridor mode** — set a destination to find scooters along your route
 - **Auto-fit** map bounds to visible results
 - **PWA** — installable with offline-capable home screen launch, persists last search
-- **Mobile-friendly** — bottom-sheet controls, safe-area support, `100dvh` layout
+- **Location refresh on every load** — geolocates on launch, not just on demand
+- **iPhone-first UI** — draggable glass bottom sheet, floating map buttons, safe-area support
 
 ## Tech Stack
 
@@ -78,7 +79,8 @@ src/
 │   ├── layout.tsx             # Root layout, PWA meta
 │   └── page.tsx               # Main page, state management
 ├── components/
-│   ├── ControlsPanel.tsx      # Search controls UI
+│   ├── BottomSheet.tsx        # Draggable bottom sheet with search & filters
+│   ├── MapControls.tsx        # Floating locate / refresh buttons
 │   ├── MapComponent.tsx       # Leaflet map (client-only)
 │   └── MapWrapper.tsx         # Dynamic import wrapper (no SSR)
 └── lib/

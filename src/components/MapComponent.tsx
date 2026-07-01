@@ -7,9 +7,11 @@ import {
   Marker,
   Popup,
   Polygon,
+  AttributionControl,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import type { Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 
@@ -17,9 +19,9 @@ function createScooterIcon(provider: string): L.DivIcon {
   const cfg = PROVIDERS[provider] ?? { color: '#999', initial: '?' };
   return L.divIcon({
     className: '',
-    html: `<div style="background:${cfg.color};color:#fff;font:bold 11px sans-serif;width:28px;height:28px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center">${cfg.initial}</div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    html: `<div style="background:${cfg.color};color:#fff;font:700 11px -apple-system,BlinkMacSystemFont,sans-serif;width:30px;height:30px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center">${cfg.initial}</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
   });
 }
 
@@ -27,8 +29,8 @@ function createUserLocationIcon(): L.DivIcon {
   return L.divIcon({
     className: '',
     html: `<div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center">
-      <div class="user-loc-pulse" style="position:absolute;width:24px;height:24px;border-radius:50%;background:rgba(59,130,246,0.35)"></div>
-      <div style="width:16px;height:16px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);position:relative;z-index:1"></div>
+      <div class="user-loc-pulse" style="position:absolute;width:24px;height:24px;border-radius:50%;background:rgba(10,132,255,0.35)"></div>
+      <div style="width:16px;height:16px;border-radius:50%;background:#0a84ff;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);position:relative;z-index:1"></div>
     </div>`,
     iconSize: [24, 24],
     iconAnchor: [12, 12],
@@ -38,7 +40,7 @@ function createUserLocationIcon(): L.DivIcon {
 function createPinIcon(label: string, bg: string): L.DivIcon {
   return L.divIcon({
     className: '',
-    html: `<div style="background:${bg};color:#fff;font:bold 12px sans-serif;padding:5px 10px;border-radius:14px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.6);white-space:nowrap">${label}</div>`,
+    html: `<div style="background:${bg};color:#fff;font:600 12px -apple-system,BlinkMacSystemFont,sans-serif;padding:5px 11px;border-radius:999px;border:2px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.4);white-space:nowrap">${label}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 16],
   });
@@ -55,7 +57,11 @@ function FitBounds({ vehicles, origin, destination }: {
     if (destination) points.push(destination);
     vehicles.forEach(v => points.push([v.lat, v.lng]));
     if (points.length > 1) {
-      map.fitBounds(points, { padding: [40, 40] });
+      map.fitBounds(points, {
+        paddingTopLeft: [40, 70],
+        paddingBottomRight: [40, 190], // keep markers clear of the bottom sheet
+        maxZoom: 17,
+      });
     }
   }, [vehicles, origin, destination, map]);
   return null;
@@ -93,6 +99,16 @@ const TILE_URLS: Record<string, string> = {
   light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
 };
 
+function formatDistance(m: number): string {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+}
+
+function batteryColor(pct: number): string {
+  if (pct >= 50) return '#34c759';
+  if (pct >= 20) return '#ff9500';
+  return '#ff3b30';
+}
+
 interface MapComponentProps {
   vehicles: Vehicle[];
   origin: [number, number];
@@ -110,7 +126,7 @@ export default function MapComponent({
   tileLayer,
   userLocation,
 }: MapComponentProps) {
-  // Pre-create all provider icons (only 5 providers, stable across renders)
+  // Pre-create all provider icons (stable across renders)
   const iconMap = useMemo(() => {
     const icons: Record<string, L.DivIcon> = {};
     for (const provider of Object.keys(PROVIDERS)) {
@@ -124,8 +140,8 @@ export default function MapComponent({
     return getCorridorPolygon(origin, destination, corridorWidth);
   }, [origin, destination, corridorWidth]);
 
-  const originIcon = useMemo(() => createPinIcon('Origin', '#e63946'), []);
-  const destIcon = useMemo(() => createPinIcon('Destination', '#1d3557'), []);
+  const originIcon = useMemo(() => createPinIcon('Origin', '#1c1c1e'), []);
+  const destIcon = useMemo(() => createPinIcon('Destination', '#0a84ff'), []);
   const userLocationIcon = useMemo(() => createUserLocationIcon(), []);
 
   return (
@@ -134,7 +150,9 @@ export default function MapComponent({
       zoom={15}
       className="w-full h-full"
       zoomControl={false}
+      attributionControl={false}
     >
+      <AttributionControl position="topright" prefix={false} />
       <TileLayer
         key={tileLayer}
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
@@ -155,34 +173,47 @@ export default function MapComponent({
       {corridorPoly && (
         <Polygon
           positions={corridorPoly}
-          pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.15, weight: 2 }}
+          pathOptions={{ color: '#0a84ff', fillColor: '#0a84ff', fillOpacity: 0.12, weight: 2 }}
         />
       )}
 
-      {vehicles.map((v, i) => (
-        <Marker key={`${v.provider}-${v.vehicle_id}-${i}`} position={[v.lat, v.lng]} icon={iconMap[v.provider]}>
-          <Popup>
-            <div className="text-sm">
-              <div className="font-bold" style={{ color: PROVIDERS[v.provider]?.color }}>
-                {PROVIDERS[v.provider]?.name ?? v.provider}
+      {vehicles.map((v, i) => {
+        const cfg = PROVIDERS[v.provider];
+        return (
+          <Marker key={`${v.provider}-${v.vehicle_id}-${i}`} position={[v.lat, v.lng]} icon={iconMap[v.provider]}>
+            <Popup className="scooter-popup" closeButton={false}>
+              <div>
+                <div className="popup-head">
+                  <span className="popup-dot" style={{ background: cfg?.color ?? '#999' }} aria-hidden="true" />
+                  <span className="popup-name">{cfg?.name ?? v.provider}</span>
+                  <span className="popup-dist">{formatDistance(v.distance_m)}</span>
+                </div>
+                {v.battery !== null && (
+                  <div className="popup-batt">
+                    <div className="popup-batt-bar">
+                      <div style={{ width: `${v.battery}%`, background: batteryColor(v.battery) }} />
+                    </div>
+                    <span>
+                      {v.battery}%{v.range_m !== null ? ` · ${(v.range_m / 1000).toFixed(1)} km` : ''}
+                    </span>
+                  </div>
+                )}
+                {v.deep_link && (
+                  <a
+                    href={v.deep_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="popup-cta"
+                    style={{ background: cfg?.color ?? '#0a84ff' }}
+                  >
+                    Open in {cfg?.name ?? 'app'}
+                  </a>
+                )}
               </div>
-              <div>{Math.round(v.distance_m)}m away</div>
-              {v.battery !== null && <div>Battery: {v.battery}%</div>}
-              {v.range_m !== null && <div>Range: {(v.range_m / 1000).toFixed(1)}km</div>}
-              {v.deep_link && (
-                <a
-                  href={v.deep_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-1 px-3 py-1 bg-blue-600 text-white rounded text-xs"
-                >
-                  Open in App
-                </a>
-              )}
-            </div>
-          </Popup>
-        </Marker>
-      ))}
+            </Popup>
+          </Marker>
+        );
+      })}
 
       <FitBounds vehicles={vehicles} origin={origin} destination={destination} />
     </MapContainer>

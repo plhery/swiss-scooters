@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scooters Nearby – Zurich",
-  description: "Find nearby scooters from Bolt, Bird, Dott, Lime, and Voi in Zurich",
+  title: "Scooters Zürich",
+  description: "Find nearby e-scooters from Bolt, Bird, Dott, Lime, Voi and Hopp in Zurich",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -39,12 +39,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link
-          rel="stylesheet"
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-          crossOrigin=""
-        />
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="theme-color" content="#e0ddd8" />
       </head>

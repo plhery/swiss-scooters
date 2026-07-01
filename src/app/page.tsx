@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
-import ControlsPanel from '@/components/ControlsPanel';
+import BottomSheet from '@/components/BottomSheet';
+import MapControls from '@/components/MapControls';
 import type { Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import { pointToSegmentM } from '@/lib/geo';
@@ -90,9 +91,10 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const initializedRef = useRef(false);
 
-  // Read URL params and/or geolocate on mount
+  // Restore saved settings and refresh the user's location on every load
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
@@ -104,29 +106,26 @@ export default function Home() {
     if (params.corridorWidth !== undefined) setCorridorWidth(params.corridorWidth);
     if (params.dest) setDestination(params.dest);
 
-    if (params.origin) {
-      setOrigin(params.origin);
-    } else {
-      // Try browser geolocation
+    // Show the map immediately with the last known origin while we geolocate
+    if (params.origin) setOrigin(params.origin);
+
+    if ('geolocation' in navigator) {
       setLocating(true);
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-            setOrigin(coords);
-            setUserLocation(coords);
-            setLocating(false);
-          },
-          () => {
-            setOrigin(ZURICH_CENTER);
-            setLocating(false);
-          },
-          { timeout: 8000, enableHighAccuracy: false }
-        );
-      } else {
-        setOrigin(ZURICH_CENTER);
-        setLocating(false);
-      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          setOrigin(coords);
+          setUserLocation(coords);
+          setLocating(false);
+        },
+        () => {
+          setOrigin(prev => prev ?? ZURICH_CENTER);
+          setLocating(false);
+        },
+        { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
+      );
+    } else {
+      setOrigin(prev => prev ?? ZURICH_CENTER);
     }
   }, []);
 
@@ -166,9 +165,10 @@ export default function Home() {
       const data: ScooterResponse = await res.json();
       setVehicles(data.vehicles);
       setProviderCounts(data.providers);
+      setLastUpdated(new Date());
     } catch (e) {
       console.error('Failed to fetch scooters:', e);
-      setError('Failed to load scooters. Tap refresh to retry.');
+      setError('Couldn’t load scooters');
     } finally {
       setLoading(false);
     }
@@ -189,14 +189,16 @@ export default function Home() {
 
   const handleLocateMe = useCallback(() => {
     const proceed = () => {
+      setLocating(true);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
           setUserLocation(coords);
           setOrigin(coords);
+          setLocating(false);
         },
-        () => { /* do nothing on error */ },
-        { timeout: 8000, enableHighAccuracy: false }
+        () => setLocating(false),
+        { timeout: 10000, enableHighAccuracy: true }
       );
     };
 
@@ -224,16 +226,13 @@ export default function Home() {
     return filtered;
   }, [vehicles, enabledProviders, minBattery, destination, origin, corridorWidth]);
 
-  // Show locating state
+  // Splash while we wait for a first origin
   if (!origin) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gray-100" role="status">
-        {locating && (
-          <div className="text-center">
-            <div className="text-4xl mb-3">📍</div>
-            <div className="text-gray-600 font-medium">Locating…</div>
-          </div>
-        )}
+      <div className="splash" role="status">
+        <div className="splash-icon" aria-hidden="true">🛴</div>
+        <div className="splash-title">Scooters Zürich</div>
+        <div className="splash-sub">{locating ? 'Finding your location…' : 'Loading…'}</div>
       </div>
     );
   }
@@ -248,8 +247,28 @@ export default function Home() {
         tileLayer={tileLayer}
         userLocation={userLocation}
       />
-      <ControlsPanel
-        origin={origin}
+
+      {locating && (
+        <div className="toast glass" role="status">
+          <span className="mini-spinner" aria-hidden="true" />
+          Updating location…
+        </div>
+      )}
+
+      {error && !locating && (
+        <div className="toast glass toast-error" role="alert">
+          {error}
+          <button onClick={fetchScooters}>Retry</button>
+        </div>
+      )}
+
+      <MapControls
+        loading={loading}
+        onLocateMe={handleLocateMe}
+        onRefresh={fetchScooters}
+      />
+
+      <BottomSheet
         destination={destination}
         radius={radius}
         minBattery={minBattery}
@@ -258,7 +277,7 @@ export default function Home() {
         providerCounts={providerCounts}
         totalCount={filteredVehicles.length}
         loading={loading}
-        error={error}
+        lastUpdated={lastUpdated}
         tileLayer={tileLayer}
         onOriginChange={(lat, lng) => setOrigin([lat, lng])}
         onDestinationChange={(lat, lng) => setDestination([lat, lng])}
@@ -267,7 +286,6 @@ export default function Home() {
         onMinBatteryChange={setMinBattery}
         onCorridorWidthChange={setCorridorWidth}
         onProviderToggle={handleProviderToggle}
-        onRefresh={fetchScooters}
         onTileLayerChange={setTileLayer}
         onLocateMe={handleLocateMe}
       />
