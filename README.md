@@ -2,7 +2,7 @@
 
 A mobile-friendly PWA showing nearby e-scooters from 6 providers on an interactive map.
 
-**Live:** Deployed on Vercel
+**Deployment:** Cloudflare Workers via OpenNext
 
 ## Providers
 
@@ -33,6 +33,7 @@ A mobile-friendly PWA showing nearby e-scooters from 6 providers on an interacti
 - TypeScript (strict)
 - Tailwind CSS v4
 - react-leaflet + Leaflet
+- Cloudflare Workers + OpenNext
 - All GBFS feeds are free — no API keys needed
 
 ## Getting Started
@@ -43,6 +44,20 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+## Deployment
+
+The app deploys to Cloudflare Workers, with static assets served at the edge and
+the two Next.js route handlers running in the Workers runtime.
+
+```bash
+npm ci
+npm run preview
+npm run deploy
+```
+
+No environment variables or secrets are required. See [DEPLOY.md](DEPLOY.md) for
+the deployment and verification checklist.
 
 ## API
 

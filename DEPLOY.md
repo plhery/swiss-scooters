@@ -1,50 +1,47 @@
-# Deployment Notes
+# Cloudflare deployment
 
-**Date:** 2026-02-22  
-**Engineer:** Beck (BlueCorp infra)
+Zurich Scooter is deployed as a full-stack Next.js application on Cloudflare
+Workers using the OpenNext adapter. The homepage and browser assets are static;
+`/api/geocode` and `/api/scooters` run as Worker route handlers.
 
-## Status
+## Prerequisites
 
-Production is live and up to date:
+- Node.js and npm
+- A Cloudflare account on the Workers Free plan or higher
+- Wrangler authenticated with `npx wrangler login`
 
-**https://scooters-web.vercel.app** -- HTTP 200, serving latest build
+The application does not require environment variables, API keys, a database,
+or persistent storage.
 
-The user location feature (pulsing blue dot + Locate Me button, commit `e2fbda2`) is included in the current production build. The latest deployed commit is `d7c40c1`.
+## Validate locally
 
-## What Happened
+```bash
+npm ci
+npm audit
+npm run lint
+npm run build
+npm run preview
+```
 
-Vercel is connected to the GitHub repo (`blue-plhery-assistant/zurich-scooters`) via the Vercel GitHub App. Every push to `main` triggers an automatic deployment. No manual token or CLI invocation is needed for normal deployments.
+The preview command builds the OpenNext bundle and serves it through the local
+Cloudflare Workers runtime.
 
-The deployment for `d7c40c1` completed successfully at 2026-02-22T21:22:43Z with status `success`, confirmed via the GitHub Deployments API.
+## Deploy
 
-## Token Situation
+```bash
+npm run deploy
+```
 
-Both stored Vercel tokens are invalid (both return `403 forbidden / invalidToken`):
+Wrangler uses `wrangler.jsonc` and uploads the static assets plus the generated
+`.open-next/worker.js` bundle. The generated `.open-next`, `.wrangler`, and
+Cloudflare type files are intentionally ignored by Git.
 
-- `accounts/vercel/blue.assistant/api-token` -- invalid
-- `accounts/vercel/blue.assistant/refresh-token` -- invalid
+## Verify
 
-Because there is no valid token, a new one cannot be generated programmatically. The Vercel API requires an existing valid token to create a new token.
+After deployment, confirm:
 
-**Action required for Paul:** To restore a working API token for future use (e.g. manual deploys, checking logs, managing project settings):
-
-1. Go to https://vercel.com/account/tokens
-2. Create a new token (name it something like `blue-assistant-cli`)
-3. Run:
-   ```
-   gopass insert accounts/vercel/blue.assistant/api-token
-   ```
-   Paste the new token when prompted.
-4. Delete the old refresh-token entry (it is stale):
-   ```
-   gopass rm accounts/vercel/blue.assistant/refresh-token
-   ```
-
-**This is not blocking** -- the Vercel GitHub integration handles all production deployments automatically. A personal API token is only needed for CLI operations (checking deployment logs, triggering manual redeploys outside of git push, etc.).
-
-## How Deployments Work
-
-- Push to `main` on GitHub -> Vercel GitHub App picks it up -> builds and deploys automatically
-- Production alias: `https://scooters-web.vercel.app`
-- Vercel project ID: `prj_kXnE6cO6xNcGYp4bXWrUKnaxmwXX`
-- Org/team ID: `team_ulrAEX7ZnL8PH32B1pdIYzjT`
+1. `/` renders the map and scooter controls.
+2. `/api/geocode?q=Zurich%20HB` returns a JSON array.
+3. `/api/scooters?lat=47.3769&lng=8.5417&radius=500&minBattery=0` returns a JSON
+   object with `vehicles` and `providers`.
+4. The Cloudflare Worker logs contain no runtime errors.

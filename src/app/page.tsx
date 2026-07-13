@@ -94,6 +94,9 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const initializedRef = useRef(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- These effects intentionally
+     restore browser-only state after hydration and fetch data when inputs change. */
+
   // Restore saved settings and refresh the user's location on every load
   useEffect(() => {
     if (initializedRef.current) return;
@@ -177,6 +180,8 @@ export default function Home() {
   useEffect(() => {
     fetchScooters();
   }, [fetchScooters]);
+
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleProviderToggle = (p: string) => {
     setEnabledProviders(prev => {
