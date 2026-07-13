@@ -24,7 +24,7 @@ A mobile-friendly PWA showing nearby e-scooters from 6 providers on an interacti
 - **Provider chips**, battery filter, search radius slider
 - **Corridor mode** — set a destination to find scooters along your route
 - **Auto-fit** map bounds to visible results
-- **PWA** — installable with offline-capable home screen launch, persists last search
+- **PWA** — cached app shell for fast/offline launches, automatic refresh after deployments
 - **Location refresh on every load** — geolocates on launch, not just on demand
 - **iPhone-first UI** — draggable glass bottom sheet, floating map buttons, safe-area support
 
