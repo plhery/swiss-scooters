@@ -191,6 +191,7 @@ button {
 .chip {
   display: flex;
   align-items: center;
+  touch-action: manipulation;
   gap: 6px;
   padding: 7px 12px;
   border-radius: 999px;

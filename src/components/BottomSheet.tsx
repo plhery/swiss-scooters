@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useLayoutEffect } from 'react';
+import { useState, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS } from '@/lib/types';
 
@@ -27,7 +27,8 @@ interface BottomSheetProps {
   onRadiusChange: (r: number) => void;
   onMinBatteryChange: (b: number) => void;
   onCorridorWidthChange: (w: number) => void;
-  onProviderToggle: (p: string) => void;
+  onProviderSolo: (p: string) => void;
+  onProviderExclude: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
   onLocateMe: () => void;
 }
@@ -124,6 +125,8 @@ const LocateIcon = (
   </svg>
 );
 
+const PROVIDER_DOUBLE_CLICK_MS = 320;
+
 export default function BottomSheet({
   destination,
   radius,
@@ -141,7 +144,8 @@ export default function BottomSheet({
   onRadiusChange,
   onMinBatteryChange,
   onCorridorWidthChange,
-  onProviderToggle,
+  onProviderSolo,
+  onProviderExclude,
   onTileLayerChange,
   onLocateMe,
 }: BottomSheetProps) {
@@ -153,6 +157,10 @@ export default function BottomSheet({
   const [destResults, setDestResults] = useState<GeoResult[]>([]);
   const originTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const destTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const providerClickRef = useRef<{
+    provider: string;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
@@ -175,6 +183,38 @@ export default function BottomSheet({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (providerClickRef.current) clearTimeout(providerClickRef.current.timer);
+    };
+  }, []);
+
+  const handleProviderClick = (provider: string, detail: number) => {
+    const pending = providerClickRef.current;
+
+    // Keyboard-generated clicks have detail 0 and should remain immediate.
+    if (detail === 0) {
+      if (pending) clearTimeout(pending.timer);
+      providerClickRef.current = null;
+      onProviderSolo(provider);
+      return;
+    }
+
+    if (pending?.provider === provider) {
+      clearTimeout(pending.timer);
+      providerClickRef.current = null;
+      onProviderExclude(provider);
+      return;
+    }
+
+    if (pending) clearTimeout(pending.timer);
+    const timer = setTimeout(() => {
+      providerClickRef.current = null;
+      onProviderSolo(provider);
+    }, PROVIDER_DOUBLE_CLICK_MS);
+    providerClickRef.current = { provider, timer };
+  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     const sheet = sheetRef.current;
@@ -304,7 +344,11 @@ export default function BottomSheet({
           </div>
         </div>
 
-        <div className="chips" role="group" aria-label="Providers">
+        <div
+          className="chips"
+          role="group"
+          aria-label="Providers: click to show only one; double-click to exclude"
+        >
           {Object.entries(PROVIDERS).map(([key, cfg]) => {
             const on = enabledProviders.has(key);
             return (
@@ -312,8 +356,10 @@ export default function BottomSheet({
                 key={key}
                 className={`chip ${on ? '' : 'chip-off'}`}
                 style={on ? { background: `${cfg.color}1f` } : undefined}
-                onClick={() => onProviderToggle(key)}
+                onClick={event => handleProviderClick(key, event.detail)}
                 aria-pressed={on}
+                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. Click to show only; double-click to exclude.`}
+                title="Click to show only · Double-click to exclude"
               >
                 <span className="chip-dot" style={{ background: cfg.color }} aria-hidden="true" />
                 {cfg.name}
