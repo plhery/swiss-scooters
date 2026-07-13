@@ -27,7 +27,7 @@ interface BottomSheetProps {
   onRadiusChange: (r: number) => void;
   onMinBatteryChange: (b: number) => void;
   onCorridorWidthChange: (w: number) => void;
-  onProviderSolo: (p: string) => void;
+  onProviderSelect: (p: string) => void;
   onProviderExclude: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
   onLocateMe: () => void;
@@ -144,7 +144,7 @@ export default function BottomSheet({
   onRadiusChange,
   onMinBatteryChange,
   onCorridorWidthChange,
-  onProviderSolo,
+  onProviderSelect,
   onProviderExclude,
   onTileLayerChange,
   onLocateMe,
@@ -197,7 +197,7 @@ export default function BottomSheet({
     if (detail === 0) {
       if (pending) clearTimeout(pending.timer);
       providerClickRef.current = null;
-      onProviderSolo(provider);
+      onProviderSelect(provider);
       return;
     }
 
@@ -211,7 +211,7 @@ export default function BottomSheet({
     if (pending) clearTimeout(pending.timer);
     const timer = setTimeout(() => {
       providerClickRef.current = null;
-      onProviderSolo(provider);
+      onProviderSelect(provider);
     }, PROVIDER_DOUBLE_CLICK_MS);
     providerClickRef.current = { provider, timer };
   };
@@ -347,10 +347,12 @@ export default function BottomSheet({
         <div
           className="chips"
           role="group"
-          aria-label="Providers: click to show only one; double-click to exclude"
+          aria-label="Providers: click to show only one, click it again to show all; double-click to exclude"
         >
           {Object.entries(PROVIDERS).map(([key, cfg]) => {
             const on = enabledProviders.has(key);
+            const onlyProvider = on && enabledProviders.size === 1;
+            const clickAction = onlyProvider ? 'show all' : 'show only';
             return (
               <button
                 key={key}
@@ -358,8 +360,8 @@ export default function BottomSheet({
                 style={on ? { background: `${cfg.color}1f` } : undefined}
                 onClick={event => handleProviderClick(key, event.detail)}
                 aria-pressed={on}
-                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. Click to show only; double-click to exclude.`}
-                title="Click to show only · Double-click to exclude"
+                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. Click to ${clickAction}; double-click to exclude.`}
+                title={`Click to ${clickAction} · Double-click to exclude`}
               >
                 <span className="chip-dot" style={{ background: cfg.color }} aria-hidden="true" />
                 {cfg.name}

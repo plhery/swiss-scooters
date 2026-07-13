@@ -183,8 +183,12 @@ export default function Home() {
 
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const handleProviderSolo = (p: string) => {
-    setEnabledProviders(new Set([p]));
+  const handleProviderSelect = (p: string) => {
+    setEnabledProviders(prev =>
+      prev.size === 1 && prev.has(p)
+        ? new Set(Object.keys(PROVIDERS))
+        : new Set([p])
+    );
   };
 
   const handleProviderExclude = (p: string) => {
@@ -293,7 +297,7 @@ export default function Home() {
         onRadiusChange={setRadius}
         onMinBatteryChange={setMinBattery}
         onCorridorWidthChange={setCorridorWidth}
-        onProviderSolo={handleProviderSolo}
+        onProviderSelect={handleProviderSelect}
         onProviderExclude={handleProviderExclude}
         onTileLayerChange={setTileLayer}
         onLocateMe={handleLocateMe}
