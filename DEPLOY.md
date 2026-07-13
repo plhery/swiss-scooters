@@ -4,7 +4,7 @@ Zurich Scooter is deployed as a full-stack Next.js application on Cloudflare
 Workers using the OpenNext adapter. The homepage and browser assets are static;
 `/api/geocode` and `/api/scooters` run as Worker route handlers.
 
-**Production:** <https://zurich-scooter.plhery.workers.dev>
+**Production:** <https://zurich-scooter.plhery.com>
 
 ## Prerequisites
 

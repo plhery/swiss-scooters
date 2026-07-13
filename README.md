@@ -2,7 +2,7 @@
 
 A mobile-friendly PWA showing nearby e-scooters from 6 providers on an interactive map.
 
-**Live:** [zurich-scooter.plhery.workers.dev](https://zurich-scooter.plhery.workers.dev)
+**Live:** [zurich-scooter.plhery.com](https://zurich-scooter.plhery.com)
 — deployed on Cloudflare Workers via OpenNext
 
 ## Providers
