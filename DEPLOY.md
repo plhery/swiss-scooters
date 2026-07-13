@@ -4,6 +4,8 @@ Zurich Scooter is deployed as a full-stack Next.js application on Cloudflare
 Workers using the OpenNext adapter. The homepage and browser assets are static;
 `/api/geocode` and `/api/scooters` run as Worker route handlers.
 
+**Production:** <https://zurich-scooter.plhery.workers.dev>
+
 ## Prerequisites
 
 - Node.js and npm
@@ -26,7 +28,20 @@ npm run preview
 The preview command builds the OpenNext bundle and serves it through the local
 Cloudflare Workers runtime.
 
-## Deploy
+## Continuous deployment
+
+Cloudflare Workers Builds is connected to `plhery/zurich-scooter` with `main` as
+the production branch. Every push to `main` runs:
+
+```bash
+npx opennextjs-cloudflare build
+npx wrangler deploy
+```
+
+Builds for non-production branches are enabled and upload preview versions with
+`npx wrangler versions upload`.
+
+## Manual deployment
 
 ```bash
 npm run deploy

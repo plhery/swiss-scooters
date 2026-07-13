@@ -2,7 +2,8 @@
 
 A mobile-friendly PWA showing nearby e-scooters from 6 providers on an interactive map.
 
-**Deployment:** Cloudflare Workers via OpenNext
+**Live:** [zurich-scooter.plhery.workers.dev](https://zurich-scooter.plhery.workers.dev)
+— deployed on Cloudflare Workers via OpenNext
 
 ## Providers
 
@@ -49,6 +50,10 @@ Open [http://localhost:3000](http://localhost:3000).
 
 The app deploys to Cloudflare Workers, with static assets served at the edge and
 the two Next.js route handlers running in the Workers runtime.
+
+Cloudflare Workers Builds is connected to this GitHub repository. Every push to
+`main` builds and deploys production automatically; other branches produce
+preview versions.
 
 ```bash
 npm ci
