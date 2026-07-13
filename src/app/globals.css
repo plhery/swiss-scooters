@@ -529,11 +529,11 @@ button {
 .scooter-popup .leaflet-popup-content-wrapper {
   border-radius: 16px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  padding: 0;
+  padding: 8px 14px;
 }
 
 .scooter-popup .leaflet-popup-content {
-  margin: 12px 14px;
+  margin: 0;
   font-family: inherit;
   min-width: 176px;
 }
