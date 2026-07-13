@@ -6,9 +6,10 @@ import BottomSheet from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
 import type { Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
-import { pointToSegmentM } from '@/lib/geo';
+import { pointToSegmentM, shouldRefreshLocation } from '@/lib/geo';
 
 const ZURICH_CENTER: [number, number] = [47.3769, 8.5417];
+const LOCATION_REFRESH_DISTANCE_M = 75;
 
 function parseCoord(s: string | null): [number, number] | null {
   if (!s) return null;
@@ -93,11 +94,12 @@ export default function Home() {
   const [locating, setLocating] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const initializedRef = useRef(false);
+  const followUserRef = useRef(true);
 
   /* eslint-disable react-hooks/set-state-in-effect -- These effects intentionally
      restore browser-only state after hydration and fetch data when inputs change. */
 
-  // Restore saved settings and refresh the user's location on every load
+  // Restore saved settings before live location tracking starts.
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
@@ -112,24 +114,44 @@ export default function Home() {
     // Show the map immediately with the last known origin while we geolocate
     if (params.origin) setOrigin(params.origin);
 
-    if ('geolocation' in navigator) {
-      setLocating(true);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-          setOrigin(coords);
-          setUserLocation(coords);
-          setLocating(false);
-        },
-        () => {
-          setOrigin(prev => prev ?? ZURICH_CENTER);
-          setLocating(false);
-        },
-        { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
-      );
-    } else {
+    if (!('geolocation' in navigator)) {
       setOrigin(prev => prev ?? ZURICH_CENTER);
     }
+  }, []);
+
+  // Track the phone continuously. Small moves update only the blue marker;
+  // larger moves advance the search origin and refresh nearby scooters.
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return;
+
+    setLocating(true);
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setUserLocation(coords);
+        setOrigin(prev => {
+          if (!prev) return coords;
+          if (!followUserRef.current) return prev;
+
+          return shouldRefreshLocation(
+            prev,
+            coords,
+            pos.coords.accuracy,
+            LOCATION_REFRESH_DISTANCE_M
+          )
+            ? coords
+            : prev;
+        });
+        setLocating(false);
+      },
+      () => {
+        setOrigin(prev => prev ?? ZURICH_CENTER);
+        setLocating(false);
+      },
+      { timeout: 20000, enableHighAccuracy: true, maximumAge: 5000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   // Sync state to URL + localStorage
@@ -205,6 +227,7 @@ export default function Home() {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          followUserRef.current = true;
           setUserLocation(coords);
           setOrigin(coords);
           setLocating(false);
@@ -223,6 +246,11 @@ export default function Home() {
       proceed();
     }
   }, []);
+
+  const handleOriginChange = (lat: number, lng: number) => {
+    followUserRef.current = false;
+    setOrigin([lat, lng]);
+  };
 
   // Centralized filtering: provider, battery, and corridor
   const filteredVehicles = useMemo(() => {
@@ -291,7 +319,7 @@ export default function Home() {
         loading={loading}
         lastUpdated={lastUpdated}
         tileLayer={tileLayer}
-        onOriginChange={(lat, lng) => setOrigin([lat, lng])}
+        onOriginChange={handleOriginChange}
         onDestinationChange={(lat, lng) => setDestination([lat, lng])}
         onDestinationClear={() => setDestination(null)}
         onRadiusChange={setRadius}

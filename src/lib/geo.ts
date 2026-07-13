@@ -10,6 +10,16 @@ export function haversineM(lat1: number, lon1: number, lat2: number, lon2: numbe
   return 2 * r * Math.asin(Math.sqrt(a));
 }
 
+export function shouldRefreshLocation(
+  origin: [number, number],
+  next: [number, number],
+  accuracyM: number,
+  minimumDistanceM: number
+): boolean {
+  const refreshDistance = Math.max(minimumDistanceM, accuracyM);
+  return haversineM(origin[0], origin[1], next[0], next[1]) >= refreshDistance;
+}
+
 export function pointToSegmentM(
   plat: number,
   plng: number,

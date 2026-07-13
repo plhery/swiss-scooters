@@ -163,7 +163,12 @@ export default function MapComponent({
       <Marker position={origin} icon={originIcon} zIndexOffset={1000} />
 
       {userLocation && (
-        <Marker position={userLocation} icon={userLocationIcon} zIndexOffset={2000} />
+        <Marker
+          position={userLocation}
+          icon={userLocationIcon}
+          zIndexOffset={2000}
+          title="Your live location"
+        />
       )}
 
       {destination && (
