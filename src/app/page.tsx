@@ -234,7 +234,7 @@ export default function Home() {
   // Splash while we wait for a first origin
   if (!origin) {
     return (
-      <div className="splash" role="status">
+      <div className="app-shell splash" role="status">
         <div className="splash-icon" aria-hidden="true">🛴</div>
         <div className="splash-title">Scooters Zürich</div>
         <div className="splash-sub">{locating ? 'Finding your location…' : 'Loading…'}</div>
@@ -243,7 +243,7 @@ export default function Home() {
   }
 
   return (
-    <div className="fixed inset-0">
+    <div className="app-shell">
       <MapWrapper
         vehicles={filteredVehicles}
         origin={origin}

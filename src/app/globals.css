@@ -30,6 +30,28 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/*
+ * Keep the full-screen app in normal flow. In installed iOS web apps,
+ * viewport-fit=cover can make a fixed inset: 0 containing block stop above
+ * the bottom safe area. A 100vh in-flow shell forces the standalone viewport
+ * to include that area; browsers with dynamic UI use dvh instead.
+ */
+.app-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+@media all and (display-mode: standalone) {
+  html,
+  body,
+  .app-shell {
+    height: 100vh;
+  }
+}
+
 button {
   -webkit-tap-highlight-color: transparent;
   cursor: pointer;
@@ -451,8 +473,6 @@ button {
 
 /* ---------- Splash ---------- */
 .splash {
-  position: fixed;
-  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
