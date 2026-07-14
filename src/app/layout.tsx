@@ -17,6 +17,13 @@ export const metadata: Metadata = {
   title: "Scooters Zürich",
   description: "Find nearby e-scooters from Bolt, Bird, Dott, Lime, Voi and Hopp in Zurich",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/icon-180.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -40,7 +47,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
         <meta name="theme-color" content="#e0ddd8" />
       </head>
       <body

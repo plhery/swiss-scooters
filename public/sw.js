@@ -1,6 +1,6 @@
 const CACHE_PREFIX = "zurich-scooter";
-const APP_CACHE = `${CACHE_PREFIX}-app-v1`;
-const ASSET_CACHE = `${CACHE_PREFIX}-assets-v1`;
+const APP_CACHE = `${CACHE_PREFIX}-app-v2`;
+const ASSET_CACHE = `${CACHE_PREFIX}-assets-v2`;
 const APP_SHELL_URL = new URL("/", self.location.origin).toString();
 const UPDATE_MARKER_URL = new URL(
   "/__pwa-update-pending__",
@@ -8,6 +8,7 @@ const UPDATE_MARKER_URL = new URL(
 ).toString();
 const PUBLIC_ASSET_PATHS = new Set([
   "/favicon.ico",
+  "/icon-180.png",
   "/icon-192.png",
   "/icon-512.png",
   "/icon.svg",
