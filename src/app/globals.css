@@ -617,21 +617,78 @@ button {
 }
 
 .cluster-marker {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
+  position: relative;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-sizing: border-box;
   border: 3px solid rgba(255, 255, 255, 0.96);
   border-radius: 50%;
-  background: var(--cluster-color);
+  background: var(--cluster-background);
   color: #fff;
-  font-size: 12px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 5px 15px rgba(24, 28, 34, 0.26);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--cluster-color) 18%, transparent), 0 5px 15px rgba(24, 28, 34, 0.26);
+  box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.12), 0 5px 15px rgba(24, 28, 34, 0.26);
   transition: transform 0.16s ease;
+}
+
+.cluster-marker-single {
+  gap: 3px;
+}
+
+.cluster-single-brand {
+  font-size: 9px;
+  opacity: 0.9;
+}
+
+.cluster-single-count {
+  font-size: 13px;
+}
+
+.cluster-total {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(28, 28, 30, 0.78);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+}
+
+.cluster-provider-list {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  display: flex;
+  gap: 2px;
+  padding: 2px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 2px 7px rgba(24, 28, 34, 0.24);
+  transform: translateX(-50%);
+}
+
+.cluster-provider-list > span {
+  min-width: 13px;
+  height: 13px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 0 2px;
+  border-radius: 999px;
+  background: var(--provider-color);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cluster-provider-list > .cluster-provider-more {
+  background: #6e6e73;
+  font-size: 6px;
 }
 
 .cluster-marker-wrap:hover .cluster-marker,

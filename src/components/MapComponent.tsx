@@ -98,17 +98,100 @@ function batteryColor(pct: number): string {
 }
 
 function createClusterIcon(vehicles: Vehicle[]): L.DivIcon {
-  const providers = new Set(vehicles.map(v => v.provider));
-  const color = providers.size === 1
-    ? (PROVIDERS[vehicles[0].provider]?.color ?? '#0a84ff')
-    : '#1677ff';
+  const counts = new Map<string, number>();
+  for (const vehicle of vehicles) {
+    counts.set(vehicle.provider, (counts.get(vehicle.provider) ?? 0) + 1);
+  }
+
+  const providerOrder = Object.keys(PROVIDERS);
+  const entries = [...counts.entries()].sort(([a], [b]) => {
+    const aIndex = providerOrder.indexOf(a);
+    const bIndex = providerOrder.indexOf(b);
+    return (aIndex < 0 ? providerOrder.length : aIndex) - (bIndex < 0 ? providerOrder.length : bIndex);
+  });
+  const mixed = entries.length > 1;
+
+  let progress = 0;
+  const segments = entries.map(([provider, count]) => {
+    const start = progress;
+    progress += (count / vehicles.length) * 360;
+    return `${PROVIDERS[provider]?.color ?? '#999'} ${start}deg ${progress}deg`;
+  });
+
+  const providerBadges = entries.slice(0, 4).map(([provider]) => {
+    const cfg = PROVIDERS[provider] ?? { color: '#999', initial: '?' };
+    return `<span style="--provider-color:${cfg.color}">${cfg.initial}</span>`;
+  }).join('');
+  const hiddenProviderCount = Math.max(0, entries.length - 4);
+  const primaryProvider = PROVIDERS[entries[0][0]] ?? { color: '#999', initial: '?' };
+  const background = mixed
+    ? `conic-gradient(${segments.join(',')})`
+    : primaryProvider.color;
+  const contents = mixed
+    ? `<span class="cluster-total">${vehicles.length}</span><span class="cluster-provider-list">${providerBadges}${hiddenProviderCount ? `<span class="cluster-provider-more">+${hiddenProviderCount}</span>` : ''}</span>`
+    : `<span class="cluster-single-brand">${primaryProvider.initial}</span><span class="cluster-single-count">${vehicles.length}</span>`;
 
   return L.divIcon({
     className: 'cluster-marker-wrap',
-    html: `<div class="cluster-marker" style="--cluster-color:${color}">${vehicles.length}</div>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
+    html: `<div class="cluster-marker ${mixed ? 'cluster-marker-mixed' : 'cluster-marker-single'}" style="--cluster-background:${background}">${contents}</div>`,
+    iconSize: [46, 46],
+    iconAnchor: [23, 23],
   });
+}
+
+function clusterTitle(vehicles: Vehicle[]): string {
+  const counts = new Map<string, number>();
+  for (const vehicle of vehicles) {
+    counts.set(vehicle.provider, (counts.get(vehicle.provider) ?? 0) + 1);
+  }
+  const providers = [...counts.entries()]
+    .map(([provider, count]) => `${PROVIDERS[provider]?.name ?? provider} ${count}`)
+    .join(', ');
+  return `${vehicles.length} scooters: ${providers}. Zoom in to separate.`;
+}
+
+function VehicleMarker({ vehicle, icon }: { vehicle: Vehicle; icon: L.DivIcon }) {
+  const cfg = PROVIDERS[vehicle.provider];
+  return (
+    <Marker
+      key={`${vehicle.provider}-${vehicle.vehicle_id ?? `${vehicle.lat}-${vehicle.lng}`}`}
+      position={[vehicle.lat, vehicle.lng]}
+      icon={icon}
+      riseOnHover
+      title={`${cfg?.name ?? vehicle.provider} scooter, ${formatDistance(vehicle.distance_m)} away`}
+    >
+      <Popup className="scooter-popup" closeButton={false}>
+        <div>
+          <div className="popup-head">
+            <span className="popup-dot" style={{ background: cfg?.color ?? '#999' }} aria-hidden="true" />
+            <span className="popup-name">{cfg?.name ?? vehicle.provider}</span>
+            <span className="popup-dist">{formatDistance(vehicle.distance_m)}</span>
+          </div>
+          {vehicle.battery !== null && (
+            <div className="popup-batt">
+              <div className="popup-batt-bar">
+                <div style={{ width: `${vehicle.battery}%`, background: batteryColor(vehicle.battery) }} />
+              </div>
+              <span>
+                {vehicle.battery}%{vehicle.range_m !== null ? ` · ${(vehicle.range_m / 1000).toFixed(1)} km` : ''}
+              </span>
+            </div>
+          )}
+          {vehicle.deep_link && (
+            <a
+              href={vehicle.deep_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="popup-cta"
+              style={{ background: cfg?.color ?? '#0a84ff' }}
+            >
+              Open in {cfg?.name ?? 'app'}
+            </a>
+          )}
+        </div>
+      </Popup>
+    </Marker>
+  );
 }
 
 const VehicleMarkers = memo(function VehicleMarkers({
@@ -126,7 +209,9 @@ const VehicleMarkers = memo(function VehicleMarkers({
   });
 
   const groups = useMemo(() => {
-    const cellSize = zoom >= 18 ? 20 : zoom >= 17 ? 36 : 48;
+    const baseCellSize = zoom >= 19 ? 16 : zoom >= 18 ? 22 : zoom >= 17 ? 30 : zoom >= 16 ? 38 : zoom >= 15 ? 44 : zoom >= 13 ? 52 : 60;
+    const densityScale = vehicles.length > 1200 ? 1.35 : vehicles.length > 700 ? 1.2 : vehicles.length > 400 ? 1.1 : 1;
+    const cellSize = Math.round(baseCellSize * densityScale);
     const cells = new Map<string, Vehicle[]>();
 
     vehicles.forEach(vehicle => {
@@ -147,67 +232,34 @@ const VehicleMarkers = memo(function VehicleMarkers({
     }));
   }, [map, vehicles, zoom]);
 
-  return groups.map(group => {
-    if (group.items.length > 1) {
-      return (
+  const minimumClusterSize = zoom >= 19 ? 5 : zoom >= 18 ? 4 : zoom >= 17 ? 3 : 2;
+
+  return groups.flatMap(group => {
+    if (group.items.length >= minimumClusterSize) {
+      return [
         <Marker
           key={`cluster-${zoom}-${group.key}`}
           position={group.center}
           icon={createClusterIcon(group.items)}
           zIndexOffset={500}
-          title={`${group.items.length} scooters. Zoom in to separate.`}
+          title={clusterTitle(group.items)}
           eventHandlers={{
-            click: () => map.flyTo(group.center, Math.min(zoom + 2, 18), {
+            click: () => map.flyTo(group.center, Math.min(zoom + 2, 20), {
               animate: true,
               duration: 0.55,
             }),
           }}
-        />
-      );
+        />,
+      ];
     }
 
-    const vehicle = group.items[0];
-    const cfg = PROVIDERS[vehicle.provider];
-    return (
-      <Marker
+    return group.items.map(vehicle => (
+      <VehicleMarker
         key={`${vehicle.provider}-${vehicle.vehicle_id ?? `${vehicle.lat}-${vehicle.lng}`}`}
-        position={[vehicle.lat, vehicle.lng]}
+        vehicle={vehicle}
         icon={icons[vehicle.provider]}
-        riseOnHover
-        title={`${cfg?.name ?? vehicle.provider} scooter, ${formatDistance(vehicle.distance_m)} away`}
-      >
-        <Popup className="scooter-popup" closeButton={false}>
-          <div>
-            <div className="popup-head">
-              <span className="popup-dot" style={{ background: cfg?.color ?? '#999' }} aria-hidden="true" />
-              <span className="popup-name">{cfg?.name ?? vehicle.provider}</span>
-              <span className="popup-dist">{formatDistance(vehicle.distance_m)}</span>
-            </div>
-            {vehicle.battery !== null && (
-              <div className="popup-batt">
-                <div className="popup-batt-bar">
-                  <div style={{ width: `${vehicle.battery}%`, background: batteryColor(vehicle.battery) }} />
-                </div>
-                <span>
-                  {vehicle.battery}%{vehicle.range_m !== null ? ` · ${(vehicle.range_m / 1000).toFixed(1)} km` : ''}
-                </span>
-              </div>
-            )}
-            {vehicle.deep_link && (
-              <a
-                href={vehicle.deep_link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="popup-cta"
-                style={{ background: cfg?.color ?? '#0a84ff' }}
-              >
-                Open in {cfg?.name ?? 'app'}
-              </a>
-            )}
-          </div>
-        </Popup>
-      </Marker>
-    );
+      />
+    ));
   });
 });
 
