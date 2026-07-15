@@ -1,6 +1,6 @@
 # Cloudflare deployment
 
-Zurich Scooter is deployed as a full-stack Next.js application on Cloudflare
+Scooters Switzerland is deployed as a full-stack Next.js application on Cloudflare
 Workers using the OpenNext adapter. The homepage and browser assets are static;
 `/api/geocode` and `/api/scooters` run as Worker route handlers.
 
@@ -12,8 +12,10 @@ Workers using the OpenNext adapter. The homepage and browser assets are static;
 - A Cloudflare account on the Workers Free plan or higher
 - Wrangler authenticated with `npx wrangler login`
 
-The application does not require environment variables, API keys, a database,
-or persistent storage.
+The application does not require secret API keys, a database, or persistent
+storage. It identifies itself to the national GBFS 2.3 service with
+`zurich-scooter@plhery.com`. Set the optional, non-secret
+`SHAREDMOBILITY_AUTH_EMAIL` environment variable to use a different contact.
 
 ## Validate locally
 
@@ -59,4 +61,6 @@ After deployment, confirm:
 2. `/api/geocode?q=Zurich%20HB` returns a JSON array.
 3. `/api/scooters?lat=47.3769&lng=8.5417&radius=500&minBattery=0` returns a JSON
    object with `vehicles` and `providers`.
-4. The Cloudflare Worker logs contain no runtime errors.
+4. `/api/scooters?lat=47.5596&lng=7.5886&radius=1000&minBattery=0` returns Basel
+   providers from the national feed.
+5. The Cloudflare Worker logs contain no runtime errors.

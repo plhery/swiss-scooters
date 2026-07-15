@@ -1,139 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { haversineM } from '@/lib/geo';
-import type { Vehicle } from '@/lib/types';
-
-interface ProviderDef {
-  url: string;
-  version: number;
-}
-
-const PROVIDERS: Record<string, ProviderDef> = {
-  bolt: {
-    url: 'https://api.mobidata-bw.de/sharing/gbfs/v3/bolt_zurich/vehicle_status',
-    version: 3,
-  },
-  bird: {
-    url: 'https://mds.bird.co/gbfs/v2/public/zurich/free_bike_status.json',
-    version: 2,
-  },
-  dott: {
-    url: 'https://gbfs.api.ridedott.com/public/v2/zurich/free_bike_status.json',
-    version: 2,
-  },
-  lime: {
-    url: 'https://api.mobidata-bw.de/sharing/gbfs/v2/lime_zurich/free_bike_status',
-    version: 2,
-  },
-  voi: {
-    url: 'https://api.mobidata-bw.de/sharing/gbfs/v2/voi_ch/free_bike_status',
-    version: 2,
-  },
-  hopp: {
-    url: 'https://api.hopp.bike/gbfs/ch-zurich/en/free_bike_status.json',
-    version: 2,
-  },
-  publibike: {
-    url: 'https://api.mobidata-bw.de/sharing/gbfs/v3/velospot_ch/vehicle_status',
-    version: 3,
-  },
-};
-
-const ZURICH_BBOX = { latMin: 47.32, latMax: 47.43, lngMin: 8.45, lngMax: 8.60 };
-
-// Only show PubliBike e-scooters (not bikes)
-const PUBLIBIKE_ESCOOTER_TYPE = 'PIB:VehicleType:escooter';
-
-interface RawVehicle {
-  lat?: number;
-  lon?: number;
-  lng?: number;
-  current_fuel_percent?: number;
-  current_range_meters?: number;
-  hopp_battery_level?: number;
-  hopp_deeplink?: string;
-  bike_id?: string;
-  vehicle_id?: string;
-  vehicle_type_id?: string;
-  id?: string;
-  rental_uris?: { ios?: string; android?: string };
-}
-
-async function fetchProvider(name: string, info: ProviderDef): Promise<Vehicle[]> {
-  try {
-    const res = await fetch(info.url, {
-      headers: { 'User-Agent': 'scooters-web/1.0', Accept: 'application/json' },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) return [];
-    const payload = await res.json();
-
-    const raw: RawVehicle[] =
-      info.version === 3
-        ? payload?.data?.vehicles ?? []
-        : payload?.data?.bikes ?? [];
-
-    const vehicles: Vehicle[] = [];
-    for (const v of raw) {
-      const lat = v.lat;
-      const lon = v.lon ?? v.lng;
-      if (lat == null || lon == null) continue;
-
-      if (name === 'voi') {
-        if (lat < ZURICH_BBOX.latMin || lat > ZURICH_BBOX.latMax || lon < ZURICH_BBOX.lngMin || lon > ZURICH_BBOX.lngMax) continue;
-      }
-
-      // PubliBike: only show e-scooters, skip bikes
-      if (name === 'publibike' && v.vehicle_type_id !== PUBLIBIKE_ESCOOTER_TYPE) continue;
-
-      const fuelPct = v.current_fuel_percent;
-      const battery = v.hopp_battery_level != null
-        ? Math.round(v.hopp_battery_level)
-        : fuelPct != null ? Math.round(fuelPct * 100) : null;
-      const rangeM = v.current_range_meters != null ? Math.round(Number(v.current_range_meters)) : null;
-      const rentalUris = v.rental_uris ?? {};
-      const deepLink = v.hopp_deeplink || rentalUris.ios || rentalUris.android || null;
-
-      vehicles.push({
-        provider: name,
-        lat,
-        lng: lon,
-        battery,
-        range_m: rangeM,
-        vehicle_id: v.bike_id ?? v.vehicle_id ?? v.id ?? null,
-        deep_link: deepLink,
-        distance_m: 0,
-      });
-    }
-    return vehicles;
-  } catch {
-    return [];
-  }
-}
+import { fetchScooters } from '@/lib/scooterFeeds';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const lat = parseFloat(searchParams.get('lat') ?? '47.376');
-  const lng = parseFloat(searchParams.get('lng') ?? '8.528');
-  const radius = parseFloat(searchParams.get('radius') ?? '500');
-  const minBattery = parseInt(searchParams.get('minBattery') ?? '0', 10);
+  const lat = Number.parseFloat(searchParams.get('lat') ?? '47.376');
+  const lng = Number.parseFloat(searchParams.get('lng') ?? '8.528');
+  const radius = Number.parseFloat(searchParams.get('radius') ?? '500');
+  const minBattery = Number.parseInt(searchParams.get('minBattery') ?? '0', 10);
   const providerFilter = searchParams.get('provider')?.split(',').map(p => p.trim().toLowerCase());
 
-  const targets = providerFilter
-    ? Object.entries(PROVIDERS).filter(([k]) => providerFilter.includes(k))
-    : Object.entries(PROVIDERS);
+  if (
+    !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+    !Number.isFinite(lng) || lng < -180 || lng > 180 ||
+    !Number.isFinite(radius) || radius <= 0 || radius > 20_000 ||
+    !Number.isFinite(minBattery) || minBattery < 0 || minBattery > 100
+  ) {
+    return NextResponse.json({ error: 'Invalid scooter search parameters' }, { status: 400 });
+  }
 
-  const [vehicleResults] = await Promise.all([
-    Promise.all(targets.map(([name, info]) => fetchProvider(name, info))),
-  ]);
-
-  let vehicles = vehicleResults.flat();
-
-  // Calculate distance and filter
-  vehicles = vehicles
-    .map(v => ({ ...v, distance_m: Math.round(haversineM(lat, lng, v.lat, v.lng) * 10) / 10 }))
-    .filter(v => v.distance_m <= radius)
-    .filter(v => minBattery === 0 || (v.battery !== null && v.battery >= minBattery))
-    .sort((a, b) => a.distance_m - b.distance_m);
+  const vehicles = await fetchScooters({
+    lat,
+    lng,
+    radius,
+    minBattery,
+    providers: providerFilter ? new Set(providerFilter) : undefined,
+  });
 
   const providers: Record<string, number> = {};
   for (const v of vehicles) {
@@ -142,6 +33,11 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(
     { vehicles, providers },
-    { headers: { 'Cache-Control': 'public, max-age=30, s-maxage=30' } }
+    {
+      headers: {
+        'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
+        'X-Mobility-Data-Source': 'Swiss Federal Office of Energy sharedmobility.ch; Hopp',
+      },
+    }
   );
 }

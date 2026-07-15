@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scooters Zürich",
-  description: "Find nearby e-scooters from Bolt, Bird, Dott, Lime, Voi and Hopp in Zurich",
+  title: "Scooters Switzerland",
+  description: "Find nearby shared e-scooters across Switzerland",
   manifest: "/manifest.json",
   icons: {
     icon: [
