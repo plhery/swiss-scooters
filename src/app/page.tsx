@@ -4,12 +4,18 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
 import BottomSheet from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
-import type { Vehicle, ScooterResponse } from '@/lib/types';
+import type { MapBounds, Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
-import { pointToSegmentM, shouldRefreshLocation } from '@/lib/geo';
+import {
+  boundsContainBounds,
+  boundsContainPoint,
+  expandBounds,
+  shouldRefreshLocation,
+} from '@/lib/geo';
 
 const ZURICH_CENTER: [number, number] = [47.3769, 8.5417];
 const LOCATION_REFRESH_DISTANCE_M = 75;
+const VIEWPORT_FETCH_PADDING = 0.25;
 
 function parseCoord(s: string | null): [number, number] | null {
   if (!s) return null;
@@ -33,15 +39,14 @@ function loadParamsFromStorage(): Record<string, string> {
 
 interface UrlParams {
   origin: [number, number] | null;
-  dest: [number, number] | null;
-  radius: number | undefined;
   minBattery: number | undefined;
   tileLayer: 'dark' | 'light' | 'osm' | undefined;
-  corridorWidth: number | undefined;
 }
 
 function readUrlParams(): UrlParams {
-  if (typeof window === 'undefined') return { origin: null, dest: null, radius: undefined, minBattery: undefined, tileLayer: undefined, corridorWidth: undefined };
+  if (typeof window === 'undefined') {
+    return { origin: null, minBattery: undefined, tileLayer: undefined };
+  }
   const p = new URLSearchParams(window.location.search);
   const hasUrlParams = p.toString().length > 0;
 
@@ -53,47 +58,57 @@ function readUrlParams(): UrlParams {
       window.history.replaceState(null, '', `?${sp.toString()}`);
       return {
         origin: parseCoord(stored.origin ?? null),
-        dest: parseCoord(stored.dest ?? null),
-        radius: stored.radius ? parseInt(stored.radius) : undefined,
         minBattery: stored.minBattery ? parseInt(stored.minBattery) : undefined,
         tileLayer: (['dark', 'light', 'osm'] as const).includes(stored.tile as 'dark' | 'light' | 'osm')
           ? (stored.tile as 'dark' | 'light' | 'osm')
           : undefined,
-        corridorWidth: stored.corridor ? parseInt(stored.corridor) : undefined,
       };
     }
   }
 
   return {
     origin: parseCoord(p.get('origin')),
-    dest: parseCoord(p.get('dest')),
-    radius: p.get('radius') ? parseInt(p.get('radius')!) : undefined,
     minBattery: p.get('minBattery') ? parseInt(p.get('minBattery')!) : undefined,
     tileLayer: (['dark', 'light', 'osm'] as const).includes(p.get('tile') as 'dark' | 'light' | 'osm')
       ? (p.get('tile') as 'dark' | 'light' | 'osm')
       : undefined,
-    corridorWidth: p.get('corridor') ? parseInt(p.get('corridor')!) : undefined,
   };
+}
+
+function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
+  if (!a) return false;
+  return (
+    Math.abs(a.south - b.south) < 1e-7 &&
+    Math.abs(a.west - b.west) < 1e-7 &&
+    Math.abs(a.north - b.north) < 1e-7 &&
+    Math.abs(a.east - b.east) < 1e-7
+  );
 }
 
 export default function Home() {
   const [origin, setOrigin] = useState<[number, number]>(ZURICH_CENTER);
-  const [destination, setDestination] = useState<[number, number] | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-  const [radius, setRadius] = useState(500);
   const [minBattery, setMinBattery] = useState(0);
-  const [corridorWidth, setCorridorWidth] = useState(80);
   const [tileLayer, setTileLayer] = useState<'dark' | 'light' | 'osm'>('light');
   const [enabledProviders, setEnabledProviders] = useState<Set<string>>(
     new Set(Object.keys(PROVIDERS))
   );
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [providerCounts, setProviderCounts] = useState<Record<string, number>>({});
+  const [viewportBounds, setViewportBounds] = useState<MapBounds | null>(null);
+  const [queryBounds, setQueryBounds] = useState<MapBounds | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{
+    location: [number, number] | null;
+    version: number;
+  }>({ location: null, version: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const initializedRef = useRef(false);
+  const hasFocusedInitialLocationRef = useRef(false);
+  const queryBoundsRef = useRef<MapBounds | null>(null);
+  const originRef = useRef(origin);
+  const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect -- These effects intentionally
      restore browser-only state after hydration and fetch data when inputs change. */
@@ -104,18 +119,15 @@ export default function Home() {
     initializedRef.current = true;
 
     const params = readUrlParams();
-    if (params.radius !== undefined) setRadius(params.radius);
     if (params.minBattery !== undefined) setMinBattery(params.minBattery);
     if (params.tileLayer) setTileLayer(params.tileLayer);
-    if (params.corridorWidth !== undefined) setCorridorWidth(params.corridorWidth);
-    if (params.dest) setDestination(params.dest);
 
     // Show the map immediately with the last known origin while we geolocate
     if (params.origin) setOrigin(params.origin);
   }, []);
 
   // Track the phone continuously. Small moves update only the blue marker;
-  // larger moves advance the search origin and refresh nearby scooters.
+  // larger moves advance the distance origin without interrupting map panning.
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
@@ -124,6 +136,10 @@ export default function Home() {
       (pos) => {
         const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setUserLocation(coords);
+        if (!hasFocusedInitialLocationRef.current) {
+          hasFocusedInitialLocationRef.current = true;
+          setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
+        }
         setOrigin(prev => {
           return shouldRefreshLocation(
             prev,
@@ -145,15 +161,16 @@ export default function Home() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
+  useEffect(() => {
+    originRef.current = origin;
+  }, [origin]);
+
   // Sync state to URL + localStorage
   useEffect(() => {
     const p = new URLSearchParams();
     p.set('origin', `${origin[0].toFixed(4)},${origin[1].toFixed(4)}`);
-    if (destination) p.set('dest', `${destination[0].toFixed(4)},${destination[1].toFixed(4)}`);
-    if (radius !== 500) p.set('radius', String(radius));
     if (minBattery !== 0) p.set('minBattery', String(minBattery));
     if (tileLayer !== 'light') p.set('tile', tileLayer);
-    if (corridorWidth !== 80) p.set('corridor', String(corridorWidth));
     const qs = p.toString();
     const newUrl = qs ? `?${qs}` : window.location.pathname;
     window.history.replaceState(null, '', newUrl);
@@ -162,35 +179,51 @@ export default function Home() {
     const stored: Record<string, string> = {};
     p.forEach((v, k) => { stored[k] = v; });
     saveParamsToStorage(stored);
-  }, [origin, destination, radius, minBattery, tileLayer, corridorWidth]);
+  }, [origin, minBattery, tileLayer]);
 
-  const fetchScooters = useCallback(async () => {
+  const fetchScooters = useCallback(async (requestedBounds?: MapBounds) => {
+    const bounds = requestedBounds ?? queryBoundsRef.current;
+    if (!bounds) return;
+
+    requestRef.current?.controller.abort();
+    const request = {
+      id: (requestRef.current?.id ?? 0) + 1,
+      controller: new AbortController(),
+    };
+    requestRef.current = request;
     setLoading(true);
     setError(null);
     try {
+      const currentOrigin = originRef.current;
       const params = new URLSearchParams({
-        lat: origin[0].toString(),
-        lng: origin[1].toString(),
-        radius: radius.toString(),
-        minBattery: minBattery.toString(),
+        lat: currentOrigin[0].toString(),
+        lng: currentOrigin[1].toString(),
+        south: bounds.south.toFixed(5),
+        west: bounds.west.toFixed(5),
+        north: bounds.north.toFixed(5),
+        east: bounds.east.toFixed(5),
       });
-      const res = await fetch(`/api/scooters?${params}`);
+      const res = await fetch(`/api/scooters?${params}`, {
+        signal: request.controller.signal,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ScooterResponse = await res.json();
       setVehicles(data.vehicles);
-      setProviderCounts(data.providers);
       setLastUpdated(new Date());
     } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
       console.error('Failed to fetch scooters:', e);
       setError('Couldn’t load scooters');
     } finally {
-      setLoading(false);
+      if (requestRef.current?.id === request.id) setLoading(false);
     }
-  }, [origin, radius, minBattery]);
+  }, []);
 
   useEffect(() => {
-    fetchScooters();
-  }, [fetchScooters]);
+    if (queryBounds) void fetchScooters(queryBounds);
+  }, [fetchScooters, queryBounds]);
+
+  useEffect(() => () => requestRef.current?.controller.abort(), []);
 
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -202,6 +235,16 @@ export default function Home() {
     );
   };
 
+  const handleViewportChange = useCallback((bounds: MapBounds) => {
+    setViewportBounds(current => boundsEqual(current, bounds) ? current : bounds);
+
+    if (!queryBoundsRef.current || !boundsContainBounds(queryBoundsRef.current, bounds)) {
+      const expanded = expandBounds(bounds, VIEWPORT_FETCH_PADDING);
+      queryBoundsRef.current = expanded;
+      setQueryBounds(expanded);
+    }
+  }, []);
+
   const handleLocateMe = useCallback(() => {
     const proceed = () => {
       setLocating(true);
@@ -210,6 +253,7 @@ export default function Home() {
           const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
           setUserLocation(coords);
           setOrigin(coords);
+          setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
           setLocating(false);
         },
         () => setLocating(false),
@@ -227,29 +271,35 @@ export default function Home() {
     }
   }, []);
 
-  // Centralized filtering: provider, battery, and corridor
-  const filteredVehicles = useMemo(() => {
-    let filtered = vehicles.filter(v => enabledProviders.has(v.provider));
-    if (minBattery > 0) {
-      filtered = filtered.filter(v => v.battery !== null && v.battery >= minBattery);
+  // The response covers a padded area; only markers inside the exact viewport
+  // are rendered and counted. Provider counts intentionally ignore the active
+  // provider selection so every pill shows how many are available on screen.
+  const viewportData = useMemo(() => {
+    const providerCounts: Record<string, number> = {};
+    const visibleVehicles: Vehicle[] = [];
+    if (!viewportBounds) return { providerCounts, visibleVehicles };
+
+    for (const vehicle of vehicles) {
+      if (!boundsContainPoint(viewportBounds, vehicle.lat, vehicle.lng)) continue;
+      if (minBattery > 0 && (vehicle.battery === null || vehicle.battery < minBattery)) continue;
+
+      providerCounts[vehicle.provider] = (providerCounts[vehicle.provider] ?? 0) + 1;
+      if (enabledProviders.has(vehicle.provider)) visibleVehicles.push(vehicle);
     }
-    if (destination) {
-      filtered = filtered.filter(v =>
-        pointToSegmentM(v.lat, v.lng, origin[0], origin[1], destination[0], destination[1]) <= corridorWidth
-      );
-    }
-    return filtered;
-  }, [vehicles, enabledProviders, minBattery, destination, origin, corridorWidth]);
+
+    return { providerCounts, visibleVehicles };
+  }, [vehicles, viewportBounds, minBattery, enabledProviders]);
 
   return (
     <div className="app-shell">
       <MapWrapper
-        vehicles={filteredVehicles}
+        vehicles={viewportData.visibleVehicles}
         origin={origin}
-        destination={destination}
-        corridorWidth={corridorWidth}
         tileLayer={tileLayer}
         userLocation={userLocation}
+        focusLocation={focusRequest.location}
+        focusVersion={focusRequest.version}
+        onViewportChange={handleViewportChange}
       />
 
       {locating && (
@@ -262,32 +312,25 @@ export default function Home() {
       {error && !locating && (
         <div className="toast glass toast-error" role="alert">
           {error}
-          <button onClick={fetchScooters}>Retry</button>
+          <button onClick={() => void fetchScooters()}>Retry</button>
         </div>
       )}
 
       <MapControls
         loading={loading}
         onLocateMe={handleLocateMe}
-        onRefresh={fetchScooters}
+        onRefresh={() => void fetchScooters()}
       />
 
       <BottomSheet
-        destination={destination}
-        radius={radius}
         minBattery={minBattery}
-        corridorWidth={corridorWidth}
         enabledProviders={enabledProviders}
-        providerCounts={providerCounts}
-        totalCount={filteredVehicles.length}
+        providerCounts={viewportData.providerCounts}
+        totalCount={viewportData.visibleVehicles.length}
         loading={loading}
         lastUpdated={lastUpdated}
         tileLayer={tileLayer}
-        onDestinationChange={(lat, lng) => setDestination([lat, lng])}
-        onDestinationClear={() => setDestination(null)}
-        onRadiusChange={setRadius}
         onMinBatteryChange={setMinBattery}
-        onCorridorWidthChange={setCorridorWidth}
         onProviderSelect={handleProviderSelect}
         onTileLayerChange={setTileLayer}
       />

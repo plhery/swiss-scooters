@@ -1,6 +1,6 @@
-# 🛴 Scooters Nearby — Switzerland
+# 🛴 Scooters on the Map — Switzerland
 
-A mobile-friendly PWA showing nearby shared e-scooters across Switzerland on an interactive map.
+A mobile-friendly PWA showing shared e-scooters across Switzerland in the current map viewport.
 
 **Live:** [zurich-scooter.plhery.com](https://zurich-scooter.plhery.com)
 — deployed on Cloudflare Workers via OpenNext
@@ -20,16 +20,14 @@ A mobile-friendly PWA showing nearby shared e-scooters across Switzerland on an 
 ## Features
 
 - **Interactive map** with Leaflet + OpenStreetMap / CARTO tiles (light, dark, OSM)
-- **Geocoding** via Nominatim (destination search across Switzerland)
-- **Switzerland-wide discovery** — nearby systems come from the national sharedmobility.ch snapshot
+- **Viewport-wide discovery** — pan or zoom anywhere and see every scooter in that map area
 - **Rich GBFS 2.3 data** — nearby provider feeds preserve battery, range and rental links
 - **Strict vehicle filtering** — excludes bikes, reserved vehicles and disabled vehicles
-- **Server-side GBFS fetching** — no CORS issues, API responses and upstream feeds are cached
-- **Provider chips**, battery filter, search radius slider
-- **Corridor mode** — set a destination to find scooters along your route
-- **Auto-fit** map bounds to visible results
+- **Server-side bounds filtering** — no CORS issues, with cached upstream feeds and buffered viewport requests
+- **Accurate provider chips** — counts always reflect the scooters currently visible on the map
+- **Instant local filters** — provider and battery changes do not trigger network requests
 - **PWA** — cached app shell for fast/offline launches, automatic refresh after deployments
-- **Live location tracking** — moves the user marker continuously and refreshes scooters after meaningful movement
+- **Live location tracking** — moves the user marker continuously and recenters on request
 - **iPhone-first UI** — draggable glass bottom sheet, floating map buttons, safe-area support
 
 ## Tech Stack
@@ -64,7 +62,7 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Deployment
 
 The app deploys to Cloudflare Workers, with static assets served at the edge and
-the two Next.js route handlers running in the Workers runtime.
+the Next.js route handlers running in the Workers runtime.
 
 Cloudflare Workers Builds is connected to this GitHub repository. Every push to
 `main` builds and deploys production automatically; other branches produce
@@ -84,11 +82,11 @@ deployment and verification checklist.
 
 ### `GET /api/scooters`
 
-Returns scooters near a point, sorted by distance.
+Returns scooters inside a geographic bounding box, sorted by distance from the supplied origin.
 
 Query params:
 - `lat`, `lng` — origin coordinates (default: Zurich center)
-- `radius` — search radius in meters (default: 500)
+- `south`, `west`, `north`, `east` — map bounds
 - `minBattery` — minimum battery % (default: 0)
 - `provider` — comma-separated filter (e.g., `bolt,lime`)
 
@@ -115,12 +113,12 @@ src/
 │   ├── layout.tsx             # Root layout, PWA meta
 │   └── page.tsx               # Main page, state management
 ├── components/
-│   ├── BottomSheet.tsx        # Draggable bottom sheet with search & filters
+│   ├── BottomSheet.tsx        # Draggable bottom sheet with counts & filters
 │   ├── MapControls.tsx        # Floating locate / refresh buttons
 │   ├── MapComponent.tsx       # Leaflet map (client-only)
 │   └── MapWrapper.tsx         # Dynamic import wrapper (no SSR)
 └── lib/
-    ├── geo.ts                 # Haversine distance, point-to-segment
+    ├── geo.ts                 # Haversine distance and viewport bounds helpers
     ├── scooterFeeds.ts        # National discovery + rich GBFS aggregation
     └── types.ts               # Vehicle types, provider config
 ```

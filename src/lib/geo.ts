@@ -1,3 +1,5 @@
+import type { MapBounds } from '@/lib/types';
+
 export function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const r = 6371000.0;
   const phi1 = (lat1 * Math.PI) / 180;
@@ -10,6 +12,36 @@ export function haversineM(lat1: number, lon1: number, lat2: number, lon2: numbe
   return 2 * r * Math.asin(Math.sqrt(a));
 }
 
+export function boundsContainPoint(bounds: MapBounds, lat: number, lng: number): boolean {
+  return (
+    lat >= bounds.south &&
+    lat <= bounds.north &&
+    lng >= bounds.west &&
+    lng <= bounds.east
+  );
+}
+
+export function boundsContainBounds(container: MapBounds, contained: MapBounds): boolean {
+  return (
+    contained.south >= container.south &&
+    contained.west >= container.west &&
+    contained.north <= container.north &&
+    contained.east <= container.east
+  );
+}
+
+export function expandBounds(bounds: MapBounds, paddingRatio: number): MapBounds {
+  const latPadding = (bounds.north - bounds.south) * paddingRatio;
+  const lngPadding = (bounds.east - bounds.west) * paddingRatio;
+
+  return {
+    south: Math.max(-90, bounds.south - latPadding),
+    west: Math.max(-180, bounds.west - lngPadding),
+    north: Math.min(90, bounds.north + latPadding),
+    east: Math.min(180, bounds.east + lngPadding),
+  };
+}
+
 export function shouldRefreshLocation(
   origin: [number, number],
   next: [number, number],
@@ -18,25 +50,4 @@ export function shouldRefreshLocation(
 ): boolean {
   const refreshDistance = Math.max(minimumDistanceM, accuracyM);
   return haversineM(origin[0], origin[1], next[0], next[1]) >= refreshDistance;
-}
-
-export function pointToSegmentM(
-  plat: number,
-  plng: number,
-  alat: number,
-  alng: number,
-  blat: number,
-  blng: number
-): number {
-  const ax = alng, ay = alat;
-  const bx = blng, by = blat;
-  const px = plng, py = plat;
-  const dx = bx - ax, dy = by - ay;
-  if (dx === 0 && dy === 0) {
-    return haversineM(plat, plng, alat, alng);
-  }
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
-  const projLng = ax + t * dx;
-  const projLat = ay + t * dy;
-  return haversineM(plat, plng, projLat, projLng);
 }

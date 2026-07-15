@@ -1,5 +1,5 @@
-import { haversineM } from '@/lib/geo';
-import type { Vehicle } from '@/lib/types';
+import { boundsContainPoint, haversineM } from '@/lib/geo';
+import type { MapBounds, Vehicle } from '@/lib/types';
 
 const NATIONAL_STATUS_URL = 'https://sharedmobility.ch/free_bike_status.json';
 const NATIONAL_TYPES_URL = 'https://sharedmobility.ch/vehicle_types.json';
@@ -71,7 +71,7 @@ type ProviderKey = 'bolt' | 'bird' | 'dott' | 'lime' | 'voi' | 'hopp' | 'publibi
 export interface FeedQuery {
   lat: number;
   lng: number;
-  radius: number;
+  bounds: MapBounds;
   minBattery: number;
   providers?: Set<string>;
 }
@@ -217,8 +217,16 @@ function filterVehicles(
     if (isUnavailable(raw.is_disabled) || isUnavailable(raw.is_reserved)) continue;
     if (!raw.vehicle_type_id || !isElectricScooter(types.get(raw.vehicle_type_id))) continue;
 
+    const lat = raw.lat;
+    const lng = raw.lon ?? raw.lng;
+    if (
+      lat == null || lng == null ||
+      !Number.isFinite(lat) || !Number.isFinite(lng) ||
+      !boundsContainPoint(query.bounds, lat, lng)
+    ) continue;
+
     const vehicle = toVehicle(systemId, provider, raw, query);
-    if (!vehicle || vehicle.distance_m > query.radius) continue;
+    if (!vehicle) continue;
     filtered.push(vehicle);
   }
   return filtered;
@@ -286,7 +294,7 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<Vehicle[]> {
     const lat = raw.lat;
     const lng = raw.lon ?? raw.lng;
     if (lat == null || lng == null) continue;
-    if (haversineM(query.lat, query.lng, lat, lng) > query.radius) continue;
+    if (!boundsContainPoint(query.bounds, lat, lng)) continue;
 
     const current = nearbyBySystem.get(systemId) ?? [];
     current.push(raw);

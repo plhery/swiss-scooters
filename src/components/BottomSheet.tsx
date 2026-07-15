@@ -1,31 +1,18 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useLayoutEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS } from '@/lib/types';
 
-interface GeoResult {
-  lat: number;
-  lng: number;
-  display_name: string;
-}
-
 interface BottomSheetProps {
-  destination: [number, number] | null;
-  radius: number;
   minBattery: number;
-  corridorWidth: number;
   enabledProviders: Set<string>;
   providerCounts: Record<string, number>;
   totalCount: number;
   loading: boolean;
   lastUpdated: Date | null;
   tileLayer: 'dark' | 'light' | 'osm';
-  onDestinationChange: (lat: number, lng: number) => void;
-  onDestinationClear: () => void;
-  onRadiusChange: (r: number) => void;
   onMinBatteryChange: (b: number) => void;
-  onCorridorWidthChange: (w: number) => void;
   onProviderSelect: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
 }
@@ -63,77 +50,20 @@ function SliderRow({
   );
 }
 
-function SearchField({
-  id, placeholder, icon, value, onValue, results, onPick, trailing,
-}: {
-  id: string;
-  placeholder: string;
-  icon: React.ReactNode;
-  value: string;
-  onValue: (v: string) => void;
-  results: GeoResult[];
-  onPick: (r: GeoResult) => void;
-  trailing?: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="field">
-        {icon}
-        <input
-          id={id}
-          type="text"
-          value={value}
-          onChange={e => onValue(e.target.value)}
-          placeholder={placeholder}
-          autoComplete="off"
-          autoCorrect="off"
-        />
-        {trailing}
-      </div>
-      {results.length > 0 && (
-        <div className="results" role="listbox">
-          {results.map((r, i) => (
-            <button key={i} role="option" aria-selected={false} onClick={() => onPick(r)}>
-              {r.display_name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const FlagIcon = (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M4 22V4c0-1 .6-2 2.5-2S10 3 12 3s3.5-1 5.5-1S20 3 20 4v10c0 1-.6 2-2.5 2S14 15 12 15s-3.5 1-5.5 1S4 15 4 15" />
-  </svg>
-);
-
 export default function BottomSheet({
-  destination,
-  radius,
   minBattery,
-  corridorWidth,
   enabledProviders,
   providerCounts,
   totalCount,
   loading,
   lastUpdated,
   tileLayer,
-  onDestinationChange,
-  onDestinationClear,
-  onRadiusChange,
   onMinBatteryChange,
-  onCorridorWidthChange,
   onProviderSelect,
   onTileLayerChange,
 }: BottomSheetProps) {
   const [expanded, setExpanded] = useState(false);
   const [peekH, setPeekH] = useState(160);
-  const [destQuery, setDestQuery] = useState('');
-  const [destResults, setDestResults] = useState<GeoResult[]>([]);
-  const destTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const destRequestRef = useRef<AbortController | null>(null);
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
@@ -161,13 +91,6 @@ export default function BottomSheet({
     return () => {
       ro.disconnect();
       document.documentElement.style.removeProperty('--sheet-peek-h');
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(destTimerRef.current);
-      destRequestRef.current?.abort();
     };
   }, []);
 
@@ -222,46 +145,11 @@ export default function BottomSheet({
     sheet.style.transform = '';
   };
 
-  const geocodeDestination = useCallback(async (q: string) => {
-    if (q.trim().length < 3) {
-      setDestResults([]);
-      return;
-    }
-
-    destRequestRef.current?.abort();
-    const controller = new AbortController();
-    destRequestRef.current = controller;
-
-    try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, {
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        setDestResults([]);
-        return;
-      }
-      setDestResults(await res.json());
-    } catch (error) {
-      if ((error as Error).name !== 'AbortError') setDestResults([]);
-    }
-  }, []);
-
-  const handleDestInput = (val: string) => {
-    setDestQuery(val);
-    clearTimeout(destTimerRef.current);
-    if (val.trim().length < 3) {
-      destRequestRef.current?.abort();
-      setDestResults([]);
-      return;
-    }
-    destTimerRef.current = setTimeout(() => geocodeDestination(val), 300);
-  };
-
   const updatedLabel = loading
     ? 'Updating…'
     : lastUpdated
       ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      : 'near you';
+      : 'on this map';
 
   return (
     <div
@@ -340,61 +228,8 @@ export default function BottomSheet({
       </div>
 
       <div className="sheet-body" inert={!expanded}>
-        <div className="section section-route">
-          <div className="section-heading">
-            <div className="section-title">Destination</div>
-            <span>Optional</span>
-          </div>
-          <SearchField
-            id="dest-input"
-            placeholder="Where are you going?"
-            icon={FlagIcon}
-            value={destQuery}
-            onValue={handleDestInput}
-            results={destResults}
-            onPick={r => {
-              onDestinationChange(r.lat, r.lng);
-              setDestQuery(r.display_name);
-              setDestResults([]);
-            }}
-            trailing={destination ? (
-              <button
-                className="field-btn"
-                style={{ color: 'var(--ink-3)' }}
-                onClick={() => { onDestinationClear(); setDestQuery(''); setDestResults([]); }}
-                aria-label="Clear destination"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              </button>
-            ) : undefined}
-          />
-          {destination && (
-            <div style={{ marginTop: 12 }}>
-              <SliderRow
-                label="Corridor width"
-                value={corridorWidth}
-                display={`${corridorWidth} m`}
-                min={50}
-                max={200}
-                onChange={onCorridorWidthChange}
-              />
-            </div>
-          )}
-        </div>
-
         <div className="section">
           <div className="section-title">Filters</div>
-          <SliderRow
-            label="Search radius"
-            value={radius}
-            display={radius >= 1000 ? `${(radius / 1000).toFixed(radius % 1000 === 0 ? 0 : 1)} km` : `${radius} m`}
-            min={100}
-            max={2000}
-            step={50}
-            onChange={onRadiusChange}
-          />
           <SliderRow
             label="Min. battery"
             value={minBattery}

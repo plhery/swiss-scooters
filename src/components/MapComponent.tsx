@@ -1,19 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   MapContainer,
   TileLayer,
   Marker,
   Popup,
-  Polygon,
   AttributionControl,
   useMap,
   useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { Vehicle } from '@/lib/types';
+import type { MapBounds, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 
 function createScooterIcon(provider: string): L.DivIcon {
@@ -39,81 +38,47 @@ function createUserLocationIcon(): L.DivIcon {
   });
 }
 
-function createDestinationIcon(): L.DivIcon {
-  return L.divIcon({
-    className: 'destination-marker-wrap',
-    html: `<div class="destination-marker" aria-hidden="true">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 21V4"/><path d="M5 5h11l-2.2 3L16 11H5"/>
-      </svg>
-    </div>`,
-    iconSize: [38, 46],
-    iconAnchor: [19, 43],
-    popupAnchor: [0, -42],
-  });
-}
-
-function FitBounds({ vehicles, origin, destination }: {
-  vehicles: Vehicle[];
-  origin: [number, number];
-  destination: [number, number] | null;
+function ViewportController({
+  focusLocation,
+  focusVersion,
+  onViewportChange,
+}: {
+  focusLocation: [number, number] | null;
+  focusVersion: number;
+  onViewportChange: (bounds: MapBounds) => void;
 }) {
   const map = useMap();
-  const hasFit = useRef(false);
+
+  const reportViewport = useCallback(() => {
+    const bounds = map.getBounds();
+    const next = {
+      south: Math.min(90, Math.max(-90, bounds.getSouth())),
+      west: Math.min(180, Math.max(-180, bounds.getWest())),
+      north: Math.min(90, Math.max(-90, bounds.getNorth())),
+      east: Math.min(180, Math.max(-180, bounds.getEast())),
+    };
+
+    if (next.south < next.north && next.west < next.east) {
+      onViewportChange(next);
+    }
+  }, [map, onViewportChange]);
+
+  useMapEvents({ moveend: reportViewport });
 
   useEffect(() => {
-    const points: [number, number][] = [origin];
-    if (destination) points.push(destination);
-    vehicles.forEach(v => points.push([v.lat, v.lng]));
+    reportViewport();
+  }, [reportViewport]);
 
-    if (points.length > 1) {
-      const bounds = L.latLngBounds(points);
-      const options: L.FitBoundsOptions = {
-        paddingTopLeft: [44, 92],
-        paddingBottomRight: [44, 214],
-        maxZoom: 17,
-      };
+  useEffect(() => {
+    if (!focusLocation || focusVersion === 0) return;
+    map.flyTo(focusLocation, Math.max(map.getZoom(), 15), {
+      animate: true,
+      duration: 0.5,
+      easeLinearity: 0.25,
+    });
+  }, [focusLocation, focusVersion, map]);
 
-      if (hasFit.current) {
-        map.flyToBounds(bounds, {
-          ...options,
-          animate: true,
-          duration: 0.65,
-          easeLinearity: 0.25,
-        });
-      } else {
-        map.fitBounds(bounds, { ...options, animate: false });
-        hasFit.current = true;
-      }
-    }
-  }, [vehicles, origin, destination, map]);
   return null;
-}
-
-function getCorridorPolygon(
-  origin: [number, number],
-  dest: [number, number],
-  widthM: number
-): [number, number][] {
-  const [alat, alng] = origin;
-  const [blat, blng] = dest;
-  const dx = blng - alng;
-  const dy = blat - alat;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len === 0) return [];
-
-  // Approximate degrees per meter
-  const mPerDegLat = 111320;
-  const mPerDegLng = 111320 * Math.cos(((alat + blat) / 2) * Math.PI / 180);
-  const offsetLat = (widthM / mPerDegLat) * (dx / len);
-  const offsetLng = (widthM / mPerDegLng) * (-dy / len);
-
-  return [
-    [alat + offsetLat, alng + offsetLng],
-    [blat + offsetLat, blng + offsetLng],
-    [blat - offsetLat, blng - offsetLng],
-    [alat - offsetLat, alng - offsetLng],
-  ];
 }
 
 const TILE_URLS: Record<string, string> = {
@@ -146,7 +111,7 @@ function createClusterIcon(vehicles: Vehicle[]): L.DivIcon {
   });
 }
 
-function VehicleMarkers({
+const VehicleMarkers = memo(function VehicleMarkers({
   vehicles,
   icons,
 }: {
@@ -244,24 +209,26 @@ function VehicleMarkers({
       </Marker>
     );
   });
-}
+});
 
 interface MapComponentProps {
   vehicles: Vehicle[];
   origin: [number, number];
-  destination: [number, number] | null;
-  corridorWidth: number;
   tileLayer: 'dark' | 'light' | 'osm';
   userLocation: [number, number] | null;
+  focusLocation: [number, number] | null;
+  focusVersion: number;
+  onViewportChange: (bounds: MapBounds) => void;
 }
 
 export default function MapComponent({
   vehicles,
   origin,
-  destination,
-  corridorWidth,
   tileLayer,
   userLocation,
+  focusLocation,
+  focusVersion,
+  onViewportChange,
 }: MapComponentProps) {
   // Pre-create all provider icons (stable across renders)
   const iconMap = useMemo(() => {
@@ -272,12 +239,6 @@ export default function MapComponent({
     return icons;
   }, []);
 
-  const corridorPoly = useMemo(() => {
-    if (!destination) return null;
-    return getCorridorPolygon(origin, destination, corridorWidth);
-  }, [origin, destination, corridorWidth]);
-
-  const destIcon = useMemo(() => createDestinationIcon(), []);
   const userLocationIcon = useMemo(() => createUserLocationIcon(), []);
 
   return (
@@ -299,7 +260,13 @@ export default function MapComponent({
         url={TILE_URLS[tileLayer]}
         subdomains="abc"
         updateWhenZooming={false}
-        keepBuffer={4}
+        keepBuffer={2}
+      />
+
+      <ViewportController
+        focusLocation={focusLocation}
+        focusVersion={focusVersion}
+        onViewportChange={onViewportChange}
       />
 
       {userLocation && (
@@ -311,25 +278,7 @@ export default function MapComponent({
         />
       )}
 
-      {destination && (
-        <Marker
-          position={destination}
-          icon={destIcon}
-          zIndexOffset={1000}
-          title="Destination"
-        />
-      )}
-
-      {corridorPoly && (
-        <Polygon
-          positions={corridorPoly}
-          pathOptions={{ color: '#0a84ff', fillColor: '#0a84ff', fillOpacity: 0.12, weight: 2 }}
-        />
-      )}
-
       <VehicleMarkers vehicles={vehicles} icons={iconMap} />
-
-      <FitBounds vehicles={vehicles} origin={origin} destination={destination} />
     </MapContainer>
   );
 }

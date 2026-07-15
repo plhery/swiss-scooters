@@ -9,6 +9,13 @@ export interface Vehicle {
   distance_m: number;
 }
 
+export interface MapBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
 export interface ScooterResponse {
   vehicles: Vehicle[];
   providers: Record<string, number>;
