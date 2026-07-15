@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -9,6 +9,7 @@ import {
   Polygon,
   AttributionControl,
   useMap,
+  useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -18,10 +19,11 @@ import { PROVIDERS } from '@/lib/types';
 function createScooterIcon(provider: string): L.DivIcon {
   const cfg = PROVIDERS[provider] ?? { color: '#999', initial: '?' };
   return L.divIcon({
-    className: '',
-    html: `<div style="background:${cfg.color};color:#fff;font:700 11px -apple-system,BlinkMacSystemFont,sans-serif;width:30px;height:30px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center">${cfg.initial}</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
+    className: 'scooter-marker-wrap',
+    html: `<div class="scooter-marker" style="--marker-color:${cfg.color}"><span>${cfg.initial}</span></div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
   });
 }
 
@@ -37,12 +39,17 @@ function createUserLocationIcon(): L.DivIcon {
   });
 }
 
-function createPinIcon(label: string, bg: string): L.DivIcon {
+function createDestinationIcon(): L.DivIcon {
   return L.divIcon({
-    className: '',
-    html: `<div style="background:${bg};color:#fff;font:600 12px -apple-system,BlinkMacSystemFont,sans-serif;padding:5px 11px;border-radius:999px;border:2px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.4);white-space:nowrap">${label}</div>`,
-    iconSize: [0, 0],
-    iconAnchor: [0, 16],
+    className: 'destination-marker-wrap',
+    html: `<div class="destination-marker" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 21V4"/><path d="M5 5h11l-2.2 3L16 11H5"/>
+      </svg>
+    </div>`,
+    iconSize: [38, 46],
+    iconAnchor: [19, 43],
+    popupAnchor: [0, -42],
   });
 }
 
@@ -52,16 +59,32 @@ function FitBounds({ vehicles, origin, destination }: {
   destination: [number, number] | null;
 }) {
   const map = useMap();
+  const hasFit = useRef(false);
+
   useEffect(() => {
     const points: [number, number][] = [origin];
     if (destination) points.push(destination);
     vehicles.forEach(v => points.push([v.lat, v.lng]));
+
     if (points.length > 1) {
-      map.fitBounds(points, {
-        paddingTopLeft: [40, 70],
-        paddingBottomRight: [40, 190], // keep markers clear of the bottom sheet
+      const bounds = L.latLngBounds(points);
+      const options: L.FitBoundsOptions = {
+        paddingTopLeft: [44, 92],
+        paddingBottomRight: [44, 214],
         maxZoom: 17,
-      });
+      };
+
+      if (hasFit.current) {
+        map.flyToBounds(bounds, {
+          ...options,
+          animate: true,
+          duration: 0.65,
+          easeLinearity: 0.25,
+        });
+      } else {
+        map.fitBounds(bounds, { ...options, animate: false });
+        hasFit.current = true;
+      }
     }
   }, [vehicles, origin, destination, map]);
   return null;
@@ -96,7 +119,7 @@ function getCorridorPolygon(
 const TILE_URLS: Record<string, string> = {
   osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
 };
 
 function formatDistance(m: number): string {
@@ -107,6 +130,120 @@ function batteryColor(pct: number): string {
   if (pct >= 50) return '#34c759';
   if (pct >= 20) return '#ff9500';
   return '#ff3b30';
+}
+
+function createClusterIcon(vehicles: Vehicle[]): L.DivIcon {
+  const providers = new Set(vehicles.map(v => v.provider));
+  const color = providers.size === 1
+    ? (PROVIDERS[vehicles[0].provider]?.color ?? '#0a84ff')
+    : '#1677ff';
+
+  return L.divIcon({
+    className: 'cluster-marker-wrap',
+    html: `<div class="cluster-marker" style="--cluster-color:${color}">${vehicles.length}</div>`,
+    iconSize: [42, 42],
+    iconAnchor: [21, 21],
+  });
+}
+
+function VehicleMarkers({
+  vehicles,
+  icons,
+}: {
+  vehicles: Vehicle[];
+  icons: Record<string, L.DivIcon>;
+}) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+
+  useMapEvents({
+    zoomend: event => setZoom(event.target.getZoom()),
+  });
+
+  const groups = useMemo(() => {
+    const cellSize = zoom >= 18 ? 20 : zoom >= 17 ? 36 : 48;
+    const cells = new Map<string, Vehicle[]>();
+
+    vehicles.forEach(vehicle => {
+      const point = map.project([vehicle.lat, vehicle.lng], zoom);
+      const key = `${Math.floor(point.x / cellSize)}:${Math.floor(point.y / cellSize)}`;
+      const group = cells.get(key);
+      if (group) group.push(vehicle);
+      else cells.set(key, [vehicle]);
+    });
+
+    return Array.from(cells.entries()).map(([key, items]) => ({
+      key,
+      items,
+      center: [
+        items.reduce((sum, item) => sum + item.lat, 0) / items.length,
+        items.reduce((sum, item) => sum + item.lng, 0) / items.length,
+      ] as [number, number],
+    }));
+  }, [map, vehicles, zoom]);
+
+  return groups.map(group => {
+    if (group.items.length > 1) {
+      return (
+        <Marker
+          key={`cluster-${zoom}-${group.key}`}
+          position={group.center}
+          icon={createClusterIcon(group.items)}
+          zIndexOffset={500}
+          title={`${group.items.length} scooters. Zoom in to separate.`}
+          eventHandlers={{
+            click: () => map.flyTo(group.center, Math.min(zoom + 2, 18), {
+              animate: true,
+              duration: 0.55,
+            }),
+          }}
+        />
+      );
+    }
+
+    const vehicle = group.items[0];
+    const cfg = PROVIDERS[vehicle.provider];
+    return (
+      <Marker
+        key={`${vehicle.provider}-${vehicle.vehicle_id ?? `${vehicle.lat}-${vehicle.lng}`}`}
+        position={[vehicle.lat, vehicle.lng]}
+        icon={icons[vehicle.provider]}
+        riseOnHover
+        title={`${cfg?.name ?? vehicle.provider} scooter, ${formatDistance(vehicle.distance_m)} away`}
+      >
+        <Popup className="scooter-popup" closeButton={false}>
+          <div>
+            <div className="popup-head">
+              <span className="popup-dot" style={{ background: cfg?.color ?? '#999' }} aria-hidden="true" />
+              <span className="popup-name">{cfg?.name ?? vehicle.provider}</span>
+              <span className="popup-dist">{formatDistance(vehicle.distance_m)}</span>
+            </div>
+            {vehicle.battery !== null && (
+              <div className="popup-batt">
+                <div className="popup-batt-bar">
+                  <div style={{ width: `${vehicle.battery}%`, background: batteryColor(vehicle.battery) }} />
+                </div>
+                <span>
+                  {vehicle.battery}%{vehicle.range_m !== null ? ` · ${(vehicle.range_m / 1000).toFixed(1)} km` : ''}
+                </span>
+              </div>
+            )}
+            {vehicle.deep_link && (
+              <a
+                href={vehicle.deep_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="popup-cta"
+                style={{ background: cfg?.color ?? '#0a84ff' }}
+              >
+                Open in {cfg?.name ?? 'app'}
+              </a>
+            )}
+          </div>
+        </Popup>
+      </Marker>
+    );
+  });
 }
 
 interface MapComponentProps {
@@ -140,8 +277,7 @@ export default function MapComponent({
     return getCorridorPolygon(origin, destination, corridorWidth);
   }, [origin, destination, corridorWidth]);
 
-  const originIcon = useMemo(() => createPinIcon('Origin', '#1c1c1e'), []);
-  const destIcon = useMemo(() => createPinIcon('Destination', '#0a84ff'), []);
+  const destIcon = useMemo(() => createDestinationIcon(), []);
   const userLocationIcon = useMemo(() => createUserLocationIcon(), []);
 
   return (
@@ -151,16 +287,20 @@ export default function MapComponent({
       className="w-full h-full"
       zoomControl={false}
       attributionControl={false}
+      preferCanvas
+      zoomAnimation
+      fadeAnimation
+      markerZoomAnimation
     >
       <AttributionControl position="topright" prefix={false} />
       <TileLayer
         key={tileLayer}
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a> · Mobility data: <a href="https://sharedmobility.ch/">SFOE Shared Mobility</a>'
         url={TILE_URLS[tileLayer]}
         subdomains="abc"
+        updateWhenZooming={false}
+        keepBuffer={4}
       />
-
-      <Marker position={origin} icon={originIcon} zIndexOffset={1000} />
 
       {userLocation && (
         <Marker
@@ -172,7 +312,12 @@ export default function MapComponent({
       )}
 
       {destination && (
-        <Marker position={destination} icon={destIcon} zIndexOffset={1000} />
+        <Marker
+          position={destination}
+          icon={destIcon}
+          zIndexOffset={1000}
+          title="Destination"
+        />
       )}
 
       {corridorPoly && (
@@ -182,43 +327,7 @@ export default function MapComponent({
         />
       )}
 
-      {vehicles.map((v, i) => {
-        const cfg = PROVIDERS[v.provider];
-        return (
-          <Marker key={`${v.provider}-${v.vehicle_id}-${i}`} position={[v.lat, v.lng]} icon={iconMap[v.provider]}>
-            <Popup className="scooter-popup" closeButton={false}>
-              <div>
-                <div className="popup-head">
-                  <span className="popup-dot" style={{ background: cfg?.color ?? '#999' }} aria-hidden="true" />
-                  <span className="popup-name">{cfg?.name ?? v.provider}</span>
-                  <span className="popup-dist">{formatDistance(v.distance_m)}</span>
-                </div>
-                {v.battery !== null && (
-                  <div className="popup-batt">
-                    <div className="popup-batt-bar">
-                      <div style={{ width: `${v.battery}%`, background: batteryColor(v.battery) }} />
-                    </div>
-                    <span>
-                      {v.battery}%{v.range_m !== null ? ` · ${(v.range_m / 1000).toFixed(1)} km` : ''}
-                    </span>
-                  </div>
-                )}
-                {v.deep_link && (
-                  <a
-                    href={v.deep_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="popup-cta"
-                    style={{ background: cfg?.color ?? '#0a84ff' }}
-                  >
-                    Open in {cfg?.name ?? 'app'}
-                  </a>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        );
-      })}
+      <VehicleMarkers vehicles={vehicles} icons={iconMap} />
 
       <FitBounds vehicles={vehicles} origin={origin} destination={destination} />
     </MapContainer>

@@ -77,7 +77,7 @@ function readUrlParams(): UrlParams {
 }
 
 export default function Home() {
-  const [origin, setOrigin] = useState<[number, number] | null>(null);
+  const [origin, setOrigin] = useState<[number, number]>(ZURICH_CENTER);
   const [destination, setDestination] = useState<[number, number] | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [radius, setRadius] = useState(500);
@@ -94,7 +94,6 @@ export default function Home() {
   const [locating, setLocating] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const initializedRef = useRef(false);
-  const followUserRef = useRef(true);
 
   /* eslint-disable react-hooks/set-state-in-effect -- These effects intentionally
      restore browser-only state after hydration and fetch data when inputs change. */
@@ -113,10 +112,6 @@ export default function Home() {
 
     // Show the map immediately with the last known origin while we geolocate
     if (params.origin) setOrigin(params.origin);
-
-    if (!('geolocation' in navigator)) {
-      setOrigin(prev => prev ?? ZURICH_CENTER);
-    }
   }, []);
 
   // Track the phone continuously. Small moves update only the blue marker;
@@ -130,9 +125,6 @@ export default function Home() {
         const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setUserLocation(coords);
         setOrigin(prev => {
-          if (!prev) return coords;
-          if (!followUserRef.current) return prev;
-
           return shouldRefreshLocation(
             prev,
             coords,
@@ -145,7 +137,6 @@ export default function Home() {
         setLocating(false);
       },
       () => {
-        setOrigin(prev => prev ?? ZURICH_CENTER);
         setLocating(false);
       },
       { timeout: 20000, enableHighAccuracy: true, maximumAge: 5000 }
@@ -156,7 +147,6 @@ export default function Home() {
 
   // Sync state to URL + localStorage
   useEffect(() => {
-    if (!origin) return;
     const p = new URLSearchParams();
     p.set('origin', `${origin[0].toFixed(4)},${origin[1].toFixed(4)}`);
     if (destination) p.set('dest', `${destination[0].toFixed(4)},${destination[1].toFixed(4)}`);
@@ -175,7 +165,6 @@ export default function Home() {
   }, [origin, destination, radius, minBattery, tileLayer, corridorWidth]);
 
   const fetchScooters = useCallback(async () => {
-    if (!origin) return;
     setLoading(true);
     setError(null);
     try {
@@ -213,21 +202,12 @@ export default function Home() {
     );
   };
 
-  const handleProviderExclude = (p: string) => {
-    setEnabledProviders(prev => {
-      const next = new Set(prev);
-      next.delete(p);
-      return next;
-    });
-  };
-
   const handleLocateMe = useCallback(() => {
     const proceed = () => {
       setLocating(true);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-          followUserRef.current = true;
           setUserLocation(coords);
           setOrigin(coords);
           setLocating(false);
@@ -247,11 +227,6 @@ export default function Home() {
     }
   }, []);
 
-  const handleOriginChange = (lat: number, lng: number) => {
-    followUserRef.current = false;
-    setOrigin([lat, lng]);
-  };
-
   // Centralized filtering: provider, battery, and corridor
   const filteredVehicles = useMemo(() => {
     let filtered = vehicles.filter(v => enabledProviders.has(v.provider));
@@ -260,22 +235,11 @@ export default function Home() {
     }
     if (destination) {
       filtered = filtered.filter(v =>
-        pointToSegmentM(v.lat, v.lng, origin![0], origin![1], destination[0], destination[1]) <= corridorWidth
+        pointToSegmentM(v.lat, v.lng, origin[0], origin[1], destination[0], destination[1]) <= corridorWidth
       );
     }
     return filtered;
   }, [vehicles, enabledProviders, minBattery, destination, origin, corridorWidth]);
-
-  // Splash while we wait for a first origin
-  if (!origin) {
-    return (
-      <div className="app-shell splash" role="status">
-        <div className="splash-icon" aria-hidden="true">🛴</div>
-        <div className="splash-title">Scooters Zürich</div>
-        <div className="splash-sub">{locating ? 'Finding your location…' : 'Loading…'}</div>
-      </div>
-    );
-  }
 
   return (
     <div className="app-shell">
@@ -319,16 +283,13 @@ export default function Home() {
         loading={loading}
         lastUpdated={lastUpdated}
         tileLayer={tileLayer}
-        onOriginChange={handleOriginChange}
         onDestinationChange={(lat, lng) => setDestination([lat, lng])}
         onDestinationClear={() => setDestination(null)}
         onRadiusChange={setRadius}
         onMinBatteryChange={setMinBattery}
         onCorridorWidthChange={setCorridorWidth}
         onProviderSelect={handleProviderSelect}
-        onProviderExclude={handleProviderExclude}
         onTileLayerChange={setTileLayer}
-        onLocateMe={handleLocateMe}
       />
     </div>
   );

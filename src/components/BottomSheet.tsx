@@ -21,16 +21,13 @@ interface BottomSheetProps {
   loading: boolean;
   lastUpdated: Date | null;
   tileLayer: 'dark' | 'light' | 'osm';
-  onOriginChange: (lat: number, lng: number) => void;
   onDestinationChange: (lat: number, lng: number) => void;
   onDestinationClear: () => void;
   onRadiusChange: (r: number) => void;
   onMinBatteryChange: (b: number) => void;
   onCorridorWidthChange: (w: number) => void;
   onProviderSelect: (p: string) => void;
-  onProviderExclude: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
-  onLocateMe: () => void;
 }
 
 function SliderRow({
@@ -106,26 +103,11 @@ function SearchField({
   );
 }
 
-const PinIcon = (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z" />
-    <circle cx="12" cy="10" r="3" />
-  </svg>
-);
-
 const FlagIcon = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M4 22V4c0-1 .6-2 2.5-2S10 3 12 3s3.5-1 5.5-1S20 3 20 4v10c0 1-.6 2-2.5 2S14 15 12 15s-3.5 1-5.5 1S4 15 4 15" />
   </svg>
 );
-
-const LocateIcon = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M21.7 2.3a1 1 0 0 1 .2 1.1l-8 18a1 1 0 0 1-1.9-.1l-2.2-6.6a1 1 0 0 0-.6-.6L2.7 12a1 1 0 0 1-.1-1.9l18-8a1 1 0 0 1 1.1.2Z" />
-  </svg>
-);
-
-const PROVIDER_DOUBLE_CLICK_MS = 320;
 
 export default function BottomSheet({
   destination,
@@ -138,29 +120,20 @@ export default function BottomSheet({
   loading,
   lastUpdated,
   tileLayer,
-  onOriginChange,
   onDestinationChange,
   onDestinationClear,
   onRadiusChange,
   onMinBatteryChange,
   onCorridorWidthChange,
   onProviderSelect,
-  onProviderExclude,
   onTileLayerChange,
-  onLocateMe,
 }: BottomSheetProps) {
   const [expanded, setExpanded] = useState(false);
   const [peekH, setPeekH] = useState(160);
-  const [originQuery, setOriginQuery] = useState('');
   const [destQuery, setDestQuery] = useState('');
-  const [originResults, setOriginResults] = useState<GeoResult[]>([]);
   const [destResults, setDestResults] = useState<GeoResult[]>([]);
-  const originTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const destTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const providerClickRef = useRef<{
-    provider: string;
-    timer: ReturnType<typeof setTimeout>;
-  } | null>(null);
+  const destRequestRef = useRef<AbortController | null>(null);
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
@@ -177,44 +150,26 @@ export default function BottomSheet({
   useLayoutEffect(() => {
     const el = peekRef.current;
     if (!el) return;
-    const update = () => setPeekH(el.offsetHeight);
+    const update = () => {
+      const height = el.offsetHeight;
+      setPeekH(height);
+      document.documentElement.style.setProperty('--sheet-peek-h', `${height}px`);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty('--sheet-peek-h');
+    };
   }, []);
 
   useEffect(() => {
     return () => {
-      if (providerClickRef.current) clearTimeout(providerClickRef.current.timer);
+      clearTimeout(destTimerRef.current);
+      destRequestRef.current?.abort();
     };
   }, []);
-
-  const handleProviderClick = (provider: string, detail: number) => {
-    const pending = providerClickRef.current;
-
-    // Keyboard-generated clicks have detail 0 and should remain immediate.
-    if (detail === 0) {
-      if (pending) clearTimeout(pending.timer);
-      providerClickRef.current = null;
-      onProviderSelect(provider);
-      return;
-    }
-
-    if (pending?.provider === provider) {
-      clearTimeout(pending.timer);
-      providerClickRef.current = null;
-      onProviderExclude(provider);
-      return;
-    }
-
-    if (pending) clearTimeout(pending.timer);
-    const timer = setTimeout(() => {
-      providerClickRef.current = null;
-      onProviderSelect(provider);
-    }, PROVIDER_DOUBLE_CLICK_MS);
-    providerClickRef.current = { provider, timer };
-  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     const sheet = sheetRef.current;
@@ -267,27 +222,39 @@ export default function BottomSheet({
     sheet.style.transform = '';
   };
 
-  const geocode = useCallback(async (q: string, setter: (r: GeoResult[]) => void) => {
-    if (q.length < 3) { setter([]); return; }
+  const geocodeDestination = useCallback(async (q: string) => {
+    if (q.trim().length < 3) {
+      setDestResults([]);
+      return;
+    }
+
+    destRequestRef.current?.abort();
+    const controller = new AbortController();
+    destRequestRef.current = controller;
+
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
-      if (!res.ok) { setter([]); return; }
-      setter(await res.json());
-    } catch {
-      setter([]);
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        setDestResults([]);
+        return;
+      }
+      setDestResults(await res.json());
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') setDestResults([]);
     }
   }, []);
-
-  const handleOriginInput = (val: string) => {
-    setOriginQuery(val);
-    clearTimeout(originTimerRef.current);
-    originTimerRef.current = setTimeout(() => geocode(val, setOriginResults), 500);
-  };
 
   const handleDestInput = (val: string) => {
     setDestQuery(val);
     clearTimeout(destTimerRef.current);
-    destTimerRef.current = setTimeout(() => geocode(val, setDestResults), 500);
+    if (val.trim().length < 3) {
+      destRequestRef.current?.abort();
+      setDestResults([]);
+      return;
+    }
+    destTimerRef.current = setTimeout(() => geocodeDestination(val), 300);
   };
 
   const updatedLabel = loading
@@ -325,7 +292,7 @@ export default function BottomSheet({
           <div className="grabber" aria-hidden="true" />
           <div className="sheet-title-row">
             <div>
-              <div className="sheet-count">
+              <div className="sheet-count" aria-live="polite">
                 <span className="sheet-count-num">{totalCount}</span>
                 scooter{totalCount !== 1 ? 's' : ''}
               </div>
@@ -347,7 +314,7 @@ export default function BottomSheet({
         <div
           className="chips"
           role="group"
-          aria-label="Providers: click to show only one, click it again to show all; double-click to exclude"
+          aria-label="Filter scooters by provider"
         >
           {Object.entries(PROVIDERS).map(([key, cfg]) => {
             const on = enabledProviders.has(key);
@@ -358,10 +325,10 @@ export default function BottomSheet({
                 key={key}
                 className={`chip ${on ? '' : 'chip-off'}`}
                 style={on ? { background: `${cfg.color}1f` } : undefined}
-                onClick={event => handleProviderClick(key, event.detail)}
+                onClick={() => onProviderSelect(key)}
                 aria-pressed={on}
-                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. Click to ${clickAction}; double-click to exclude.`}
-                title={`Click to ${clickAction} · Double-click to exclude`}
+                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. ${clickAction}.`}
+                title={onlyProvider ? 'Show all providers' : `Show only ${cfg.name}`}
               >
                 <span className="chip-dot" style={{ background: cfg.color }} aria-hidden="true" />
                 {cfg.name}
@@ -373,35 +340,14 @@ export default function BottomSheet({
       </div>
 
       <div className="sheet-body" inert={!expanded}>
-        <div className="section">
-          <div className="section-title">Route</div>
-          <SearchField
-            id="origin-input"
-            placeholder="Search origin…"
-            icon={PinIcon}
-            value={originQuery}
-            onValue={handleOriginInput}
-            results={originResults}
-            onPick={r => {
-              onOriginChange(r.lat, r.lng);
-              setOriginQuery(r.display_name);
-              setOriginResults([]);
-            }}
-            trailing={
-              <button
-                className="field-btn"
-                onClick={() => { setOriginQuery(''); setOriginResults([]); onLocateMe(); }}
-                aria-label="Use my location as origin"
-                title="Use my location"
-              >
-                {LocateIcon}
-              </button>
-            }
-          />
-          <div style={{ height: 8 }} />
+        <div className="section section-route">
+          <div className="section-heading">
+            <div className="section-title">Destination</div>
+            <span>Optional</span>
+          </div>
           <SearchField
             id="dest-input"
-            placeholder="Destination (optional)…"
+            placeholder="Where are you going?"
             icon={FlagIcon}
             value={destQuery}
             onValue={handleDestInput}
