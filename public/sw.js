@@ -1,6 +1,6 @@
 const CACHE_PREFIX = "zurich-scooter";
-const APP_CACHE = `${CACHE_PREFIX}-app-v2`;
-const ASSET_CACHE = `${CACHE_PREFIX}-assets-v2`;
+const APP_CACHE = `${CACHE_PREFIX}-app-v3`;
+const ASSET_CACHE = `${CACHE_PREFIX}-assets-v3`;
 const APP_SHELL_URL = new URL("/", self.location.origin).toString();
 const UPDATE_MARKER_URL = new URL(
   "/__pwa-update-pending__",
@@ -26,7 +26,7 @@ self.addEventListener("install", (event) => {
         caches.open(ASSET_CACHE),
       ]);
       const shellResponse = await fetch(
-        new Request(APP_SHELL_URL, { cache: "reload" })
+        new Request(APP_SHELL_URL, { cache: "no-store" })
       );
 
       if (!shellResponse.ok) {
@@ -37,7 +37,7 @@ self.addEventListener("install", (event) => {
       await Promise.all(
         [...PUBLIC_ASSET_PATHS].map(async (path) => {
           const url = new URL(path, self.location.origin).toString();
-          const response = await fetch(new Request(url, { cache: "reload" }));
+          const response = await fetch(new Request(url, { cache: "no-store" }));
           if (response.ok) await assetCache.put(url, response);
         })
       );
@@ -87,14 +87,26 @@ self.addEventListener("fetch", (event) => {
 
   if (
     url.origin === self.location.origin &&
-    (url.pathname.startsWith("/_next/static/") ||
-      PUBLIC_ASSET_PATHS.has(url.pathname))
+    url.pathname.startsWith("/_next/static/")
   ) {
     event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  if (
+    url.origin === self.location.origin &&
+    PUBLIC_ASSET_PATHS.has(url.pathname)
+  ) {
+    event.respondWith(networkFirst(request));
   }
 });
 
 self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
+
   if (event.data?.type !== "CHECK_FOR_UPDATE") return;
 
   event.waitUntil(
@@ -188,6 +200,19 @@ async function cacheFirst(request) {
     )
   );
   return response;
+}
+
+async function networkFirst(request) {
+  const cache = await caches.open(ASSET_CACHE);
+
+  try {
+    const response = await fetch(new Request(request, { cache: "no-store" }));
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    return cached ?? Response.error();
+  }
 }
 
 async function broadcastUpdate() {

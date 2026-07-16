@@ -2,6 +2,11 @@
 
 import { useEffect } from "react";
 
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const MIN_UPDATE_CHECK_GAP_MS = 30 * 1000;
+const RELOAD_GUARD_MS = 15 * 1000;
+const LAST_RELOAD_KEY = "scooters-pwa-last-reload";
+
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
     if (
@@ -12,10 +17,22 @@ export default function ServiceWorkerRegistration() {
     }
 
     const hadController = Boolean(navigator.serviceWorker.controller);
+    let registration: ServiceWorkerRegistration | null = null;
     let reloading = false;
+    let lastCheckAt = 0;
 
     const reloadOnce = () => {
       if (reloading) return;
+
+      const now = Date.now();
+      try {
+        const lastReloadAt = Number(sessionStorage.getItem(LAST_RELOAD_KEY) ?? 0);
+        if (now - lastReloadAt < RELOAD_GUARD_MS) return;
+        sessionStorage.setItem(LAST_RELOAD_KEY, String(now));
+      } catch {
+        // Private browsing modes may deny storage while reload still works.
+      }
+
       reloading = true;
       window.location.reload();
     };
@@ -30,11 +47,18 @@ export default function ServiceWorkerRegistration() {
       if (event.data?.type === "APP_UPDATED") reloadOnce();
     };
 
-    const checkForUpdate = async () => {
+    const checkForUpdate = async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastCheckAt < MIN_UPDATE_CHECK_GAP_MS) return;
+      lastCheckAt = now;
+
       try {
-        const registration = await navigator.serviceWorker.getRegistration("/");
-        await registration?.update();
-        navigator.serviceWorker.controller?.postMessage({
+        registration ??= await navigator.serviceWorker.getRegistration("/") ?? null;
+        if (!registration) return;
+
+        await registration.update();
+        const worker = navigator.serviceWorker.controller ?? registration.active;
+        worker?.postMessage({
           type: "CHECK_FOR_UPDATE",
         });
       } catch {
@@ -44,13 +68,11 @@ export default function ServiceWorkerRegistration() {
 
     const register = async () => {
       try {
-        await navigator.serviceWorker.register("/sw.js", {
+        registration = await navigator.serviceWorker.register("/sw.js", {
           scope: "/",
           updateViaCache: "none",
         });
-        navigator.serviceWorker.controller?.postMessage({
-          type: "CHECK_FOR_UPDATE",
-        });
+        await checkForUpdate(true);
       } catch (error) {
         console.error("Service worker registration failed:", error);
       }
@@ -60,12 +82,21 @@ export default function ServiceWorkerRegistration() {
       if (document.visibilityState === "visible") void checkForUpdate();
     };
 
+    const handleOnline = () => void checkForUpdate(true);
+    const handleFocus = () => void checkForUpdate();
+    const intervalId = window.setInterval(
+      () => void checkForUpdate(true),
+      UPDATE_CHECK_INTERVAL_MS
+    );
+
     navigator.serviceWorker.addEventListener(
       "controllerchange",
       handleControllerChange
     );
     navigator.serviceWorker.addEventListener("message", handleMessage);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("focus", handleFocus);
 
     if (document.readyState === "complete") {
       void register();
@@ -75,6 +106,9 @@ export default function ServiceWorkerRegistration() {
 
     return () => {
       window.removeEventListener("load", register);
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       navigator.serviceWorker.removeEventListener(
         "controllerchange",
