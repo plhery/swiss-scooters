@@ -71,6 +71,7 @@ function ViewportController({
 
   useEffect(() => {
     if (!focusLocation || focusVersion === 0) return;
+    map.stop();
     map.flyTo(focusLocation, Math.max(map.getZoom(), 15), {
       animate: true,
       duration: 0.5,

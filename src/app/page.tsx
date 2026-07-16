@@ -246,30 +246,32 @@ export default function Home() {
   }, []);
 
   const handleLocateMe = useCallback(() => {
-    const proceed = () => {
-      setLocating(true);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-          setUserLocation(coords);
-          setOrigin(coords);
-          setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
-          setLocating(false);
-        },
-        () => setLocating(false),
-        { timeout: 10000, enableHighAccuracy: true }
-      );
+    const focusOn = (coords: [number, number]) => {
+      setOrigin(coords);
+      setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
     };
 
-    try {
-      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-        if (result.state === 'denied') return;
-        proceed();
-      }).catch(proceed);
-    } catch {
-      proceed();
+    // The live watch already supplies the blue-marker position. Reusing it
+    // makes this control immediate and avoids a second permission/GPS roundtrip.
+    if (userLocation) {
+      focusOn(userLocation);
+      return;
     }
-  }, []);
+
+    if (!('geolocation' in navigator)) return;
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setUserLocation(coords);
+        focusOn(coords);
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { timeout: 10000, enableHighAccuracy: true, maximumAge: 10000 }
+    );
+  }, [userLocation]);
 
   // The response covers a padded area; only markers inside the exact viewport
   // are rendered and counted. Provider counts intentionally ignore the active
