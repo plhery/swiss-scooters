@@ -88,6 +88,8 @@ const TILE_URLS: Record<string, string> = {
   light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
 };
 
+const MAX_CLUSTER_ZOOM = 15;
+
 function formatDistance(m: number): string {
   return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 }
@@ -209,8 +211,12 @@ const VehicleMarkers = memo(function VehicleMarkers({
     zoomend: event => setZoom(event.target.getZoom()),
   });
 
+  const shouldCluster = zoom <= MAX_CLUSTER_ZOOM;
+
   const groups = useMemo(() => {
-    const baseCellSize = zoom >= 19 ? 16 : zoom >= 18 ? 22 : zoom >= 17 ? 30 : zoom >= 16 ? 38 : zoom >= 15 ? 44 : zoom >= 13 ? 52 : 60;
+    if (!shouldCluster) return [];
+
+    const baseCellSize = zoom >= 15 ? 44 : zoom >= 13 ? 52 : 60;
     const densityScale = vehicles.length > 1200 ? 1.35 : vehicles.length > 700 ? 1.2 : vehicles.length > 400 ? 1.1 : 1;
     const cellSize = Math.round(baseCellSize * densityScale);
     const cells = new Map<string, Vehicle[]>();
@@ -231,12 +237,20 @@ const VehicleMarkers = memo(function VehicleMarkers({
         items.reduce((sum, item) => sum + item.lng, 0) / items.length,
       ] as [number, number],
     }));
-  }, [map, vehicles, zoom]);
+  }, [map, shouldCluster, vehicles, zoom]);
 
-  const minimumClusterSize = zoom >= 19 ? 5 : zoom >= 18 ? 4 : zoom >= 17 ? 3 : 2;
+  if (!shouldCluster) {
+    return vehicles.map(vehicle => (
+      <VehicleMarker
+        key={`${vehicle.provider}-${vehicle.vehicle_id ?? `${vehicle.lat}-${vehicle.lng}`}`}
+        vehicle={vehicle}
+        icon={icons[vehicle.provider]}
+      />
+    ));
+  }
 
   return groups.flatMap(group => {
-    if (group.items.length >= minimumClusterSize) {
+    if (group.items.length >= 2) {
       return [
         <Marker
           key={`cluster-${zoom}-${group.key}`}
@@ -297,7 +311,7 @@ export default function MapComponent({
   return (
     <MapContainer
       center={origin}
-      zoom={15}
+      zoom={17}
       className="w-full h-full"
       zoomControl={false}
       attributionControl={false}
