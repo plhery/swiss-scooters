@@ -35,19 +35,18 @@ struct Scooter: Decodable, Identifiable, Hashable, Sendable {
         ).distance(
             from: CLLocation(latitude: latitude, longitude: longitude)
         )
-
-        if distance < 1_000 {
-            return "\(Int(distance.rounded())) m"
-        }
-        return String(format: "%.1f km", distance / 1_000)
+        return Self.formattedLength(meters: distance)
     }
 
     var formattedRange: String? {
         guard let rangeMeters else { return nil }
-        if rangeMeters < 1_000 {
-            return "\(rangeMeters) m range"
-        }
-        return String(format: "%.1f km range", Double(rangeMeters) / 1_000)
+        return Self.formattedLength(meters: Double(rangeMeters))
+    }
+
+    private static func formattedLength(meters: Double) -> String {
+        Measurement(value: meters, unit: UnitLength.meters).formatted(
+            .measurement(width: .abbreviated, usage: .road)
+        )
     }
 
     enum CodingKeys: String, CodingKey {

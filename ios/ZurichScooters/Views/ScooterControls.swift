@@ -8,11 +8,18 @@ struct ScooterControlDock: View {
     @State private var collapsedContentHeight: CGFloat = 0
     @State private var fullContentHeight: CGFloat = 0
     @State private var batteryDraft: Double
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let onCollapsedHeightChange: (CGFloat) -> Void
 
-    init(model: ScooterMapModel, isExpanded: Binding<Bool>) {
+    init(
+        model: ScooterMapModel,
+        isExpanded: Binding<Bool>,
+        onCollapsedHeightChange: @escaping (CGFloat) -> Void = { _ in }
+    ) {
         self.model = model
         _isExpanded = isExpanded
         _batteryDraft = State(initialValue: model.minimumBattery)
+        self.onCollapsedHeightChange = onCollapsedHeightChange
     }
 
     var body: some View {
@@ -25,7 +32,9 @@ struct ScooterControlDock: View {
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height
             } action: { height in
+                guard abs(collapsedContentHeight - height) > 0.5 else { return }
                 collapsedContentHeight = height
+                onCollapsedHeightChange(height + 2)
             }
 
             VStack(spacing: 18) {
@@ -59,10 +68,7 @@ struct ScooterControlDock: View {
         )
         .shadow(color: .black.opacity(0.14), radius: 18, y: 8)
         .opacity(drawerTravel == 0 ? 0 : 1)
-        .frame(maxHeight: .infinity, alignment: .bottom)
         .animation(.snappy(duration: 0.3), value: model.selectedScooterID)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Scooter controls")
     }
 
     private var dragHandle: some View {
@@ -198,6 +204,7 @@ struct ScooterControlDock: View {
                 HStack(spacing: 7) {
                     if let distance = model.formattedDistance(for: scooter) {
                         Text(distance)
+                            .accessibilityLabel("Straight-line distance, \(distance)")
                     }
                     if let battery = scooter.battery {
                         Label("\(battery)%", systemImage: batterySymbol(for: battery))
@@ -224,7 +231,6 @@ struct ScooterControlDock: View {
             .scrollClipDisabled(false)
             .clipped()
         }
-        .frame(height: 42)
         .padding(.bottom, 11)
     }
 
@@ -247,7 +253,7 @@ struct ScooterControlDock: View {
             }
             .font(.caption)
             .padding(.horizontal, 11)
-            .frame(minHeight: 34)
+            .frame(minHeight: 40)
         }
         .buttonStyle(.plain)
         .glassEffect(
@@ -276,7 +282,7 @@ struct ScooterControlDock: View {
                 if let range = scooter.formattedRange {
                     metric(
                         title: "Estimated",
-                        value: range.replacingOccurrences(of: " range", with: ""),
+                        value: range,
                         systemImage: "gauge.with.dots.needle.67percent",
                         color: .blue
                     )
@@ -336,15 +342,19 @@ struct ScooterControlDock: View {
 
     private var batteryFilter: some View {
         VStack(spacing: 9) {
-            HStack {
+            if dynamicTypeSize.isAccessibilitySize {
                 Label("Minimum battery", systemImage: "battery.50percent")
                     .font(.subheadline.weight(.medium))
-                Spacer()
-                Text(batteryDraft == 0 ? "Any" : "\(Int(batteryDraft))%")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                batteryValue
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            } else {
+                HStack {
+                    Label("Minimum battery", systemImage: "battery.50percent")
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    batteryValue
+                }
             }
 
             Slider(value: $batteryDraft, in: 0 ... 100, step: 5) { editing in
@@ -363,6 +373,14 @@ struct ScooterControlDock: View {
                     model.setMinimumBattery(batteryDraft)
                 }
         }
+    }
+
+    private var batteryValue: some View {
+        Text(batteryDraft == 0 ? "Any" : "\(Int(batteryDraft))%")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .contentTransition(.numericText())
     }
 
     private var mapStylePicker: some View {

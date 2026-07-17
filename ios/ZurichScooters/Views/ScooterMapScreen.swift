@@ -3,6 +3,7 @@ import SwiftUI
 struct ScooterMapScreen: View {
     @State private var model = ScooterMapModel()
     @State private var controlsExpanded = false
+    @State private var collapsedDockHeight: CGFloat = 145
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -27,14 +28,21 @@ struct ScooterMapScreen: View {
                         FloatingMapControls(model: model)
                     }
                     .padding(.trailing, 12)
-                    .padding(.bottom, 145 + max(proxy.safeAreaInsets.bottom, 8))
+                    .padding(
+                        .bottom,
+                        collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 8
+                    )
                 }
                 .opacity(controlsExpanded ? 0 : 1)
                 .scaleEffect(controlsExpanded ? 0.92 : 1, anchor: .bottomTrailing)
                 .allowsHitTesting(!controlsExpanded)
                 .animation(.snappy(duration: 0.3), value: controlsExpanded)
 
-                ScooterControlDock(model: model, isExpanded: $controlsExpanded)
+                ScooterControlDock(
+                    model: model,
+                    isExpanded: $controlsExpanded,
+                    onCollapsedHeightChange: { collapsedDockHeight = $0 }
+                )
                     .padding(.horizontal, 10)
                     .padding(.bottom, max(proxy.safeAreaInsets.bottom, 8))
             }
