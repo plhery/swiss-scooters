@@ -3,6 +3,30 @@ import Foundation
 import MapKit
 import Observation
 
+enum ScooterLocationPolicy {
+    static let preferredAccuracy: CLLocationAccuracy = 200
+    static let fallbackAccuracy: CLLocationAccuracy = 1_000
+    static let maximumAge: TimeInterval = 30
+
+    static func isAcceptable(
+        _ location: CLLocation,
+        maximumAccuracy: CLLocationAccuracy
+    ) -> Bool {
+        location.horizontalAccuracy >= 0 &&
+            location.horizontalAccuracy <= maximumAccuracy &&
+            abs(location.timestamp.timeIntervalSinceNow) <= maximumAge
+    }
+
+    static func bestCandidate(
+        in locations: [CLLocation],
+        maximumAccuracy: CLLocationAccuracy = fallbackAccuracy
+    ) -> CLLocation? {
+        locations
+            .filter { isAcceptable($0, maximumAccuracy: maximumAccuracy) }
+            .min(by: { $0.horizontalAccuracy < $1.horizontalAccuracy })
+    }
+}
+
 @MainActor
 @Observable
 final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
@@ -38,7 +62,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     var minimumBattery: Double {
         didSet {
-            UserDefaults.standard.set(Int(minimumBattery), forKey: Self.minimumBatteryKey)
+            defaults.set(Int(minimumBattery), forKey: Self.minimumBatteryKey)
             rebuildMapScooters()
             rebuildVisibleCounts()
             clearSelectionIfHidden()
@@ -47,12 +71,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     var mapStyle: AppleMapStyle {
         didSet {
-            UserDefaults.standard.set(mapStyle.rawValue, forKey: Self.mapStyleKey)
+            defaults.set(mapStyle.rawValue, forKey: Self.mapStyleKey)
         }
     }
 
-    @ObservationIgnored private let api: ScooterAPI
-    @ObservationIgnored private let locationManager = CLLocationManager()
+    @ObservationIgnored private let api: any ScooterAPIClient
+    @ObservationIgnored private let locationManager: CLLocationManager
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var queryBounds: GeoBounds?
     @ObservationIgnored private var pendingQueryBounds: GeoBounds?
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
@@ -68,18 +93,26 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     private static let minimumBatteryKey = "minimum-battery"
     private static let mapStyleKey = "apple-map-style"
-    private static let preferredLocationAccuracy: CLLocationAccuracy = 200
-    private static let fallbackLocationAccuracy: CLLocationAccuracy = 1_000
-    private static let maximumLocationAge: TimeInterval = 30
     private static let locationTimeout: Duration = .seconds(5)
 
-    override init() {
-        let savedBattery = UserDefaults.standard.object(forKey: Self.minimumBatteryKey) as? Int ?? 0
+    override convenience init() {
+        self.init(api: ScooterAPI(), locationManager: CLLocationManager(), defaults: .standard)
+    }
+
+    init(
+        api: any ScooterAPIClient,
+        locationManager: CLLocationManager,
+        defaults: UserDefaults
+    ) {
+        self.api = api
+        self.locationManager = locationManager
+        self.defaults = defaults
+
+        let savedBattery = defaults.object(forKey: Self.minimumBatteryKey) as? Int ?? 0
         minimumBattery = Double(savedBattery)
 
-        let savedStyle = UserDefaults.standard.string(forKey: Self.mapStyleKey)
+        let savedStyle = defaults.string(forKey: Self.mapStyleKey)
         mapStyle = AppleMapStyle(rawValue: savedStyle ?? "") ?? .standard
-        api = ScooterAPI()
 
         super.init()
 
@@ -109,7 +142,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         hasStarted = true
 
         if let cachedLocation = locationManager.location,
-           Self.isAcceptableLocation(cachedLocation, maximumAccuracy: Self.preferredLocationAccuracy) {
+           ScooterLocationPolicy.isAcceptable(
+               cachedLocation,
+               maximumAccuracy: ScooterLocationPolicy.preferredAccuracy
+           ) {
             acceptLocation(cachedLocation)
         }
 
@@ -168,42 +204,26 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     private func passesBatteryFilter(_ scooter: Scooter) -> Bool {
-        minimumBattery == 0 || (scooter.battery.map(Double.init) ?? -1) >= minimumBattery
+        ScooterFiltering.passesBattery(scooter, minimumBattery: minimumBattery)
     }
 
     private func rebuildMapScooters() {
-        var nextMapScooters: [Scooter] = []
-        nextMapScooters.reserveCapacity(vehicles.count)
-
-        for scooter in vehicles where passesBatteryFilter(scooter) {
-            if selectedProvider == nil || scooter.providerInfo == selectedProvider {
-                nextMapScooters.append(scooter)
-            }
-        }
-
-        mapScooters = nextMapScooters
+        mapScooters = ScooterFiltering.mapScooters(
+            from: vehicles,
+            minimumBattery: minimumBattery,
+            selectedProvider: selectedProvider
+        )
     }
 
     private func rebuildVisibleCounts() {
-        var nextVisibleCount = 0
-        var nextCounts: [ScooterProvider: Int] = [:]
-        nextCounts.reserveCapacity(ScooterProvider.allCases.count)
-
-        for scooter in vehicles {
-            guard viewport.contains(latitude: scooter.latitude, longitude: scooter.longitude),
-                  passesBatteryFilter(scooter) else { continue }
-
-            if let provider = scooter.providerInfo {
-                nextCounts[provider, default: 0] += 1
-            }
-
-            if selectedProvider == nil || scooter.providerInfo == selectedProvider {
-                nextVisibleCount += 1
-            }
-        }
-
-        visibleScooterCount = nextVisibleCount
-        visibleProviderCounts = nextCounts
+        let summary = ScooterFiltering.visibleSummary(
+            for: vehicles,
+            viewport: viewport,
+            minimumBattery: minimumBattery,
+            selectedProvider: selectedProvider
+        )
+        visibleScooterCount = summary.count
+        visibleProviderCounts = summary.providerCounts
     }
 
     private func clearSelectionIfHidden() {
@@ -312,16 +332,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        let candidates = locations.filter {
-            Self.isAcceptableLocation($0, maximumAccuracy: Self.fallbackLocationAccuracy)
-        }
-        guard let location = candidates.min(by: { $0.horizontalAccuracy < $1.horizontalAccuracy }) else { return }
+        guard let location = ScooterLocationPolicy.bestCandidate(in: locations) else { return }
 
         if bestLocationCandidate.map({ location.horizontalAccuracy < $0.horizontalAccuracy }) ?? true {
             bestLocationCandidate = location
         }
 
-        guard location.horizontalAccuracy <= Self.preferredLocationAccuracy else { return }
+        guard location.horizontalAccuracy <= ScooterLocationPolicy.preferredAccuracy else { return }
         acceptLocation(location)
     }
 
@@ -382,15 +399,6 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         locationTimeoutTask = nil
         bestLocationCandidate = nil
         fetchIfNeeded(for: viewport)
-    }
-
-    private static func isAcceptableLocation(
-        _ location: CLLocation,
-        maximumAccuracy: CLLocationAccuracy
-    ) -> Bool {
-        location.horizontalAccuracy >= 0 &&
-            location.horizontalAccuracy <= maximumAccuracy &&
-            abs(location.timestamp.timeIntervalSinceNow) <= maximumLocationAge
     }
 
     private static func distance(from start: GeoPoint, to end: GeoPoint) -> CLLocationDistance {

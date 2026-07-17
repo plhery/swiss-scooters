@@ -1,6 +1,10 @@
 import Foundation
 
-actor ScooterAPI {
+protocol ScooterAPIClient: Sendable {
+    func scooters(origin: GeoPoint, bounds: GeoBounds) async throws -> ScooterResponse
+}
+
+actor ScooterAPI: ScooterAPIClient {
     static let productionBaseURL = URL(string: "https://zurich-scooter.plhery.com")!
 
     private let baseURL: URL

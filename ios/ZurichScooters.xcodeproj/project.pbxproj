@@ -15,7 +15,23 @@
 		A00000000000000000000006 /* ScooterControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000006 /* ScooterControls.swift */; };
 		A00000000000000000000007 /* ScooterMapScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007 /* ScooterMapScreen.swift */; };
 		A00000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* Assets.xcassets */; };
+		A00000000000000000000009 /* ScooterFiltering.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* ScooterFiltering.swift */; };
+		A0000000000000000000000A /* GeoBoundsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000C /* GeoBoundsTests.swift */; };
+		A0000000000000000000000B /* ScooterModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000D /* ScooterModelsTests.swift */; };
+		A0000000000000000000000C /* ScooterFilteringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000E /* ScooterFilteringTests.swift */; };
+		A0000000000000000000000D /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000F /* XCTest.framework */; };
+		A0000000000000000000000E /* ScooterMapModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* ScooterMapModelTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		H00000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D00000000000000000000002;
+			remoteInfo = ZurichScooters;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		B00000000000000000000001 /* ZurichScootersApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZurichScootersApp.swift; sourceTree = "<group>"; };
@@ -27,6 +43,13 @@
 		B00000000000000000000007 /* ScooterMapScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterMapScreen.swift; sourceTree = "<group>"; };
 		B00000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B00000000000000000000009 /* ZurichScooters.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZurichScooters.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0000000000000000000000A /* ScooterFiltering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterFiltering.swift; sourceTree = "<group>"; };
+		B0000000000000000000000B /* ZurichScootersTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZurichScootersTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0000000000000000000000C /* GeoBoundsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoBoundsTests.swift; sourceTree = "<group>"; };
+		B0000000000000000000000D /* ScooterModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterModelsTests.swift; sourceTree = "<group>"; };
+		B0000000000000000000000E /* ScooterFilteringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterFilteringTests.swift; sourceTree = "<group>"; };
+		B0000000000000000000000F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		B00000000000000000000010 /* ScooterMapModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterMapModelTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,6 +60,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E00000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0000000000000000000000D /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -44,6 +75,8 @@
 			isa = PBXGroup;
 			children = (
 				C00000000000000000000002 /* ZurichScooters */,
+				C00000000000000000000007 /* ZurichScootersTests */,
+				C00000000000000000000008 /* Frameworks */,
 				C00000000000000000000001 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -52,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				B00000000000000000000009 /* ZurichScooters.app */,
+				B0000000000000000000000B /* ZurichScootersTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -73,6 +107,7 @@
 			isa = PBXGroup;
 			children = (
 				B00000000000000000000002 /* ScooterModels.swift */,
+				B0000000000000000000000A /* ScooterFiltering.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -103,6 +138,25 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		C00000000000000000000007 /* ZurichScootersTests */ = {
+			isa = PBXGroup;
+			children = (
+				B0000000000000000000000C /* GeoBoundsTests.swift */,
+				B0000000000000000000000D /* ScooterModelsTests.swift */,
+				B0000000000000000000000E /* ScooterFilteringTests.swift */,
+				B00000000000000000000010 /* ScooterMapModelTests.swift */,
+			);
+			path = ZurichScootersTests;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000008 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B0000000000000000000000F /* XCTest.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -123,6 +177,24 @@
 			productReference = B00000000000000000000009 /* ZurichScooters.app */;
 			productType = "com.apple.product-type.application";
 		};
+		D00000000000000000000003 /* ZurichScootersTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = G00000000000000000000003 /* Build configuration list for PBXNativeTarget "ZurichScootersTests" */;
+			buildPhases = (
+				E00000000000000000000004 /* Sources */,
+				E00000000000000000000005 /* Frameworks */,
+				E00000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				H00000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = ZurichScootersTests;
+			productName = ZurichScootersTests;
+			productReference = B0000000000000000000000B /* ZurichScootersTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -135,6 +207,10 @@
 				TargetAttributes = {
 					D00000000000000000000002 = {
 						CreatedOnToolsVersion = 26.0;
+					};
+					D00000000000000000000003 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = D00000000000000000000002;
 					};
 				};
 			};
@@ -152,6 +228,7 @@
 			projectRoot = "";
 			targets = (
 				D00000000000000000000002 /* ZurichScooters */,
+				D00000000000000000000003 /* ZurichScootersTests */,
 			);
 		};
 /* End PBXProject section */
@@ -162,6 +239,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000008 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E00000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,10 +263,30 @@
 				A00000000000000000000005 /* ScooterMapView.swift in Sources */,
 				A00000000000000000000006 /* ScooterControls.swift in Sources */,
 				A00000000000000000000007 /* ScooterMapScreen.swift in Sources */,
+				A00000000000000000000009 /* ScooterFiltering.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E00000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0000000000000000000000A /* GeoBoundsTests.swift in Sources */,
+				A0000000000000000000000B /* ScooterModelsTests.swift in Sources */,
+				A0000000000000000000000C /* ScooterFilteringTests.swift in Sources */,
+				A0000000000000000000000E /* ScooterMapModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		H00000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D00000000000000000000002 /* ZurichScooters */;
+			targetProxy = H00000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		F00000000000000000000001 /* Debug */ = {
@@ -363,6 +467,52 @@
 			};
 			name = Release;
 		};
+		F00000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HGC93X794T;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.plhery.zurichscooters.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ZurichScooters.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ZurichScooters";
+			};
+			name = Debug;
+		};
+		F00000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HGC93X794T;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.plhery.zurichscooters.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ZurichScooters.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ZurichScooters";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -380,6 +530,15 @@
 			buildConfigurations = (
 				F00000000000000000000003 /* Debug */,
 				F00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		G00000000000000000000003 /* Build configuration list for PBXNativeTarget "ZurichScootersTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F00000000000000000000005 /* Debug */,
+				F00000000000000000000006 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

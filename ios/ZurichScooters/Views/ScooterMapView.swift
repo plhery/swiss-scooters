@@ -2,6 +2,14 @@ import MapKit
 import SwiftUI
 import UIKit
 
+enum ScooterClusteringPolicy {
+    static let maximumClusterZoom = 15.0
+
+    static func shouldCluster(at zoomLevel: Double) -> Bool {
+        zoomLevel <= maximumClusterZoom
+    }
+}
+
 struct ScooterMapView: UIViewRepresentable {
     let scooters: [Scooter]
     let mapStyle: AppleMapStyle
@@ -53,8 +61,6 @@ struct ScooterMapView: UIViewRepresentable {
         private var appliedSelectionID: String?
         private var reconciledScooters: [Scooter] = []
         private var clusteringEnabled: Bool?
-
-        private static let maximumClusterZoom = 15.0
 
         init(parent: ScooterMapView) {
             self.parent = parent
@@ -122,7 +128,9 @@ struct ScooterMapView: UIViewRepresentable {
         func updateClusteringMode(on mapView: MKMapView) {
             guard mapView.bounds.width > 0, mapView.visibleMapRect.width > 0 else { return }
 
-            let shouldCluster = Self.zoomLevel(on: mapView) <= Self.maximumClusterZoom
+            let shouldCluster = ScooterClusteringPolicy.shouldCluster(
+                at: Self.zoomLevel(on: mapView)
+            )
             guard shouldCluster != clusteringEnabled else { return }
             clusteringEnabled = shouldCluster
 
@@ -160,7 +168,9 @@ struct ScooterMapView: UIViewRepresentable {
                 withIdentifier: ScooterAnnotationView.reuseIdentifier,
                 for: annotation
             ) as! ScooterAnnotationView
-            view.clusteringIdentifier = Self.zoomLevel(on: mapView) <= Self.maximumClusterZoom
+            view.clusteringIdentifier = ScooterClusteringPolicy.shouldCluster(
+                at: Self.zoomLevel(on: mapView)
+            )
                 ? ScooterAnnotationView.clusteringIdentifier
                 : nil
             view.refreshAppearance()

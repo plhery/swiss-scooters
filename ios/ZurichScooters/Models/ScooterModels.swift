@@ -28,14 +28,17 @@ struct Scooter: Decodable, Identifiable, Hashable, Sendable {
         ScooterProvider(rawValue: provider)
     }
 
-    func formattedDistance(from origin: GeoPoint) -> String {
-        let distance = CLLocation(
+    func distance(from origin: GeoPoint) -> CLLocationDistance {
+        CLLocation(
             latitude: origin.latitude,
             longitude: origin.longitude
         ).distance(
             from: CLLocation(latitude: latitude, longitude: longitude)
         )
-        return Self.formattedLength(meters: distance)
+    }
+
+    func formattedDistance(from origin: GeoPoint) -> String {
+        Self.formattedLength(meters: distance(from: origin))
     }
 
     var formattedRange: String? {
