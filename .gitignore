@@ -26,6 +26,11 @@
 .DS_Store
 *.pem
 
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

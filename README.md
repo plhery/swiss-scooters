@@ -59,6 +59,17 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Native iPhone app
+
+The repository also contains a native iOS 26 app built with SwiftUI, MapKit,
+Core Location, and system Liquid Glass controls. It reuses this deployment's
+live scooter API and has no third-party dependencies or API keys.
+
+Open [`ios/ZurichScooters.xcodeproj`](ios/ZurichScooters.xcodeproj) in Xcode 26
+or newer, select a Personal Team under Signing & Capabilities, then run it on
+your iPhone. See [`ios/README.md`](ios/README.md) for the short device setup and
+native feature list.
+
 ## Deployment
 
 The app deploys to Cloudflare Workers, with static assets served at the edge and
