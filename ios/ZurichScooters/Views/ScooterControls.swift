@@ -7,6 +7,13 @@ struct ScooterControlDock: View {
     @State private var dragTranslation: CGFloat = 0
     @State private var collapsedContentHeight: CGFloat = 0
     @State private var fullContentHeight: CGFloat = 0
+    @State private var batteryDraft: Double
+
+    init(model: ScooterMapModel, isExpanded: Binding<Bool>) {
+        self.model = model
+        _isExpanded = isExpanded
+        _batteryDraft = State(initialValue: model.minimumBattery)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -333,18 +340,28 @@ struct ScooterControlDock: View {
                 Label("Minimum battery", systemImage: "battery.50percent")
                     .font(.subheadline.weight(.medium))
                 Spacer()
-                Text(model.minimumBattery == 0 ? "Any" : "\(Int(model.minimumBattery))%")
+                Text(batteryDraft == 0 ? "Any" : "\(Int(batteryDraft))%")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .contentTransition(.numericText())
             }
 
-            Slider(value: $model.minimumBattery, in: 0 ... 100, step: 5)
+            Slider(value: $batteryDraft, in: 0 ... 100, step: 5) { editing in
+                if !editing {
+                    model.setMinimumBattery(batteryDraft)
+                }
+            }
                 .tint(.blue)
                 .accessibilityLabel("Minimum battery")
-                .accessibilityValue(model.minimumBattery == 0 ? "Any" : "\(Int(model.minimumBattery)) percent")
-                .sensoryFeedback(.selection, trigger: Int(model.minimumBattery / 5))
+                .accessibilityValue(batteryDraft == 0 ? "Any" : "\(Int(batteryDraft)) percent")
+                .sensoryFeedback(.selection, trigger: Int(batteryDraft / 5))
+                .onChange(of: model.minimumBattery) { _, newValue in
+                    batteryDraft = newValue
+                }
+                .onDisappear {
+                    model.setMinimumBattery(batteryDraft)
+                }
         }
     }
 

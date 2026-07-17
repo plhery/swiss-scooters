@@ -9,7 +9,7 @@ struct ScooterMapScreen: View {
         GeometryReader { proxy in
             ZStack(alignment: .bottom) {
                 ScooterMapView(
-                    scooters: model.visibleScooters,
+                    scooters: model.mapScooters,
                     mapStyle: model.mapStyle,
                     focusRequest: model.focusRequest,
                     selectedScooterID: model.selectedScooterID,

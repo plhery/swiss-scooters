@@ -14,10 +14,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     )
 
     private(set) var vehicles: [Scooter] = [] {
-        didSet { rebuildVisibleData() }
+        didSet {
+            rebuildMapScooters()
+            rebuildVisibleCounts()
+        }
     }
     var viewport = GeoBounds(region: initialRegion) {
-        didSet { rebuildVisibleData() }
+        didSet { rebuildVisibleCounts() }
     }
     var isLoading = false
     var isLocating = false
@@ -25,7 +28,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var lastUpdated: Date?
     var userLocation: GeoPoint?
     var selectedProvider: ScooterProvider? {
-        didSet { rebuildVisibleData() }
+        didSet {
+            rebuildMapScooters()
+            rebuildVisibleCounts()
+        }
     }
     var selectedScooterID: String?
     var focusRequest: MapFocusRequest?
@@ -33,7 +39,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var minimumBattery: Double {
         didSet {
             UserDefaults.standard.set(Int(minimumBattery), forKey: Self.minimumBatteryKey)
-            rebuildVisibleData()
+            rebuildMapScooters()
+            rebuildVisibleCounts()
             clearSelectionIfHidden()
         }
     }
@@ -55,7 +62,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var focusToken = 0
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var distanceOrigin = zurichCenter
-    private(set) var visibleScooters: [Scooter] = []
+    private(set) var mapScooters: [Scooter] = []
+    private(set) var visibleScooterCount = 0
     private(set) var visibleProviderCounts: [ScooterProvider: Int] = [:]
 
     private static let minimumBatteryKey = "minimum-battery"
@@ -85,7 +93,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return vehicles.first { $0.id == selectedScooterID }
     }
 
-    var visibleCount: Int { visibleScooters.count }
+    var visibleCount: Int { visibleScooterCount }
 
     func count(for provider: ScooterProvider) -> Int {
         visibleProviderCounts[provider, default: 0]
@@ -139,6 +147,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         clearSelectionIfHidden()
     }
 
+    func setMinimumBattery(_ value: Double) {
+        let normalizedValue = min(100, max(0, (value / 5).rounded() * 5))
+        guard normalizedValue != minimumBattery else { return }
+        minimumBattery = normalizedValue
+    }
+
     func focusOnUser() {
         if let userLocation {
             focusToken += 1
@@ -157,10 +171,21 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         minimumBattery == 0 || (scooter.battery.map(Double.init) ?? -1) >= minimumBattery
     }
 
-    private func rebuildVisibleData() {
-        var nextVisible: [Scooter] = []
-        nextVisible.reserveCapacity(min(vehicles.count, 1_000))
+    private func rebuildMapScooters() {
+        var nextMapScooters: [Scooter] = []
+        nextMapScooters.reserveCapacity(vehicles.count)
 
+        for scooter in vehicles where passesBatteryFilter(scooter) {
+            if selectedProvider == nil || scooter.providerInfo == selectedProvider {
+                nextMapScooters.append(scooter)
+            }
+        }
+
+        mapScooters = nextMapScooters
+    }
+
+    private func rebuildVisibleCounts() {
+        var nextVisibleCount = 0
         var nextCounts: [ScooterProvider: Int] = [:]
         nextCounts.reserveCapacity(ScooterProvider.allCases.count)
 
@@ -173,11 +198,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             }
 
             if selectedProvider == nil || scooter.providerInfo == selectedProvider {
-                nextVisible.append(scooter)
+                nextVisibleCount += 1
             }
         }
 
-        visibleScooters = nextVisible
+        visibleScooterCount = nextVisibleCount
         visibleProviderCounts = nextCounts
     }
 
