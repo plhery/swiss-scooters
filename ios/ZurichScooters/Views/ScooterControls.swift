@@ -44,7 +44,7 @@ struct ScooterControlDock: View {
             fullContentHeight = height
         }
         .frame(height: visibleDrawerHeight, alignment: .top)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .padding(.bottom, 2)
         .glassEffect(
             .regular,
@@ -189,7 +189,9 @@ struct ScooterControlDock: View {
                 Text(scooter.providerInfo?.name ?? scooter.provider.capitalized)
                     .font(.headline)
                 HStack(spacing: 7) {
-                    Text(scooter.formattedDistance)
+                    if let distance = model.formattedDistance(for: scooter) {
+                        Text(distance)
+                    }
                     if let battery = scooter.battery {
                         Label("\(battery)%", systemImage: batterySymbol(for: battery))
                     }
@@ -212,6 +214,8 @@ struct ScooterControlDock: View {
                 .padding(.vertical, 4)
             }
             .scrollIndicators(.hidden)
+            .scrollClipDisabled(false)
+            .clipped()
         }
         .frame(height: 42)
         .padding(.bottom, 11)

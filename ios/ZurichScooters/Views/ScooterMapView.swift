@@ -276,7 +276,7 @@ final class ScooterAnnotationView: MKAnnotationView {
         let provider = scooter.providerInfo
         backgroundColor = provider?.uiColor ?? .systemGray
         monogramLabel.text = provider?.shortName ?? "?"
-        accessibilityLabel = "\(provider?.name ?? scooter.provider) scooter, \(scooter.formattedDistance) away"
+        accessibilityLabel = "\(provider?.name ?? scooter.provider) scooter"
         accessibilityHint = "Shows scooter details"
     }
 

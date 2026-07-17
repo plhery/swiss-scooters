@@ -28,11 +28,18 @@ struct Scooter: Decodable, Identifiable, Hashable, Sendable {
         ScooterProvider(rawValue: provider)
     }
 
-    var formattedDistance: String {
-        if distanceMeters < 1_000 {
-            return "\(Int(distanceMeters.rounded())) m"
+    func formattedDistance(from origin: GeoPoint) -> String {
+        let distance = CLLocation(
+            latitude: origin.latitude,
+            longitude: origin.longitude
+        ).distance(
+            from: CLLocation(latitude: latitude, longitude: longitude)
+        )
+
+        if distance < 1_000 {
+            return "\(Int(distance.rounded())) m"
         }
-        return String(format: "%.1f km", distanceMeters / 1_000)
+        return String(format: "%.1f km", distance / 1_000)
     }
 
     var formattedRange: String? {

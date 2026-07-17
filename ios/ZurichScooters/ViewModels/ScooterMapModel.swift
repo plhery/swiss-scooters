@@ -84,6 +84,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         visibleProviderCounts[provider, default: 0]
     }
 
+    func formattedDistance(for scooter: Scooter) -> String? {
+        guard let userLocation else { return nil }
+        return scooter.formattedDistance(from: userLocation)
+    }
+
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
@@ -247,7 +252,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
+        guard let location = locations.last,
+              location.horizontalAccuracy >= 0,
+              location.horizontalAccuracy <= 200,
+              abs(location.timestamp.timeIntervalSinceNow) <= 30 else { return }
         let nextLocation = GeoPoint(location.coordinate)
         let hadLocation = userLocation != nil
         userLocation = nextLocation
