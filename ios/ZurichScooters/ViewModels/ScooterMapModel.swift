@@ -47,8 +47,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private let api: ScooterAPI
     @ObservationIgnored private let locationManager = CLLocationManager()
     @ObservationIgnored private var queryBounds: GeoBounds?
+    @ObservationIgnored private var pendingQueryBounds: GeoBounds?
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
+    @ObservationIgnored private var locationTimeoutTask: Task<Void, Never>?
     @ObservationIgnored private var activeRequestID: UUID?
+    @ObservationIgnored private var bestLocationCandidate: CLLocation?
     @ObservationIgnored private var focusToken = 0
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var distanceOrigin = zurichCenter
@@ -57,6 +60,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     private static let minimumBatteryKey = "minimum-battery"
     private static let mapStyleKey = "apple-map-style"
+    private static let preferredLocationAccuracy: CLLocationAccuracy = 200
+    private static let fallbackLocationAccuracy: CLLocationAccuracy = 1_000
+    private static let maximumLocationAge: TimeInterval = 30
+    private static let locationTimeout: Duration = .seconds(5)
 
     override init() {
         let savedBattery = UserDefaults.standard.object(forKey: Self.minimumBatteryKey) as? Int ?? 0
@@ -92,13 +99,20 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
+
+        if let cachedLocation = locationManager.location,
+           Self.isAcceptableLocation(cachedLocation, maximumAccuracy: Self.preferredLocationAccuracy) {
+            acceptLocation(cachedLocation)
+        }
+
         requestLocationAccess()
-        scheduleFetch(for: viewport.expanded(by: 0.25), debounce: false)
     }
 
     func becameActive() {
         guard let lastUpdated else {
-            refresh()
+            if fetchTask == nil, !isLocating {
+                refresh()
+            }
             return
         }
         if Date().timeIntervalSince(lastUpdated) > 60 {
@@ -111,7 +125,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         viewport = nextViewport
         clearSelectionIfHidden()
 
-        guard queryBounds?.contains(nextViewport) != true else { return }
+        guard queryBounds?.contains(nextViewport) != true,
+              pendingQueryBounds?.contains(nextViewport) != true else { return }
         scheduleFetch(for: nextViewport.expanded(by: 0.25), debounce: true)
     }
 
@@ -184,6 +199,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
         let requestID = UUID()
         activeRequestID = requestID
+        pendingQueryBounds = bounds
         let origin = userLocation ?? Self.zurichCenter
 
         fetchTask = Task { [weak self] in
@@ -218,8 +234,16 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
             if activeRequestID == requestID {
                 isLoading = false
+                pendingQueryBounds = nil
+                fetchTask = nil
             }
         }
+    }
+
+    private func fetchIfNeeded(for targetViewport: GeoBounds, debounce: Bool = false) {
+        guard queryBounds?.contains(targetViewport) != true,
+              pendingQueryBounds?.contains(targetViewport) != true else { return }
+        scheduleFetch(for: targetViewport.expanded(by: 0.25), debounce: debounce)
     }
 
     private func requestLocationAccess() {
@@ -227,13 +251,19 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         case .notDetermined:
             isLocating = true
             locationManager.requestWhenInUseAuthorization()
+            beginLocationTimeout()
         case .authorizedAlways, .authorizedWhenInUse:
             isLocating = true
             locationManager.startUpdatingLocation()
+            if userLocation == nil {
+                beginLocationTimeout()
+            }
         case .denied, .restricted:
             isLocating = false
+            finishLocationAttemptWithoutFix()
         @unknown default:
             isLocating = false
+            finishLocationAttemptWithoutFix()
         }
     }
 
@@ -242,20 +272,39 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         case .authorizedAlways, .authorizedWhenInUse:
             isLocating = true
             manager.startUpdatingLocation()
+            if userLocation == nil {
+                beginLocationTimeout()
+            }
         case .denied, .restricted:
             isLocating = false
+            finishLocationAttemptWithoutFix()
         case .notDetermined:
             break
         @unknown default:
             isLocating = false
+            finishLocationAttemptWithoutFix()
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last,
-              location.horizontalAccuracy >= 0,
-              location.horizontalAccuracy <= 200,
-              abs(location.timestamp.timeIntervalSinceNow) <= 30 else { return }
+        let candidates = locations.filter {
+            Self.isAcceptableLocation($0, maximumAccuracy: Self.fallbackLocationAccuracy)
+        }
+        guard let location = candidates.min(by: { $0.horizontalAccuracy < $1.horizontalAccuracy }) else { return }
+
+        if bestLocationCandidate.map({ location.horizontalAccuracy < $0.horizontalAccuracy }) ?? true {
+            bestLocationCandidate = location
+        }
+
+        guard location.horizontalAccuracy <= Self.preferredLocationAccuracy else { return }
+        acceptLocation(location)
+    }
+
+    private func acceptLocation(_ location: CLLocation) {
+        locationTimeoutTask?.cancel()
+        locationTimeoutTask = nil
+        bestLocationCandidate = nil
+
         let nextLocation = GeoPoint(location.coordinate)
         let hadLocation = userLocation != nil
         userLocation = nextLocation
@@ -265,15 +314,58 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             focusToken += 1
             focusRequest = MapFocusRequest(point: nextLocation, token: focusToken)
             distanceOrigin = nextLocation
-            refresh()
+
+            let focusedRegion = MKCoordinateRegion(
+                center: nextLocation.coordinate,
+                latitudinalMeters: 850,
+                longitudinalMeters: 850
+            )
+            let focusedViewport = GeoBounds(region: focusedRegion)
+            viewport = focusedViewport
+            fetchIfNeeded(for: focusedViewport)
         } else if Self.distance(from: distanceOrigin, to: nextLocation) >= max(75, location.horizontalAccuracy) {
             distanceOrigin = nextLocation
-            refresh()
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         isLocating = false
+        finishLocationAttemptWithoutFix()
+    }
+
+    private func beginLocationTimeout() {
+        locationTimeoutTask?.cancel()
+        locationTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.locationTimeout)
+            } catch {
+                return
+            }
+
+            guard let self else { return }
+            if let bestLocationCandidate {
+                acceptLocation(bestLocationCandidate)
+            } else {
+                isLocating = false
+                finishLocationAttemptWithoutFix()
+            }
+        }
+    }
+
+    private func finishLocationAttemptWithoutFix() {
+        locationTimeoutTask?.cancel()
+        locationTimeoutTask = nil
+        bestLocationCandidate = nil
+        fetchIfNeeded(for: viewport)
+    }
+
+    private static func isAcceptableLocation(
+        _ location: CLLocation,
+        maximumAccuracy: CLLocationAccuracy
+    ) -> Bool {
+        location.horizontalAccuracy >= 0 &&
+            location.horizontalAccuracy <= maximumAccuracy &&
+            abs(location.timestamp.timeIntervalSinceNow) <= maximumLocationAge
     }
 
     private static func distance(from start: GeoPoint, to end: GeoPoint) -> CLLocationDistance {
