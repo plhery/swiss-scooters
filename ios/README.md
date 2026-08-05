@@ -13,6 +13,19 @@ iPhone 17 Pro running iOS 26 or newer.
    destination, and press **Run**.
 4. Allow location access on first launch.
 
+## Refresh the free installation
+
+The free Personal Team provisioning profile expires after seven days. With the
+iPhone unlocked and connected by USB or reachable over Wi-Fi, run:
+
+```sh
+./scripts/refresh-ios-app.sh
+```
+
+On macOS, this command can also be wrapped in a Shortcut for a one-click
+refresh. It renews the profile, installs over the existing app to preserve its
+data, and launches it.
+
 No API keys or third-party packages are required. The app reads live scooter
 data from the existing production API at
 `https://zurich-scooter.plhery.com/api/scooters`.
