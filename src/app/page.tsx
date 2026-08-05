@@ -7,6 +7,12 @@ import MapControls from '@/components/MapControls';
 import type { MapBounds, Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
+  parseClientParams,
+  parseStoredClientParams,
+  serializeClientParams,
+  type ClientParams,
+} from '@/lib/clientParams';
+import {
   boundsContainBounds,
   boundsContainPoint,
   expandBounds,
@@ -17,33 +23,17 @@ const ZURICH_CENTER: [number, number] = [47.3769, 8.5417];
 const LOCATION_REFRESH_DISTANCE_M = 75;
 const VIEWPORT_FETCH_PADDING = 0.25;
 
-function parseCoord(s: string | null): [number, number] | null {
-  if (!s) return null;
-  const parts = s.split(',').map(Number);
-  if (parts.length === 2 && parts.every(n => isFinite(n))) return [parts[0], parts[1]];
-  return null;
-}
-
 const STORAGE_KEY = 'scooters-params';
 
 function saveParamsToStorage(params: Record<string, string>) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(params)); } catch {}
 }
 
-function loadParamsFromStorage(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+function loadParamsFromStorage(): ClientParams | null {
+  try { return parseStoredClientParams(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
 }
 
-interface UrlParams {
-  origin: [number, number] | null;
-  minBattery: number | undefined;
-  tileLayer: 'dark' | 'light' | 'osm' | undefined;
-}
-
-function readUrlParams(): UrlParams {
+function readUrlParams(): ClientParams {
   if (typeof window === 'undefined') {
     return { origin: null, minBattery: undefined, tileLayer: undefined };
   }
@@ -53,26 +43,17 @@ function readUrlParams(): UrlParams {
   // If no URL params, try to restore from localStorage (PWA home screen launch)
   if (!hasUrlParams) {
     const stored = loadParamsFromStorage();
-    if (Object.keys(stored).length > 0) {
-      const sp = new URLSearchParams(stored);
+    if (stored) {
+      const sp = new URLSearchParams();
+      if (stored.origin) sp.set('origin', `${stored.origin[0]},${stored.origin[1]}`);
+      if (stored.minBattery !== undefined) sp.set('minBattery', String(stored.minBattery));
+      if (stored.tileLayer) sp.set('tile', stored.tileLayer);
       window.history.replaceState(null, '', `?${sp.toString()}`);
-      return {
-        origin: parseCoord(stored.origin ?? null),
-        minBattery: stored.minBattery ? parseInt(stored.minBattery) : undefined,
-        tileLayer: (['dark', 'light', 'osm'] as const).includes(stored.tile as 'dark' | 'light' | 'osm')
-          ? (stored.tile as 'dark' | 'light' | 'osm')
-          : undefined,
-      };
+      return stored;
     }
   }
 
-  return {
-    origin: parseCoord(p.get('origin')),
-    minBattery: p.get('minBattery') ? parseInt(p.get('minBattery')!) : undefined,
-    tileLayer: (['dark', 'light', 'osm'] as const).includes(p.get('tile') as 'dark' | 'light' | 'osm')
-      ? (p.get('tile') as 'dark' | 'light' | 'osm')
-      : undefined,
-  };
+  return parseClientParams(p);
 }
 
 function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
@@ -167,10 +148,7 @@ export default function Home() {
 
   // Sync state to URL + localStorage
   useEffect(() => {
-    const p = new URLSearchParams();
-    p.set('origin', `${origin[0].toFixed(4)},${origin[1].toFixed(4)}`);
-    if (minBattery !== 0) p.set('minBattery', String(minBattery));
-    if (tileLayer !== 'light') p.set('tile', tileLayer);
+    const p = serializeClientParams({ origin, minBattery, tileLayer });
     const qs = p.toString();
     const newUrl = qs ? `?${qs}` : window.location.pathname;
     window.history.replaceState(null, '', newUrl);
