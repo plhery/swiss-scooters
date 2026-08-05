@@ -20,7 +20,9 @@
   <a href="https://swiss-scooters.plhery.com"><strong>Open the live map →</strong></a>
 </p>
 
-![Swiss Scooters showing fictional demo scooters around Zürich](docs/swiss-scooters-map.png)
+<p align="center">
+  <img src="docs/swiss-scooters-map.png" width="390" alt="Swiss Scooters showing fictional demo scooters around Zürich on a phone">
+</p>
 
 <p align="center"><sub>The screenshot uses a fictional little scooter fleet—not anyone's live location.</sub></p>
 
