@@ -1,142 +1,85 @@
-# Swiss Scooters
+<p align="center">
+  <img src="public/icon.svg" width="92" alt="Swiss Scooters logo">
+</p>
 
-A mobile-friendly map of shared e-scooters across Switzerland. Swiss Scooters
-combines the national shared-mobility feed with an accessible map, live
-location, address search, provider filters, and installable web and iPhone apps.
+<h1 align="center">Swiss Scooters</h1>
 
-**Live:** [swiss-scooters.plhery.com](https://swiss-scooters.plhery.com)
+<p align="center">
+  A friendly map for finding shared e-scooters across Switzerland.<br>
+  No account, no ads, no tracking.
+</p>
 
-## Features
+<p align="center">
+  <a href="https://github.com/plhery/swiss-scooters/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/plhery/swiss-scooters/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/Cloudflare-Workers-f38020?style=flat-square&logo=cloudflare" alt="Cloudflare Workers">
+</p>
 
-- Interactive Leaflet map with light, dark, and OpenStreetMap layers
-- Viewport-aware national scooter discovery
-- Battery, range, distance, and provider rental links when supplied upstream
-- Coverage-aware fetching and resilient stale-on-error caches
-- Provider and minimum-battery filters that run locally
-- Swiss address search powered by the federal geo.admin.ch service
-- German, French, Italian, and English interfaces
-- Installable PWA with automatic post-deployment refreshes
-- Native SwiftUI and MapKit app for iOS 26+
-- No accounts, advertisements, analytics SDK, application database, or secret API keys
+<p align="center">
+  <a href="https://swiss-scooters.plhery.com"><strong>Open the live map →</strong></a>
+</p>
 
-## Providers
+![Swiss Scooters showing fictional demo scooters around Zürich](docs/swiss-scooters-map.png)
 
-Swiss Scooters displays electric scooters published through the national
-shared-mobility dataset. Supported provider families currently include Bolt,
-Bird, Dott, Lime, Voi, and PubliBike / Velospot. Actual availability depends on
-what each operator publishes for the visible area.
+<p align="center"><sub>The screenshot uses a fictional little scooter fleet—not anyone's live location.</sub></p>
 
-## Data and attribution
+Swiss Scooters brings the national shared-mobility feed, Swiss address search,
+provider and battery filters, and light/dark maps into one installable web app.
+It speaks German, French, Italian, and English. There is also a native SwiftUI
+app for iPhone.
 
-Mobility data comes from the Swiss Federal Office of Energy dataset published
-through the [Open data platform mobility Switzerland](https://data.opentransportdata.swiss/en/dataset/sharedmobility).
-Address search uses [geo.admin.ch](https://www.geo.admin.ch/) data and services
-operated by swisstopo. Map tiles come from OpenStreetMap or CARTO.
+## Run it locally
 
-The application cites these sources in the map and follows their update,
-attribution, caching, and fair-use requirements. See [DATA_SOURCES.md](DATA_SOURCES.md)
-for the source-by-source notes.
-
-## Local development
-
-Requirements:
-
-- Node.js 26+
-- npm
+You need Node.js 26+ and npm.
 
 ```bash
+git clone https://github.com/plhery/swiss-scooters.git
+cd swiss-scooters
 npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No environment variables
-are required. The optional, non-secret `SHAREDMOBILITY_AUTH_EMAIL` value changes
-the contact address sent to the national GBFS service; copy `.env.example` if
-you need to override it.
+Open [localhost:3000](http://localhost:3000). That is it—there are no required
+environment variables, API keys, databases, or accounts.
 
-## Validation
+To run the checks:
 
 ```bash
-npm audit
 npm run lint
 npm test
-npm run build
 npm run test:e2e
+npm run build
 ```
 
-CI also builds the Cloudflare artifact and runs the native iOS unit tests.
+## Deploy your own
 
-## API
+The included configuration targets Cloudflare Workers through OpenNext. Give
+your fork a Worker name and hostname in `wrangler.jsonc`, then:
 
-### `GET /api/scooters`
-
-Returns electric scooters inside a geographic bounding box, sorted by distance
-from the supplied origin.
-
-- `lat`, `lng`: distance origin; defaults to central Zurich
-- `south`, `west`, `north`, `east`: visible map bounds
-- `minBattery`: minimum battery percentage; defaults to `0`
-- `provider`: comma-separated provider keys
-
-Bounds are validated and responses are capped at 5,000 vehicles. The response
-includes cache freshness, upstream health, and truncation metadata.
-
-### `GET /api/geocode`
-
-Returns up to five Swiss location suggestions from geo.admin.ch.
-
-- `q`: search text between 2 and 160 characters
-- `lang`: `de`, `fr`, `it`, or `en`
-
-Both endpoints are same-origin, cached where appropriate, and protected by
-Cloudflare rate-limit bindings in production.
-
-## Architecture
-
-```text
-src/
-├── app/
-│   ├── api/geocode/       # geo.admin.ch proxy
-│   ├── api/scooters/      # national GBFS aggregation API
-│   ├── privacy/           # user-facing privacy notice
-│   └── page.tsx           # web application state
-├── components/            # map, controls, address search, bottom sheet
-└── lib/                   # feeds, coverage, caching, validation, i18n
-ios/
-├── SwissScooters/         # SwiftUI application
-└── SwissScootersTests/    # native unit tests
-worker.ts                   # Cloudflare host migration wrapper
+```bash
+npx wrangler login
+npm run deploy
 ```
 
-The web app is Next.js 16 running on Cloudflare Workers through OpenNext.
-Upstream discovery and vehicle feeds are coalesced and cached inside warm Worker
-instances; no persistent storage is used.
-The small Worker wrapper redirects browser traffic from the legacy hostname
-before delegating to the generated OpenNext Worker, while preserving legacy
-`/api/*` routes for installed native clients.
+See [DEPLOY.md](DEPLOY.md) for rate limits, previews, production checks, and
+rollback notes.
 
-## Native iPhone app
+## iPhone app
 
-Open `ios/SwissScooters.xcodeproj` in Xcode 26 or newer, select a Personal Team,
-and run the `SwissScooters` scheme. The existing bundle identifier is retained
-so renamed builds install over earlier local versions. See [ios/README.md](ios/README.md).
+Open `ios/SwissScooters.xcodeproj` in Xcode 26+, choose a development team, and
+run the `SwissScooters` scheme. More details are in [ios/README.md](ios/README.md).
 
-## Deployment
+## Data, privacy, and contributing
 
-Cloudflare deployment and hostname migration instructions are in
-[DEPLOY.md](DEPLOY.md).
+Scooter locations come from the
+[Open data platform mobility Switzerland](https://data.opentransportdata.swiss/en/dataset/sharedmobility),
+address search comes from swisstopo, and map tiles come from OpenStreetMap or
+CARTO. The app stores no account or location history.
 
-## Contributing and security
+- [Data sources and attribution](DATA_SOURCES.md)
+- [Privacy](PRIVACY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening
-a pull request. Please report vulnerabilities privately using
-[SECURITY.md](SECURITY.md), not a public issue.
-
-The application privacy notice is available at `/privacy` and in
-[PRIVACY.md](PRIVACY.md).
-
-## License
-
-Swiss Scooters is available under the [MIT License](LICENSE). Data, map tiles,
-provider names, and third-party dependencies remain subject to their respective
-terms and licenses.
+Swiss Scooters is open source under the [MIT License](LICENSE). Come build with us.
