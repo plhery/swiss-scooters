@@ -292,8 +292,11 @@ final class ScooterAnnotationView: MKAnnotationView {
         let provider = scooter.providerInfo
         backgroundColor = provider?.uiColor ?? .systemGray
         monogramLabel.text = provider?.shortName ?? "?"
-        accessibilityLabel = "\(provider?.name ?? scooter.provider) scooter"
-        accessibilityHint = "Shows scooter details"
+        accessibilityLabel = String(
+            format: String(localized: "%@ scooter"),
+            provider?.name ?? scooter.provider
+        )
+        accessibilityHint = String(localized: "Shows scooter details")
     }
 
     override func setSelected(_ selected: Bool, animated: Bool) {
@@ -380,7 +383,7 @@ final class ScooterClusterAnnotationView: MKAnnotationView {
 
         isAccessibilityElement = true
         accessibilityTraits = .button
-        accessibilityHint = "Zooms in to show individual scooters"
+        accessibilityHint = String(localized: "Zooms in to show individual scooters")
     }
 
     override func layoutSubviews() {
@@ -407,7 +410,10 @@ final class ScooterClusterAnnotationView: MKAnnotationView {
         renderedCount = count
         renderedProviderCounts = providerCounts
         countLabel.text = "\(count)"
-        accessibilityLabel = "\(count) scooters"
+        accessibilityLabel = String(
+            format: String(localized: "%@ scooters"),
+            count.formatted()
+        )
         applyProviderGradient(providerCounts, total: count)
     }
 

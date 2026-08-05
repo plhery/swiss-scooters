@@ -64,7 +64,7 @@ struct ScooterMapScreen: View {
                 MapStatusBanner(
                     message: errorMessage,
                     style: .error,
-                    actionTitle: "Retry",
+                    actionTitle: String(localized: "Retry"),
                     action: model.refresh
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -72,7 +72,7 @@ struct ScooterMapScreen: View {
                 MapStatusBanner(
                     message: LocationAuthorizationIssue.denied.message,
                     style: .location,
-                    actionTitle: "Settings",
+                    actionTitle: String(localized: "Settings"),
                     action: openLocationSettings
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -86,7 +86,7 @@ struct ScooterMapScreen: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             } else if model.isLocating {
                 MapStatusBanner(
-                    message: "Finding your location…",
+                    message: String(localized: "Finding your location…"),
                     style: .progress,
                     actionTitle: nil,
                     action: nil

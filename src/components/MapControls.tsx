@@ -1,5 +1,7 @@
 'use client';
 
+import { useI18n } from '@/lib/i18n';
+
 interface MapControlsProps {
   loading: boolean;
   hidden: boolean;
@@ -13,14 +15,16 @@ export default function MapControls({
   onLocateMe,
   onRefresh,
 }: MapControlsProps) {
+  const { t } = useI18n();
+
   return (
     <div className="fab-stack" inert={hidden} aria-hidden={hidden}>
-      <button className="fab glass" onClick={onLocateMe} aria-label="Go to my location">
+      <button className="fab glass" onClick={onLocateMe} aria-label={t('controls.locate')}>
         <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M21.7 2.3a1 1 0 0 1 .2 1.1l-8 18a1 1 0 0 1-1.9-.1l-2.2-6.6a1 1 0 0 0-.6-.6L2.7 12a1 1 0 0 1-.1-1.9l18-8a1 1 0 0 1 1.1.2Z" />
         </svg>
       </button>
-      <button className="fab glass" onClick={onRefresh} disabled={loading} aria-label="Refresh scooters">
+      <button className="fab glass" onClick={onRefresh} disabled={loading} aria-label={t('controls.refresh')}>
         <svg
           className={loading ? 'spin' : undefined}
           width="19"

@@ -14,6 +14,10 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { MapBounds, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
+import { useI18n, type TranslationKey } from '@/lib/i18n';
+
+type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+type FormatNumber = (value: number, options?: Intl.NumberFormatOptions) => string;
 
 function createScooterIcon(provider: string): L.DivIcon {
   const cfg = PROVIDERS[provider] ?? { color: '#999', initial: '?' };
@@ -83,6 +87,7 @@ function ViewportController({
 }
 
 function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
+  const { t } = useI18n();
   const controlRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,19 +97,19 @@ function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
   }, []);
 
   return (
-    <div ref={controlRef} className="map-zoom-controls" role="group" aria-label="Map zoom">
+    <div ref={controlRef} className="map-zoom-controls" role="group" aria-label={t('controls.zoomGroup')}>
       <button
         type="button"
-        aria-label="Zoom in"
-        title="Zoom in"
+        aria-label={t('controls.zoomIn')}
+        title={t('controls.zoomIn')}
         onClick={() => mapRef.current?.zoomIn()}
       >
         <span aria-hidden="true">+</span>
       </button>
       <button
         type="button"
-        aria-label="Zoom out"
-        title="Zoom out"
+        aria-label={t('controls.zoomOut')}
+        title={t('controls.zoomOut')}
         onClick={() => mapRef.current?.zoomOut()}
       >
         <span aria-hidden="true">−</span>
@@ -134,8 +139,12 @@ const TILE_URLS: Record<string, string> = {
 
 const MAX_CLUSTER_ZOOM = 15;
 
-function formatDistance(m: number): string {
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+function formatDistance(m: number, t: Translate, formatNumber: FormatNumber): string {
+  return m < 1000
+    ? t('distance.meters', { count: formatNumber(Math.round(m)) })
+    : t('distance.kilometers', {
+        count: formatNumber(m / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+      });
 }
 
 function batteryColor(pct: number): string {
@@ -196,20 +205,22 @@ function createClusterIcon(vehicles: Vehicle[]): L.DivIcon {
   });
 }
 
-function clusterTitle(vehicles: Vehicle[]): string {
+function clusterTitle(vehicles: Vehicle[], t: Translate, formatNumber: FormatNumber): string {
   const counts = new Map<string, number>();
   for (const vehicle of vehicles) {
     counts.set(vehicle.provider, (counts.get(vehicle.provider) ?? 0) + 1);
   }
   const providers = [...counts.entries()]
-    .map(([provider, count]) => `${PROVIDERS[provider]?.name ?? provider} ${count}`)
+    .map(([provider, count]) => `${PROVIDERS[provider]?.name ?? provider} ${formatNumber(count)}`)
     .join(', ');
-  return `${vehicles.length} scooters: ${providers}. Zoom in to separate.`;
+  return t('marker.cluster', { count: formatNumber(vehicles.length), providers });
 }
 
 function VehicleMarker({ vehicle, icon }: { vehicle: Vehicle; icon: L.DivIcon }) {
+  const { t, formatNumber } = useI18n();
   const cfg = PROVIDERS[vehicle.provider];
-  const label = `${cfg?.name ?? vehicle.provider} scooter, ${formatDistance(vehicle.distance_m)} away`;
+  const distance = formatDistance(vehicle.distance_m, t, formatNumber);
+  const label = t('marker.scooterAway', { name: cfg?.name ?? vehicle.provider, distance });
   const markerRef = useAccessibleMarker(label);
   return (
     <Marker
@@ -225,7 +236,7 @@ function VehicleMarker({ vehicle, icon }: { vehicle: Vehicle; icon: L.DivIcon })
           <div className="popup-head">
             <span className="popup-dot" style={{ background: cfg?.color ?? '#999' }} aria-hidden="true" />
             <span className="popup-name">{cfg?.name ?? vehicle.provider}</span>
-            <span className="popup-dist">{formatDistance(vehicle.distance_m)}</span>
+            <span className="popup-dist">{distance}</span>
           </div>
           {vehicle.battery !== null && (
             <div className="popup-batt">
@@ -233,7 +244,8 @@ function VehicleMarker({ vehicle, icon }: { vehicle: Vehicle; icon: L.DivIcon })
                 <div style={{ width: `${vehicle.battery}%`, background: batteryColor(vehicle.battery) }} />
               </div>
               <span>
-                {vehicle.battery}%{vehicle.range_m !== null ? ` · ${(vehicle.range_m / 1000).toFixed(1)} km` : ''}
+                {formatNumber(vehicle.battery)}%
+                {vehicle.range_m !== null ? ` · ${formatDistance(vehicle.range_m, t, formatNumber)}` : ''}
               </span>
             </div>
           )}
@@ -245,7 +257,7 @@ function VehicleMarker({ vehicle, icon }: { vehicle: Vehicle; icon: L.DivIcon })
               className="popup-cta"
               style={{ background: cfg?.color ?? '#0a84ff' }}
             >
-              Open in {cfg?.name ?? 'app'}
+              {t('marker.openIn', { name: cfg?.name ?? t('marker.app') })}
             </a>
           )}
         </div>
@@ -265,7 +277,8 @@ function ClusterMarker({
   icon: L.DivIcon;
   onClick: () => void;
 }) {
-  const label = clusterTitle(vehicles);
+  const { t, formatNumber } = useI18n();
+  const label = clusterTitle(vehicles, t, formatNumber);
   const markerRef = useAccessibleMarker(label);
 
   return (
@@ -287,7 +300,9 @@ function UserLocationMarker({
   position: [number, number];
   icon: L.DivIcon;
 }) {
-  const markerRef = useAccessibleMarker('Your live location');
+  const { t } = useI18n();
+  const label = t('marker.yourLocation');
+  const markerRef = useAccessibleMarker(label);
 
   return (
     <Marker
@@ -295,7 +310,7 @@ function UserLocationMarker({
       position={position}
       icon={icon}
       zIndexOffset={2000}
-      title="Your live location"
+      title={label}
     />
   );
 }

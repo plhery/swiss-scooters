@@ -3,6 +3,7 @@
 import { useState, useRef, useLayoutEffect, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS } from '@/lib/types';
+import { SUPPORTED_LOCALES, useI18n, type AppLocale } from '@/lib/i18n';
 
 interface BottomSheetProps {
   minBattery: number;
@@ -21,6 +22,12 @@ interface BottomSheetProps {
 }
 
 const DESKTOP_PANEL_QUERY = '(min-width: 900px)';
+const LOCALE_LABELS: Record<AppLocale, string> = {
+  de: 'Deutsch',
+  fr: 'Français',
+  it: 'Italiano',
+  en: 'English',
+};
 
 function subscribeToDesktopPanel(change: () => void) {
   const query = window.matchMedia(DESKTOP_PANEL_QUERY);
@@ -84,6 +91,7 @@ export default function BottomSheet({
   onTileLayerChange,
   onExpandedChange,
 }: BottomSheetProps) {
+  const { locale, setLocale, t, formatNumber } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [peekH, setPeekH] = useState(160);
   const desktopPanel = useDesktopPanel();
@@ -184,10 +192,12 @@ export default function BottomSheet({
   };
 
   const updatedLabel = loading
-    ? 'Updating…'
+    ? t('sheet.updating')
     : lastUpdated
-      ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      : 'on this map';
+      ? t('sheet.updated', {
+          time: lastUpdated.toLocaleTimeString(`${locale}-CH`, { hour: '2-digit', minute: '2-digit' }),
+        })
+      : t('sheet.onMap');
 
   return (
     <div
@@ -195,7 +205,7 @@ export default function BottomSheet({
       className={`sheet glass ${controlsVisible ? 'sheet-expanded' : ''} ${desktopPanel ? 'sheet-desktop' : ''}`}
       style={{ '--peek-h': `${peekH}px` } as React.CSSProperties}
       role="region"
-      aria-label="Scooter search controls"
+      aria-label={t('sheet.region')}
     >
       <div ref={peekRef} className="sheet-peek">
         <div
@@ -208,7 +218,7 @@ export default function BottomSheet({
           tabIndex={desktopPanel ? undefined : 0}
           aria-expanded={desktopPanel ? undefined : expanded}
           aria-controls={desktopPanel ? undefined : 'scooter-controls-body'}
-          aria-label={desktopPanel ? undefined : expanded ? 'Collapse controls' : 'Expand controls'}
+          aria-label={desktopPanel ? undefined : expanded ? t('sheet.collapse') : t('sheet.expand')}
           onKeyDown={desktopPanel ? undefined : e => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
@@ -222,8 +232,8 @@ export default function BottomSheet({
           <div className="sheet-title-row">
             <div>
               <div className="sheet-count" aria-live="polite">
-                <span className="sheet-count-num">{totalCount}</span>
-                scooter{totalCount !== 1 ? 's' : ''}
+                <span className="sheet-count-num">{formatNumber(totalCount)}</span>
+                {totalCount === 1 ? t('sheet.scooter') : t('sheet.scooters')}
               </div>
               <div className="sheet-sub">
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -249,19 +259,19 @@ export default function BottomSheet({
         <div
           className="chips"
           role="group"
-          aria-label="Filter scooters by provider"
+          aria-label={t('providers.filter')}
         >
           <button
             className={`chip ${allProvidersSelected ? '' : 'chip-off'}`}
             style={allProvidersSelected ? { background: 'rgba(10, 132, 255, 0.12)' } : undefined}
             onClick={onShowAllProviders}
             aria-pressed={allProvidersSelected}
-            aria-label={`All providers, ${allProviderCount}. Show all.`}
-            title="Show all providers"
+            aria-label={t('providers.allLabel', { count: formatNumber(allProviderCount) })}
+            title={t('providers.showAll')}
           >
             <span className="chip-dot chip-dot-all" aria-hidden="true" />
-            All
-            <span className="chip-count">{allProviderCount}</span>
+            {t('providers.all')}
+            <span className="chip-count">{formatNumber(allProviderCount)}</span>
           </button>
           {Object.entries(PROVIDERS).map(([key, cfg]) => {
             const onlyProvider = enabledProviders.size === 1 && enabledProviders.has(key);
@@ -272,12 +282,15 @@ export default function BottomSheet({
                 style={onlyProvider ? { background: `${cfg.color}1f` } : undefined}
                 onClick={() => onProviderSelect(key)}
                 aria-pressed={onlyProvider}
-                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. Show only.`}
-                title={`Show only ${cfg.name}`}
+                aria-label={t('providers.showOnlyLabel', {
+                  name: cfg.name,
+                  count: formatNumber(providerCounts[key] ?? 0),
+                })}
+                title={t('providers.showOnly', { name: cfg.name })}
               >
                 <span className="chip-dot" style={{ background: cfg.color }} aria-hidden="true" />
                 {cfg.name}
-                <span className="chip-count">{providerCounts[key] ?? 0}</span>
+                <span className="chip-count">{formatNumber(providerCounts[key] ?? 0)}</span>
               </button>
             );
           })}
@@ -286,11 +299,11 @@ export default function BottomSheet({
 
       <div id="scooter-controls-body" className="sheet-body" inert={!controlsVisible}>
         <div className="section">
-          <div className="section-title">Filters</div>
+          <div className="section-title">{t('filters.title')}</div>
           <SliderRow
-            label="Min. battery"
+            label={t('filters.minBattery')}
             value={minBattery}
-            display={minBattery === 0 ? 'Any' : `${minBattery}%`}
+            display={minBattery === 0 ? t('filters.any') : `${formatNumber(minBattery)}%`}
             min={0}
             max={100}
             step={5}
@@ -299,15 +312,32 @@ export default function BottomSheet({
         </div>
 
         <div className="section">
-          <div className="section-title">Map style</div>
-          <div className="seg" role="group" aria-label="Map style">
-            {(['light', 'dark', 'osm'] as const).map(t => (
+          <div className="section-title">{t('map.style')}</div>
+          <div className="seg" role="group" aria-label={t('map.style')}>
+            {(['light', 'dark', 'osm'] as const).map(style => (
               <button
-                key={t}
-                onClick={() => onTileLayerChange(t)}
-                aria-pressed={tileLayer === t}
+                key={style}
+                onClick={() => onTileLayerChange(style)}
+                aria-pressed={tileLayer === style}
               >
-                {t === 'light' ? 'Light' : t === 'dark' ? 'Dark' : 'OSM'}
+                {style === 'light' ? t('map.light') : style === 'dark' ? t('map.dark') : t('map.osm')}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="section">
+          <div className="section-title">{t('language.title')}</div>
+          <div className="seg" role="group" aria-label={t('language.title')}>
+            {SUPPORTED_LOCALES.map((language) => (
+              <button
+                key={language}
+                onClick={() => setLocale(language)}
+                aria-pressed={locale === language}
+                lang={`${language}-CH`}
+                title={LOCALE_LABELS[language]}
+              >
+                {language.toUpperCase()}
               </button>
             ))}
           </div>

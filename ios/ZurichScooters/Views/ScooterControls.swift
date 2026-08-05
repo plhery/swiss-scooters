@@ -85,8 +85,10 @@ struct ScooterControlDock: View {
         .contentShape(Rectangle())
         .gesture(handleGesture)
         .animation(.easeOut(duration: 0.12), value: isDragging)
-        .accessibilityLabel(isExpanded ? "Collapse controls" : "Expand controls")
-        .accessibilityHint("Tap or drag vertically")
+        .accessibilityLabel(
+            isExpanded ? String(localized: "Collapse controls") : String(localized: "Expand controls")
+        )
+        .accessibilityHint(String(localized: "Tap or drag vertically"))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { toggleExpanded() }
     }
@@ -167,7 +169,11 @@ struct ScooterControlDock: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .padding(.bottom, 10)
-        .accessibilityLabel(isExpanded ? "Collapse scooter controls" : "Expand scooter controls")
+        .accessibilityLabel(
+            isExpanded
+                ? String(localized: "Collapse scooter controls")
+                : String(localized: "Expand scooter controls")
+        )
     }
 
     private var countSummary: some View {
@@ -176,7 +182,11 @@ struct ScooterControlDock: View {
                 Text(model.visibleCount, format: .number)
                     .font(.system(size: 27, weight: .bold, design: .rounded))
                     .contentTransition(.numericText())
-                Text(model.visibleCount == 1 ? "scooter" : "scooters")
+                Text(
+                    model.visibleCount == 1
+                        ? String(localized: "scooter")
+                        : String(localized: "scooters")
+                )
                     .font(.headline)
             }
 
@@ -195,7 +205,10 @@ struct ScooterControlDock: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("Data status: \(dataHealthMessage)")
+                    .accessibilityLabel(String(
+                        format: String(localized: "Data status: %@"),
+                        dataHealthMessage
+                    ))
             }
         }
     }
@@ -212,7 +225,10 @@ struct ScooterControlDock: View {
                 HStack(spacing: 7) {
                     if let distance = model.formattedDistance(for: scooter) {
                         Text(distance)
-                            .accessibilityLabel("Straight-line distance, \(distance)")
+                            .accessibilityLabel(String(
+                                format: String(localized: "Straight-line distance, %@"),
+                                distance
+                            ))
                     }
                     if let battery = scooter.battery {
                         Label("\(battery)%", systemImage: batterySymbol(for: battery))
@@ -271,7 +287,11 @@ struct ScooterControlDock: View {
         )
         .opacity(isSelected ? 1 : 0.48)
         .accessibilityLabel(
-            "All providers, \(model.allProviderCount) scooters, \(isSelected ? "selected" : "not selected")"
+            String(
+                format: String(localized: "All providers, %@ scooters, %@"),
+                model.allProviderCount.formatted(),
+                isSelected ? String(localized: "selected") : String(localized: "not selected")
+            )
         )
     }
 
@@ -305,7 +325,12 @@ struct ScooterControlDock: View {
         )
         .opacity(isDimmed ? 0.48 : 1)
         .accessibilityLabel(
-            "\(provider.name), \(model.count(for: provider)) scooters, \(isSelected ? "selected" : "not selected")"
+            String(
+                format: String(localized: "%@, %@ scooters, %@"),
+                provider.name,
+                model.count(for: provider).formatted(),
+                isSelected ? String(localized: "selected") : String(localized: "not selected")
+            )
         )
     }
 
@@ -314,7 +339,7 @@ struct ScooterControlDock: View {
             HStack(spacing: 14) {
                 if let battery = scooter.battery {
                     metric(
-                        title: "Battery",
+                        title: String(localized: "Battery"),
                         value: "\(battery)%",
                         systemImage: batterySymbol(for: battery),
                         color: batteryColor(for: battery)
@@ -322,7 +347,7 @@ struct ScooterControlDock: View {
                 }
                 if let range = scooter.formattedRange {
                     metric(
-                        title: "Estimated",
+                        title: String(localized: "Estimated"),
                         value: range,
                         systemImage: "gauge.with.dots.needle.67percent",
                         color: .blue
@@ -405,7 +430,14 @@ struct ScooterControlDock: View {
             }
                 .tint(.blue)
                 .accessibilityLabel("Minimum battery")
-                .accessibilityValue(batteryDraft == 0 ? "Any" : "\(Int(batteryDraft)) percent")
+                .accessibilityValue(
+                    batteryDraft == 0
+                        ? String(localized: "Any")
+                        : String(
+                            format: String(localized: "%lld percent"),
+                            Int(batteryDraft)
+                        )
+                )
                 .sensoryFeedback(.selection, trigger: Int(batteryDraft / 5))
                 .onChange(of: model.minimumBattery) { _, newValue in
                     batteryDraft = newValue
@@ -417,7 +449,7 @@ struct ScooterControlDock: View {
     }
 
     private var batteryValue: some View {
-        Text(batteryDraft == 0 ? "Any" : "\(Int(batteryDraft))%")
+        Text(batteryDraft == 0 ? String(localized: "Any") : "\(Int(batteryDraft))%")
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
             .monospacedDigit()
@@ -446,9 +478,12 @@ struct ScooterControlDock: View {
     }
 
     private var updateLabel: String {
-        if model.isLoading { return "Updating nearby vehicles…" }
-        guard let lastUpdated = model.lastUpdated else { return "On this map" }
-        return "Updated \(lastUpdated.formatted(date: .omitted, time: .shortened))"
+        if model.isLoading { return String(localized: "Updating nearby vehicles…") }
+        guard let lastUpdated = model.lastUpdated else { return String(localized: "On this map") }
+        return String(
+            format: String(localized: "Updated %@"),
+            lastUpdated.formatted(date: .omitted, time: .shortened)
+        )
     }
 
     private func toggleExpanded() {
@@ -506,7 +541,7 @@ struct FloatingMapControls: View {
                     Image(systemName: "location.fill")
                         .frame(width: 48, height: 48)
                 }
-                .accessibilityLabel("Go to my location")
+                .accessibilityLabel(String(localized: "Go to my location"))
 
                 Button {
                     model.refresh()
@@ -521,7 +556,7 @@ struct FloatingMapControls: View {
                     .frame(width: 48, height: 48)
                 }
                 .disabled(model.isLoading)
-                .accessibilityLabel("Refresh scooters")
+                .accessibilityLabel(String(localized: "Refresh scooters"))
             }
             .buttonStyle(.glass)
             .font(.system(size: 18, weight: .semibold))

@@ -107,23 +107,26 @@ enum ScooterAPIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            "The scooter service URL is invalid."
+            String(localized: "The scooter service URL is invalid.")
         case .offline:
-            "You appear to be offline. Check your connection and try again."
+            String(localized: "You appear to be offline. Check your connection and try again.")
         case .timedOut:
-            "The scooter service took too long to respond. Please try again."
+            String(localized: "The scooter service took too long to respond. Please try again.")
         case .invalidResponse:
-            "The scooter service returned an invalid response."
+            String(localized: "The scooter service returned an invalid response.")
         case let .httpStatus(statusCode) where statusCode == 429:
-            "The scooter service is receiving too many requests (HTTP 429). Please try again shortly."
+            String(localized: "The scooter service is receiving too many requests (HTTP 429). Please try again shortly.")
         case let .httpStatus(statusCode) where (500 ... 599).contains(statusCode):
-            "The scooter service is temporarily unavailable (HTTP \(statusCode))."
+            String(format: String(localized: "The scooter service is temporarily unavailable (HTTP %lld)."), statusCode)
         case let .httpStatus(statusCode):
-            "The scooter request failed (HTTP \(statusCode))."
+            String(format: String(localized: "The scooter request failed (HTTP %lld)."), statusCode)
         case .invalidData:
-            "The scooter data could not be read."
+            String(localized: "The scooter data could not be read.")
         case let .network(error):
-            "A network error prevented the scooter update: \(error.localizedDescription)"
+            String(
+                format: String(localized: "A network error prevented the scooter update: %@"),
+                error.localizedDescription
+            )
         }
     }
 }

@@ -172,9 +172,9 @@ enum AppleMapStyle: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .standard: "Standard"
-        case .quiet: "Quiet"
-        case .satellite: "Satellite"
+        case .standard: String(localized: "Standard")
+        case .quiet: String(localized: "Quiet")
+        case .satellite: String(localized: "Satellite")
         }
     }
 

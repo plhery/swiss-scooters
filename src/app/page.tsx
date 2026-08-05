@@ -13,6 +13,7 @@ import {
   type ClientParams,
 } from '@/lib/clientParams';
 import { scooterDataHealthNotice } from '@/lib/dataHealth';
+import { useI18n } from '@/lib/i18n';
 import {
   boundsContainBounds,
   boundsContainPoint,
@@ -68,6 +69,7 @@ function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
 }
 
 export default function Home() {
+  const { t, formatNumber } = useI18n();
   const [origin, setOrigin] = useState<[number, number]>(ZURICH_CENTER);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [minBattery, setMinBattery] = useState(0);
@@ -83,7 +85,7 @@ export default function Home() {
     version: number;
   }>({ location: null, version: 0 });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
   const [locating, setLocating] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [responseMeta, setResponseMeta] = useState<ScooterResponse['meta'] | null>(null);
@@ -185,7 +187,7 @@ export default function Home() {
     };
     requestRef.current = request;
     setLoading(true);
-    setError(null);
+    setError(false);
     try {
       const currentOrigin = originRef.current;
       const params = new URLSearchParams({
@@ -208,7 +210,7 @@ export default function Home() {
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       console.error('Failed to fetch scooters:', e);
-      setError('Couldn’t load scooters');
+      setError(true);
     } finally {
       if (requestRef.current?.id === request.id) setLoading(false);
     }
@@ -288,8 +290,15 @@ export default function Home() {
   }, [vehicles, viewportBounds, minBattery, enabledProviders]);
 
   const dataHealthNotice = useMemo(
-    () => scooterDataHealthNotice(responseMeta, vehicles.length),
-    [responseMeta, vehicles.length]
+    () => scooterDataHealthNotice(responseMeta, vehicles.length, {
+      cached: t('data.cached'),
+      partial: t('data.partial'),
+      truncated: (shown, total) => t('data.truncated', {
+        shown: formatNumber(shown),
+        total: formatNumber(total),
+      }),
+    }),
+    [formatNumber, responseMeta, t, vehicles.length]
   );
 
   return (
@@ -307,14 +316,14 @@ export default function Home() {
       {locating && (
         <div className="toast glass" role="status">
           <span className="mini-spinner" aria-hidden="true" />
-          Updating location…
+          {t('status.updatingLocation')}
         </div>
       )}
 
       {error && !locating && (
         <div className="toast glass toast-error" role="alert">
-          {error}
-          <button onClick={() => void fetchScooters()}>Retry</button>
+          {t('errors.fetchScooters')}
+          <button onClick={() => void fetchScooters()}>{t('status.retry')}</button>
         </div>
       )}
 

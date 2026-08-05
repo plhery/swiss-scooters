@@ -34,9 +34,9 @@ enum LocationAuthorizationIssue: Equatable {
     var message: String {
         switch self {
         case .denied:
-            "Location access is off. Enable it in Settings to find scooters near you."
+            String(localized: "Location access is off. Enable it in Settings to find scooters near you.")
         case .restricted:
-            "Location access is restricted on this device. You can still browse the map manually."
+            String(localized: "Location access is restricted on this device. You can still browse the map manually.")
         }
     }
 
@@ -50,9 +50,12 @@ private struct PartialScooterResponseError: LocalizedError {
 
     var errorDescription: String? {
         let sourceDescription = failedSources.isEmpty
-            ? "one or more data sources"
+            ? String(localized: "one or more data sources")
             : failedSources.joined(separator: ", ")
-        return "Scooter data from \(sourceDescription) is temporarily unavailable. Keeping the last complete map."
+        return String(
+            format: String(localized: "Scooter data from %@ is temporarily unavailable. Keeping the last complete map."),
+            sourceDescription
+        )
     }
 }
 
@@ -165,14 +168,18 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
         var messages: [String] = []
         if responseMetadata.stale {
-            messages.append("Showing cached data")
+            messages.append(String(localized: "Showing cached data"))
         }
         if responseMetadata.partial {
-            messages.append("Some providers are unavailable")
+            messages.append(String(localized: "Some providers are unavailable"))
         }
         if responseMetadata.truncated {
             let total = responseMetadata.totalVehicles ?? vehicles.count
-            messages.append("Showing \(vehicles.count.formatted()) of \(total.formatted()) results")
+            messages.append(String(
+                format: String(localized: "Showing %@ of %@ results"),
+                vehicles.count.formatted(),
+                total.formatted()
+            ))
         }
         return messages.isEmpty ? nil : messages.joined(separator: " · ")
     }
