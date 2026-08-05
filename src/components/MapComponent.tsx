@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -100,6 +100,16 @@ function batteryColor(pct: number): string {
   return '#ff3b30';
 }
 
+function useAccessibleMarker(label: string) {
+  const markerRef = useRef<L.Marker>(null);
+
+  useEffect(() => {
+    markerRef.current?.getElement()?.setAttribute('aria-label', label);
+  }, [label]);
+
+  return markerRef;
+}
+
 function createClusterIcon(vehicles: Vehicle[]): L.DivIcon {
   const counts = new Map<string, number>();
   for (const vehicle of vehicles) {
@@ -155,13 +165,16 @@ function clusterTitle(vehicles: Vehicle[]): string {
 
 function VehicleMarker({ vehicle, icon }: { vehicle: Vehicle; icon: L.DivIcon }) {
   const cfg = PROVIDERS[vehicle.provider];
+  const label = `${cfg?.name ?? vehicle.provider} scooter, ${formatDistance(vehicle.distance_m)} away`;
+  const markerRef = useAccessibleMarker(label);
   return (
     <Marker
+      ref={markerRef}
       key={`${vehicle.provider}-${vehicle.vehicle_id ?? `${vehicle.lat}-${vehicle.lng}`}`}
       position={[vehicle.lat, vehicle.lng]}
       icon={icon}
       riseOnHover
-      title={`${cfg?.name ?? vehicle.provider} scooter, ${formatDistance(vehicle.distance_m)} away`}
+      title={label}
     >
       <Popup className="scooter-popup" closeButton={false}>
         <div>
@@ -194,6 +207,52 @@ function VehicleMarker({ vehicle, icon }: { vehicle: Vehicle; icon: L.DivIcon })
         </div>
       </Popup>
     </Marker>
+  );
+}
+
+function ClusterMarker({
+  vehicles,
+  center,
+  icon,
+  onClick,
+}: {
+  vehicles: Vehicle[];
+  center: [number, number];
+  icon: L.DivIcon;
+  onClick: () => void;
+}) {
+  const label = clusterTitle(vehicles);
+  const markerRef = useAccessibleMarker(label);
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={center}
+      icon={icon}
+      zIndexOffset={500}
+      title={label}
+      eventHandlers={{ click: onClick }}
+    />
+  );
+}
+
+function UserLocationMarker({
+  position,
+  icon,
+}: {
+  position: [number, number];
+  icon: L.DivIcon;
+}) {
+  const markerRef = useAccessibleMarker('Your live location');
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={position}
+      icon={icon}
+      zIndexOffset={2000}
+      title="Your live location"
+    />
   );
 }
 
@@ -252,18 +311,15 @@ const VehicleMarkers = memo(function VehicleMarkers({
   return groups.flatMap(group => {
     if (group.items.length >= 2) {
       return [
-        <Marker
+        <ClusterMarker
           key={`cluster-${zoom}-${group.key}`}
-          position={group.center}
+          vehicles={group.items}
+          center={group.center}
           icon={createClusterIcon(group.items)}
-          zIndexOffset={500}
-          title={clusterTitle(group.items)}
-          eventHandlers={{
-            click: () => map.flyTo(group.center, Math.min(zoom + 2, 20), {
+          onClick={() => map.flyTo(group.center, Math.min(zoom + 2, 20), {
               animate: true,
               duration: 0.55,
-            }),
-          }}
+            })}
         />,
       ];
     }
@@ -337,11 +393,9 @@ export default function MapComponent({
       />
 
       {userLocation && (
-        <Marker
+        <UserLocationMarker
           position={userLocation}
           icon={userLocationIcon}
-          zIndexOffset={2000}
-          title="Your live location"
         />
       )}
 

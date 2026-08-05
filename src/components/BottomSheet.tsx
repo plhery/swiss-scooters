@@ -15,6 +15,7 @@ interface BottomSheetProps {
   onMinBatteryChange: (b: number) => void;
   onProviderSelect: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
+  onExpandedChange: (expanded: boolean) => void;
 }
 
 function SliderRow({
@@ -61,6 +62,7 @@ export default function BottomSheet({
   onMinBatteryChange,
   onProviderSelect,
   onTileLayerChange,
+  onExpandedChange,
 }: BottomSheetProps) {
   const [expanded, setExpanded] = useState(false);
   const [peekH, setPeekH] = useState(160);
@@ -140,7 +142,10 @@ export default function BottomSheet({
       // Flick beats position
       next = Math.abs(d.vel) > 0.4 ? d.vel < 0 : off < d.max / 2;
     }
-    flushSync(() => setExpanded(next));
+    flushSync(() => {
+      setExpanded(next);
+      onExpandedChange(next);
+    });
     sheet.style.transition = '';
     sheet.style.transform = '';
   };
@@ -169,11 +174,14 @@ export default function BottomSheet({
           role="button"
           tabIndex={0}
           aria-expanded={expanded}
+          aria-controls="scooter-controls-body"
           aria-label={expanded ? 'Collapse controls' : 'Expand controls'}
           onKeyDown={e => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              setExpanded(x => !x);
+              const next = !expanded;
+              setExpanded(next);
+              onExpandedChange(next);
             }
           }}
         >
@@ -227,7 +235,7 @@ export default function BottomSheet({
         </div>
       </div>
 
-      <div className="sheet-body" inert={!expanded}>
+      <div id="scooter-controls-body" className="sheet-body" inert={!expanded}>
         <div className="section">
           <div className="section-title">Filters</div>
           <SliderRow

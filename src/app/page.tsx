@@ -85,6 +85,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [controlsExpanded, setControlsExpanded] = useState(false);
   const initializedRef = useRef(false);
   const hasFocusedInitialLocationRef = useRef(false);
   const queryBoundsRef = useRef<MapBounds | null>(null);
@@ -298,6 +299,7 @@ export default function Home() {
 
       <MapControls
         loading={loading}
+        hidden={controlsExpanded}
         onLocateMe={handleLocateMe}
         onRefresh={() => void fetchScooters()}
       />
@@ -313,6 +315,7 @@ export default function Home() {
         onMinBatteryChange={setMinBattery}
         onProviderSelect={handleProviderSelect}
         onTileLayerChange={setTileLayer}
+        onExpandedChange={setControlsExpanded}
       />
     </div>
   );
