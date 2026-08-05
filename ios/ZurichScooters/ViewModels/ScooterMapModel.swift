@@ -45,6 +45,17 @@ enum LocationAuthorizationIssue: Equatable {
     }
 }
 
+private struct PartialScooterResponseError: LocalizedError {
+    let failedSources: [String]
+
+    var errorDescription: String? {
+        let sourceDescription = failedSources.isEmpty
+            ? "one or more data sources"
+            : failedSources.joined(separator: ", ")
+        return "Scooter data from \(sourceDescription) is temporarily unavailable. Keeping the last complete map."
+    }
+}
+
 @MainActor
 @Observable
 final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
@@ -105,6 +116,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var bestLocationCandidate: CLLocation?
     @ObservationIgnored private var focusToken = 0
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var hasCompleteResponse = false
     @ObservationIgnored private var distanceOrigin = zurichCenter
     private(set) var mapScooters: [Scooter] = []
     private(set) var visibleScooterCount = 0
@@ -284,7 +296,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             do {
                 let response = try await api.scooters(origin: origin, bounds: bounds)
                 guard !Task.isCancelled, activeRequestID == requestID else { return }
+                if let metadata = response.meta, metadata.partial, hasCompleteResponse {
+                    throw PartialScooterResponseError(failedSources: metadata.failedSources)
+                }
                 vehicles = response.vehicles
+                hasCompleteResponse = response.meta?.partial != true
                 queryBounds = bounds
                 distanceOrigin = origin
                 lastUpdated = Date()

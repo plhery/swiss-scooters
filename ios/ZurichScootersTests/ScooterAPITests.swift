@@ -12,6 +12,16 @@ final class ScooterAPITests: XCTestCase {
         XCTAssertTrue(response.vehicles.isEmpty)
     }
 
+    func testPartialResponseMetadataIsDecoded() async throws {
+        let data = Data(#"{"vehicles":[],"meta":{"partial":true,"failedSources":["national"]}}"#.utf8)
+        let api = makeAPI(responseStatus: 200, data: data)
+
+        let response = try await api.scooters(origin: origin, bounds: bounds)
+
+        XCTAssertTrue(response.meta?.partial == true)
+        XCTAssertEqual(response.meta?.failedSources, ["national"])
+    }
+
     func testHTTPStatusIsPreserved() async {
         let api = makeAPI(responseStatus: 503)
 

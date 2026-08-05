@@ -3,10 +3,9 @@ import SwiftUI
 import UIKit
 
 enum ScooterClusteringPolicy {
-    static let maximumClusterZoom = 15.0
-
-    static func shouldCluster(at zoomLevel: Double) -> Bool {
-        zoomLevel <= maximumClusterZoom
+    // Every scooter must retain its own pin, even when several pins overlap.
+    static func shouldCluster(at _: Double) -> Bool {
+        false
     }
 }
 
@@ -251,9 +250,9 @@ final class ScooterAnnotationView: MKAnnotationView {
     private func configureView() {
         bounds = CGRect(x: 0, y: 0, width: 36, height: 36)
         centerOffset = CGPoint(x: 0, y: -3)
-        collisionMode = .circle
-        displayPriority = .defaultHigh
-        clusteringIdentifier = Self.clusteringIdentifier
+        collisionMode = .none
+        displayPriority = .required
+        clusteringIdentifier = nil
         canShowCallout = false
 
         layer.cornerRadius = 18

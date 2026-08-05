@@ -66,6 +66,17 @@ struct Scooter: Decodable, Identifiable, Hashable, Sendable {
 
 struct ScooterResponse: Decodable, Sendable {
     let vehicles: [Scooter]
+    let meta: ScooterResponseMetadata?
+
+    init(vehicles: [Scooter], meta: ScooterResponseMetadata? = nil) {
+        self.vehicles = vehicles
+        self.meta = meta
+    }
+}
+
+struct ScooterResponseMetadata: Decodable, Sendable {
+    let partial: Bool
+    let failedSources: [String]
 }
 
 enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {

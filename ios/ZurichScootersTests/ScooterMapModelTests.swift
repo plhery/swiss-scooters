@@ -26,6 +26,34 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(loadingFinished)
     }
 
+    func testPartialRefreshKeepsLastCompleteScooterSet() async throws {
+        let completeScooters = [
+            scooter(id: "lime", provider: "lime"),
+            scooter(id: "hopp", provider: "hopp")
+        ]
+        let api = StubScooterAPI(response: ScooterResponse(vehicles: completeScooters))
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let initialLoadFinished = await waitUntil {
+            model.lastUpdated != nil && !model.isLoading
+        }
+        XCTAssertTrue(initialLoadFinished)
+
+        await api.setResponse(ScooterResponse(
+            vehicles: [scooter(id: "hopp-new", provider: "hopp")],
+            meta: ScooterResponseMetadata(partial: true, failedSources: ["national"])
+        ))
+        model.refresh()
+
+        let partialRefreshFinished = await waitUntil {
+            model.errorMessage != nil && !model.isLoading
+        }
+        XCTAssertTrue(partialRefreshFinished)
+        XCTAssertEqual(Set(model.mapScooters.map(\.id)), Set(completeScooters.map(\.id)))
+        XCTAssertTrue(model.errorMessage?.contains("last complete map") == true)
+    }
+
     func testBatteryFilterNormalizesValuePersistsItAndClearsHiddenSelection() async throws {
         let scooter = Scooter(
             provider: "lime",
@@ -111,6 +139,19 @@ final class ScooterMapModelTests: XCTestCase {
         )
     }
 
+    private func scooter(id: String, provider: String) -> Scooter {
+        Scooter(
+            provider: provider,
+            latitude: 47.3769,
+            longitude: 8.5417,
+            battery: 80,
+            rangeMeters: nil,
+            vehicleID: id,
+            deepLink: nil,
+            distanceMeters: 0
+        )
+    }
+
     private func isolatedDefaults() -> UserDefaults {
         let suiteName = "ZurichScootersTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -133,7 +174,7 @@ final class ScooterMapModelTests: XCTestCase {
 }
 
 private actor StubScooterAPI: ScooterAPIClient {
-    private let response: ScooterResponse
+    private var response: ScooterResponse
     private let delaysFirstRequest: Bool
     private var calls = 0
     private var cancellations = 0
@@ -154,6 +195,10 @@ private actor StubScooterAPI: ScooterAPIClient {
             }
         }
         return response
+    }
+
+    func setResponse(_ response: ScooterResponse) {
+        self.response = response
     }
 
     func snapshot() -> (calls: Int, cancellations: Int) {

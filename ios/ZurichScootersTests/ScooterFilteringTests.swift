@@ -57,9 +57,18 @@ final class ScooterFilteringTests: XCTestCase {
         XCTAssertTrue(summary.providerCounts.isEmpty)
     }
 
-    func testClusteringStopsAboveMaximumZoom() {
-        XCTAssertTrue(ScooterClusteringPolicy.shouldCluster(at: 15))
-        XCTAssertFalse(ScooterClusteringPolicy.shouldCluster(at: 15.01))
+    func testClusteringRemainsDisabledAtEveryZoom() {
+        XCTAssertFalse(ScooterClusteringPolicy.shouldCluster(at: 10))
+        XCTAssertFalse(ScooterClusteringPolicy.shouldCluster(at: 20))
+    }
+
+    @MainActor
+    func testAnnotationPinsCannotBeHiddenByCollisions() {
+        let view = ScooterAnnotationView(annotation: nil, reuseIdentifier: nil)
+
+        XCTAssertEqual(view.collisionMode, .none)
+        XCTAssertEqual(view.displayPriority, .required)
+        XCTAssertNil(view.clusteringIdentifier)
     }
 
     private func scooter(
