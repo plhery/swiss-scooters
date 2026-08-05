@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
+import {
+  createServiceWorkerReloader,
+  isAppUpdateMessage,
+} from "@/lib/serviceWorkerUpdates";
 
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const MIN_UPDATE_CHECK_GAP_MS = 30 * 1000;
-const RELOAD_GUARD_MS = 15 * 1000;
-const LAST_RELOAD_KEY = "scooters-pwa-last-reload";
 
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
@@ -18,24 +20,11 @@ export default function ServiceWorkerRegistration() {
 
     const hadController = Boolean(navigator.serviceWorker.controller);
     let registration: ServiceWorkerRegistration | null = null;
-    let reloading = false;
     let lastCheckAt = 0;
-
-    const reloadOnce = () => {
-      if (reloading) return;
-
-      const now = Date.now();
-      try {
-        const lastReloadAt = Number(sessionStorage.getItem(LAST_RELOAD_KEY) ?? 0);
-        if (now - lastReloadAt < RELOAD_GUARD_MS) return;
-        sessionStorage.setItem(LAST_RELOAD_KEY, String(now));
-      } catch {
-        // Private browsing modes may deny storage while reload still works.
-      }
-
-      reloading = true;
-      window.location.reload();
-    };
+    const reloadOnce = createServiceWorkerReloader({
+      storage: sessionStorage,
+      reload: () => window.location.reload(),
+    });
 
     const handleControllerChange = () => {
       // Claiming the first-ever installation should not reload a page that is
@@ -44,7 +33,7 @@ export default function ServiceWorkerRegistration() {
     };
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "APP_UPDATED") reloadOnce();
+      if (isAppUpdateMessage(event.data)) reloadOnce();
     };
 
     const checkForUpdate = async (force = false) => {

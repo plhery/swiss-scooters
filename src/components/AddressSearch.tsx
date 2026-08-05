@@ -128,6 +128,7 @@ export default function AddressSearch({ onSelect, onClear }: AddressSearchProps)
           type="search"
           value={query}
           placeholder={t('search.placeholder')}
+          aria-label={t('search.placeholder')}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={expanded}

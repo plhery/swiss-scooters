@@ -16,6 +16,7 @@ import type { MapBounds, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
 import type { AddressResult } from '@/components/AddressSearch';
+import { shouldClusterAtZoom } from '@/lib/clustering';
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type FormatNumber = (value: number, options?: Intl.NumberFormatOptions) => string;
@@ -146,8 +147,6 @@ const TILE_URLS: Record<string, string> = {
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
   light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
 };
-
-const MAX_CLUSTER_ZOOM = 15;
 
 function formatDistance(m: number, t: Translate, formatNumber: FormatNumber): string {
   return m < 1000
@@ -355,7 +354,16 @@ const VehicleMarkers = memo(function VehicleMarkers({
     zoomend: event => setZoom(event.target.getZoom()),
   });
 
-  const shouldCluster = zoom <= MAX_CLUSTER_ZOOM;
+  useEffect(() => {
+    const container = map.getContainer();
+    container.dataset.zoom = String(zoom);
+
+    return () => {
+      delete container.dataset.zoom;
+    };
+  }, [map, zoom]);
+
+  const shouldCluster = shouldClusterAtZoom(zoom);
 
   const groups = useMemo(() => {
     if (!shouldCluster) return [];

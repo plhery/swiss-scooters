@@ -89,6 +89,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [locationDenied, setLocationDenied] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [responseMeta, setResponseMeta] = useState<ScooterResponse['meta'] | null>(null);
   const [controlsExpanded, setControlsExpanded] = useState(false);
@@ -139,9 +140,11 @@ export default function Home() {
             : prev;
         });
         setLocating(false);
+        setLocationDenied(false);
       },
-      () => {
+      (positionError) => {
         setLocating(false);
+        setLocationDenied(positionError.code === positionError.PERMISSION_DENIED);
       },
       { timeout: 20000, enableHighAccuracy: true, maximumAge: 5000 }
     );
@@ -272,8 +275,12 @@ export default function Home() {
         setUserLocation(coords);
         focusOn(coords);
         setLocating(false);
+        setLocationDenied(false);
       },
-      () => setLocating(false),
+      (positionError) => {
+        setLocating(false);
+        setLocationDenied(positionError.code === positionError.PERMISSION_DENIED);
+      },
       { timeout: 10000, enableHighAccuracy: true, maximumAge: 10000 }
     );
   }, [userLocation]);
@@ -333,6 +340,12 @@ export default function Home() {
         <div className="toast glass toast-error" role="alert">
           {t('errors.fetchScooters')}
           <button onClick={() => void fetchScooters()}>{t('status.retry')}</button>
+        </div>
+      )}
+
+      {locationDenied && !locating && !error && (
+        <div className="toast glass toast-location" role="status">
+          {t('errors.locationDenied')}
         </div>
       )}
 
