@@ -10,6 +10,8 @@ struct ScooterControlDock: View {
     @State private var batteryDraft: Double
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let onCollapsedHeightChange: (CGFloat) -> Void
+    private let surfaceBottomPadding: CGFloat = 2
+    private let shadowOverflow: CGFloat = 24
 
     init(
         model: ScooterMapModel,
@@ -23,52 +25,73 @@ struct ScooterControlDock: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .top) {
             VStack(spacing: 0) {
-                dragHandle
-                summaryHeader
-                providerPicker
+                VStack(spacing: 0) {
+                    draggableHeader
+                    providerPicker
+                }
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    guard abs(collapsedContentHeight - height) > 0.5 else { return }
+                    collapsedContentHeight = height
+                    onCollapsedHeightChange(height + surfaceBottomPadding)
+                }
+
+                VStack(spacing: 18) {
+                    if let scooter = model.selectedScooter {
+                        selectedScooterActions(scooter)
+                    }
+
+                    batteryFilter
+                    mapStylePicker
+                    attribution
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 7)
+                .padding(.bottom, 18)
+                .opacity(expandedContentOpacity)
+                .allowsHitTesting(isExpanded && !isDragging)
+                .accessibilityHidden(!isExpanded)
             }
+            .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height
             } action: { height in
-                guard abs(collapsedContentHeight - height) > 0.5 else { return }
-                collapsedContentHeight = height
-                onCollapsedHeightChange(height + 2)
+                fullContentHeight = height
             }
-
-            VStack(spacing: 18) {
-                if let scooter = model.selectedScooter {
-                    selectedScooterActions(scooter)
-                }
-
-                batteryFilter
-                mapStylePicker
-                attribution
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 7)
-            .padding(.bottom, 18)
-            .opacity(expandedContentOpacity)
-            .allowsHitTesting(isExpanded && dragTranslation == 0)
-            .accessibilityHidden(!isExpanded)
+            .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .padding(.bottom, surfaceBottomPadding)
+            .glassEffect(
+                .regular,
+                in: RoundedRectangle(cornerRadius: 30, style: .continuous)
+            )
+            .shadow(color: .black.opacity(0.14), radius: 18, y: 8)
+            .offset(y: shadowOverflow + drawerOffset)
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.height
-        } action: { height in
-            fullContentHeight = height
-        }
-        .frame(height: visibleDrawerHeight, alignment: .top)
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .padding(.bottom, 2)
-        .glassEffect(
-            .regular,
-            in: RoundedRectangle(cornerRadius: 30, style: .continuous)
-        )
-        .shadow(color: .black.opacity(0.14), radius: 18, y: 8)
+        .frame(height: drawerViewportHeight, alignment: .top)
+        .clipped()
         .opacity(drawerTravel == 0 ? 0 : 1)
         .animation(.snappy(duration: 0.3), value: model.selectedScooterID)
+    }
+
+    private var draggableHeader: some View {
+        VStack(spacing: 0) {
+            dragHandle
+            summaryHeader
+        }
+        .contentShape(Rectangle())
+        .gesture(headerGesture)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            isExpanded
+                ? String(localized: "Collapse scooter controls")
+                : String(localized: "Expand scooter controls")
+        )
+        .accessibilityHint(String(localized: "Tap or drag vertically"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { toggleExpanded() }
     }
 
     private var dragHandle: some View {
@@ -83,41 +106,25 @@ struct ScooterControlDock: View {
         .frame(maxWidth: .infinity)
         .frame(height: 30)
         .contentShape(Rectangle())
-        .gesture(handleGesture)
         .animation(.easeOut(duration: 0.12), value: isDragging)
-        .accessibilityLabel(
-            isExpanded ? String(localized: "Collapse controls") : String(localized: "Expand controls")
-        )
-        .accessibilityHint(String(localized: "Tap or drag vertically"))
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { toggleExpanded() }
     }
 
-    private var handleGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+    private var headerGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .onChanged { value in
                 dragTranslation = value.translation.height
             }
             .onEnded { value in
-                let verticalDistance = value.translation.height
-                let horizontalDistance = value.translation.width
-
-                if abs(verticalDistance) < 8, abs(horizontalDistance) < 8 {
-                    finishDrag(expanded: !isExpanded)
-                } else {
-                    let restingHeight = isExpanded ? fullContentHeight : collapsedContentHeight
-                    let projectedHeight = min(
-                        fullContentHeight,
-                        max(
-                            collapsedContentHeight,
-                            restingHeight - value.predictedEndTranslation.height
-                        )
-                    )
-                    finishDrag(
-                        expanded: projectedHeight > collapsedContentHeight + drawerTravel * 0.5
-                    )
-                }
+                let restingOffset = isExpanded ? 0 : drawerTravel
+                let projectedOffset = min(
+                    drawerTravel,
+                    max(0, restingOffset + value.predictedEndTranslation.height)
+                )
+                finishDrag(
+                    expanded: projectedOffset < drawerTravel * 0.5
+                )
             }
+            .exclusively(before: TapGesture().onEnded { toggleExpanded() })
     }
 
     private var isDragging: Bool {
@@ -125,21 +132,27 @@ struct ScooterControlDock: View {
     }
 
     private var drawerTravel: CGFloat {
-        max(0, fullContentHeight - collapsedContentHeight)
+        guard fullContentHeight > 0, collapsedContentHeight > 0 else { return 0 }
+        return max(0, fullContentHeight - collapsedContentHeight)
     }
 
-    private var visibleDrawerHeight: CGFloat {
-        guard drawerTravel > 0 else { return fullContentHeight }
-        let restingHeight = isExpanded ? fullContentHeight : collapsedContentHeight
+    private var drawerOffset: CGFloat {
+        guard drawerTravel > 0 else { return 0 }
+        let restingOffset = isExpanded ? 0 : drawerTravel
         return min(
-            fullContentHeight,
-            max(collapsedContentHeight, restingHeight - dragTranslation)
+            drawerTravel,
+            max(0, restingOffset + dragTranslation)
         )
+    }
+
+    private var drawerViewportHeight: CGFloat {
+        guard fullContentHeight > 0 else { return 0 }
+        return fullContentHeight + surfaceBottomPadding + shadowOverflow
     }
 
     private var expansionProgress: CGFloat {
         guard drawerTravel > 0 else { return 0 }
-        return (visibleDrawerHeight - collapsedContentHeight) / drawerTravel
+        return 1 - drawerOffset / drawerTravel
     }
 
     private var expandedContentOpacity: Double {
@@ -147,33 +160,25 @@ struct ScooterControlDock: View {
     }
 
     private var summaryHeader: some View {
-        Button(action: toggleExpanded) {
-            HStack(spacing: 12) {
-                if let scooter = model.selectedScooter {
-                    selectedSummary(scooter)
-                } else {
-                    countSummary
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 36)
-                    .rotationEffect(.degrees(180 * expansionProgress))
-                    .glassEffect(.clear.interactive(), in: Circle())
+        HStack(spacing: 12) {
+            if let scooter = model.selectedScooter {
+                selectedSummary(scooter)
+            } else {
+                countSummary
             }
-            .contentShape(Rectangle())
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.up")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 36, height: 36)
+                .rotationEffect(.degrees(180 * expansionProgress))
+                .glassEffect(.clear.interactive(), in: Circle())
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .padding(.horizontal, 16)
         .padding(.bottom, 10)
-        .accessibilityLabel(
-            isExpanded
-                ? String(localized: "Collapse scooter controls")
-                : String(localized: "Expand scooter controls")
-        )
     }
 
     private var countSummary: some View {
