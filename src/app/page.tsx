@@ -12,6 +12,7 @@ import {
   serializeClientParams,
   type ClientParams,
 } from '@/lib/clientParams';
+import { scooterDataHealthNotice } from '@/lib/dataHealth';
 import {
   boundsContainBounds,
   boundsContainPoint,
@@ -85,6 +86,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [responseMeta, setResponseMeta] = useState<ScooterResponse['meta'] | null>(null);
   const [controlsExpanded, setControlsExpanded] = useState(false);
   const initializedRef = useRef(false);
   const hasFocusedInitialLocationRef = useRef(false);
@@ -188,7 +190,9 @@ export default function Home() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ScooterResponse = await res.json();
       setVehicles(data.vehicles);
-      setLastUpdated(new Date());
+      setResponseMeta(data.meta ?? null);
+      const generatedAt = data.meta?.generatedAt ? new Date(data.meta.generatedAt) : new Date();
+      setLastUpdated(Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt);
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       console.error('Failed to fetch scooters:', e);
@@ -271,6 +275,11 @@ export default function Home() {
     return { providerCounts, visibleVehicles };
   }, [vehicles, viewportBounds, minBattery, enabledProviders]);
 
+  const dataHealthNotice = useMemo(
+    () => scooterDataHealthNotice(responseMeta, vehicles.length),
+    [responseMeta, vehicles.length]
+  );
+
   return (
     <div className="app-shell">
       <MapWrapper
@@ -311,6 +320,7 @@ export default function Home() {
         totalCount={viewportData.visibleVehicles.length}
         loading={loading}
         lastUpdated={lastUpdated}
+        dataHealthNotice={dataHealthNotice}
         tileLayer={tileLayer}
         onMinBatteryChange={setMinBattery}
         onProviderSelect={handleProviderSelect}

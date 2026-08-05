@@ -54,6 +54,29 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(model.errorMessage?.contains("last complete map") == true)
     }
 
+    func testAcceptedDegradedResponseExposesADataHealthMessage() async throws {
+        let response = ScooterResponse(
+            vehicles: [scooter(id: "lime", provider: "lime")],
+            meta: ScooterResponseMetadata(
+                partial: true,
+                stale: true,
+                failedSources: ["hopp"],
+                truncated: true,
+                totalVehicles: 5_100
+            )
+        )
+        let model = makeModel(api: StubScooterAPI(response: response))
+
+        model.refresh()
+
+        let loadingFinished = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loadingFinished)
+        XCTAssertEqual(
+            model.dataHealthMessage,
+            "Showing cached data · Some providers are unavailable · Showing \(1.formatted()) of \(5_100.formatted()) results"
+        )
+    }
+
     func testBatteryFilterNormalizesValuePersistsItAndClearsHiddenSelection() async throws {
         let scooter = Scooter(
             provider: "lime",

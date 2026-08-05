@@ -12,14 +12,17 @@ final class ScooterAPITests: XCTestCase {
         XCTAssertTrue(response.vehicles.isEmpty)
     }
 
-    func testPartialResponseMetadataIsDecoded() async throws {
-        let data = Data(#"{"vehicles":[],"meta":{"partial":true,"failedSources":["national"]}}"#.utf8)
+    func testResponseHealthMetadataIsDecoded() async throws {
+        let data = Data(#"{"vehicles":[],"meta":{"partial":true,"stale":true,"failedSources":["national"],"truncated":true,"totalVehicles":6200}}"#.utf8)
         let api = makeAPI(responseStatus: 200, data: data)
 
         let response = try await api.scooters(origin: origin, bounds: bounds)
 
         XCTAssertTrue(response.meta?.partial == true)
+        XCTAssertTrue(response.meta?.stale == true)
         XCTAssertEqual(response.meta?.failedSources, ["national"])
+        XCTAssertTrue(response.meta?.truncated == true)
+        XCTAssertEqual(response.meta?.totalVehicles, 6_200)
     }
 
     func testHTTPStatusIsPreserved() async {

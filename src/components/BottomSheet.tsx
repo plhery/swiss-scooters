@@ -11,6 +11,7 @@ interface BottomSheetProps {
   totalCount: number;
   loading: boolean;
   lastUpdated: Date | null;
+  dataHealthNotice: string | null;
   tileLayer: 'dark' | 'light' | 'osm';
   onMinBatteryChange: (b: number) => void;
   onProviderSelect: (p: string) => void;
@@ -58,6 +59,7 @@ export default function BottomSheet({
   totalCount,
   loading,
   lastUpdated,
+  dataHealthNotice,
   tileLayer,
   onMinBatteryChange,
   onProviderSelect,
@@ -198,6 +200,12 @@ export default function BottomSheet({
                   {updatedLabel}
                 </span>
               </div>
+              {dataHealthNotice && (
+                <div className="sheet-health" role="status">
+                  <span aria-hidden="true">!</span>
+                  {dataHealthNotice}
+                </div>
+              )}
             </div>
             <div className="sheet-chevron" aria-hidden="true">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

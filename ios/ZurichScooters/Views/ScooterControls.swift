@@ -189,6 +189,14 @@ struct ScooterControlDock: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if let dataHealthMessage = model.dataHealthMessage {
+                Label(dataHealthMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Data status: \(dataHealthMessage)")
+            }
         }
     }
 

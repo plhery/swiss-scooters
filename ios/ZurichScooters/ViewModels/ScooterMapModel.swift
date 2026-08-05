@@ -79,6 +79,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var isLocating = false
     var errorMessage: String?
     var lastUpdated: Date?
+    private(set) var responseMetadata: ScooterResponseMetadata?
     var userLocation: GeoPoint?
     private(set) var locationAuthorizationIssue: LocationAuthorizationIssue?
     var selectedProvider: ScooterProvider? {
@@ -158,6 +159,23 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     var visibleCount: Int { visibleScooterCount }
+
+    var dataHealthMessage: String? {
+        guard let responseMetadata else { return nil }
+
+        var messages: [String] = []
+        if responseMetadata.stale {
+            messages.append("Showing cached data")
+        }
+        if responseMetadata.partial {
+            messages.append("Some providers are unavailable")
+        }
+        if responseMetadata.truncated {
+            let total = responseMetadata.totalVehicles ?? vehicles.count
+            messages.append("Showing \(vehicles.count.formatted()) of \(total.formatted()) results")
+        }
+        return messages.isEmpty ? nil : messages.joined(separator: " · ")
+    }
 
     func count(for provider: ScooterProvider) -> Int {
         visibleProviderCounts[provider, default: 0]
@@ -300,6 +318,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                     throw PartialScooterResponseError(failedSources: metadata.failedSources)
                 }
                 vehicles = response.vehicles
+                responseMetadata = response.meta
                 hasCompleteResponse = response.meta?.partial != true
                 queryBounds = bounds
                 distanceOrigin = origin

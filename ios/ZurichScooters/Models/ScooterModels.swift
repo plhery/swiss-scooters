@@ -76,7 +76,41 @@ struct ScooterResponse: Decodable, Sendable {
 
 struct ScooterResponseMetadata: Decodable, Sendable {
     let partial: Bool
+    let stale: Bool
     let failedSources: [String]
+    let truncated: Bool
+    let totalVehicles: Int?
+
+    init(
+        partial: Bool,
+        stale: Bool = false,
+        failedSources: [String],
+        truncated: Bool = false,
+        totalVehicles: Int? = nil
+    ) {
+        self.partial = partial
+        self.stale = stale
+        self.failedSources = failedSources
+        self.truncated = truncated
+        self.totalVehicles = totalVehicles
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case partial
+        case stale
+        case failedSources
+        case truncated
+        case totalVehicles
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        partial = try container.decodeIfPresent(Bool.self, forKey: .partial) ?? false
+        stale = try container.decodeIfPresent(Bool.self, forKey: .stale) ?? false
+        failedSources = try container.decodeIfPresent([String].self, forKey: .failedSources) ?? []
+        truncated = try container.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
+        totalVehicles = try container.decodeIfPresent(Int.self, forKey: .totalVehicles)
+    }
 }
 
 enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {

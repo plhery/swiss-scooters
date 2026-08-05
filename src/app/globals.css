@@ -148,6 +148,30 @@ button {
   margin-top: 1px;
 }
 
+.sheet-health {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(430px, calc(100vw - 92px));
+  margin-top: 4px;
+  color: #9a5b00;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.sheet-health > span {
+  width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(255, 149, 0, 0.16);
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .sheet-chevron {
   width: 34px;
   height: 34px;
