@@ -3,9 +3,10 @@ import SwiftUI
 import UIKit
 
 enum ScooterClusteringPolicy {
-    // Every scooter must retain its own pin, even when several pins overlap.
-    static func shouldCluster(at _: Double) -> Bool {
-        false
+    static let maximumClusterZoom = 15.0
+
+    static func shouldCluster(at zoomLevel: Double) -> Bool {
+        zoomLevel <= maximumClusterZoom
     }
 }
 
@@ -133,10 +134,14 @@ struct ScooterMapView: UIViewRepresentable {
             guard shouldCluster != clusteringEnabled else { return }
             clusteringEnabled = shouldCluster
 
-            for case let annotation as ScooterMapAnnotation in mapView.annotations {
-                mapView.view(for: annotation)?.clusteringIdentifier = shouldCluster
-                    ? ScooterAnnotationView.clusteringIdentifier
-                    : nil
+            let scooterAnnotations = mapView.annotations.compactMap { annotation in
+                annotation as? ScooterMapAnnotation
+            }
+            if !scooterAnnotations.isEmpty {
+                // Re-adding the annotations makes MapKit immediately rebuild or
+                // dissolve clusters when the zoom threshold is crossed.
+                mapView.removeAnnotations(scooterAnnotations)
+                mapView.addAnnotations(scooterAnnotations)
             }
         }
 
@@ -167,11 +172,9 @@ struct ScooterMapView: UIViewRepresentable {
                 withIdentifier: ScooterAnnotationView.reuseIdentifier,
                 for: annotation
             ) as! ScooterAnnotationView
-            view.clusteringIdentifier = ScooterClusteringPolicy.shouldCluster(
+            view.setClusteringEnabled(ScooterClusteringPolicy.shouldCluster(
                 at: Self.zoomLevel(on: mapView)
-            )
-                ? ScooterAnnotationView.clusteringIdentifier
-                : nil
+            ))
             view.refreshAppearance()
             return view
         }
@@ -250,9 +253,7 @@ final class ScooterAnnotationView: MKAnnotationView {
     private func configureView() {
         bounds = CGRect(x: 0, y: 0, width: 36, height: 36)
         centerOffset = CGPoint(x: 0, y: -3)
-        collisionMode = .none
-        displayPriority = .required
-        clusteringIdentifier = nil
+        setClusteringEnabled(false)
         canShowCallout = false
 
         layer.cornerRadius = 18
@@ -275,6 +276,12 @@ final class ScooterAnnotationView: MKAnnotationView {
 
         isAccessibilityElement = true
         accessibilityTraits = .button
+    }
+
+    func setClusteringEnabled(_ enabled: Bool) {
+        clusteringIdentifier = enabled ? Self.clusteringIdentifier : nil
+        collisionMode = enabled ? .circle : .none
+        displayPriority = enabled ? .defaultHigh : .required
     }
 
     func refreshAppearance() {
