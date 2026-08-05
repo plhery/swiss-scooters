@@ -345,6 +345,12 @@ button {
   border-radius: 50%;
 }
 
+.chip-dot-all {
+  background: var(--blue);
+  box-shadow: -3px 0 0 color-mix(in srgb, var(--blue) 52%, transparent),
+    3px 0 0 color-mix(in srgb, var(--blue) 74%, transparent);
+}
+
 .chip-count {
   color: var(--ink-2);
   font-weight: 500;

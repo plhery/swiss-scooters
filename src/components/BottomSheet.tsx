@@ -14,6 +14,7 @@ interface BottomSheetProps {
   dataHealthNotice: string | null;
   tileLayer: 'dark' | 'light' | 'osm';
   onMinBatteryChange: (b: number) => void;
+  onShowAllProviders: () => void;
   onProviderSelect: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
   onExpandedChange: (expanded: boolean) => void;
@@ -78,6 +79,7 @@ export default function BottomSheet({
   dataHealthNotice,
   tileLayer,
   onMinBatteryChange,
+  onShowAllProviders,
   onProviderSelect,
   onTileLayerChange,
   onExpandedChange,
@@ -86,6 +88,14 @@ export default function BottomSheet({
   const [peekH, setPeekH] = useState(160);
   const desktopPanel = useDesktopPanel();
   const controlsVisible = desktopPanel || expanded;
+  const providerKeys = Object.keys(PROVIDERS);
+  const allProvidersSelected =
+    enabledProviders.size === providerKeys.length &&
+    providerKeys.every((provider) => enabledProviders.has(provider));
+  const allProviderCount = providerKeys.reduce(
+    (count, provider) => count + (providerCounts[provider] ?? 0),
+    0
+  );
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
@@ -241,19 +251,29 @@ export default function BottomSheet({
           role="group"
           aria-label="Filter scooters by provider"
         >
+          <button
+            className={`chip ${allProvidersSelected ? '' : 'chip-off'}`}
+            style={allProvidersSelected ? { background: 'rgba(10, 132, 255, 0.12)' } : undefined}
+            onClick={onShowAllProviders}
+            aria-pressed={allProvidersSelected}
+            aria-label={`All providers, ${allProviderCount}. Show all.`}
+            title="Show all providers"
+          >
+            <span className="chip-dot chip-dot-all" aria-hidden="true" />
+            All
+            <span className="chip-count">{allProviderCount}</span>
+          </button>
           {Object.entries(PROVIDERS).map(([key, cfg]) => {
-            const on = enabledProviders.has(key);
-            const onlyProvider = on && enabledProviders.size === 1;
-            const clickAction = onlyProvider ? 'show all' : 'show only';
+            const onlyProvider = enabledProviders.size === 1 && enabledProviders.has(key);
             return (
               <button
                 key={key}
-                className={`chip ${on ? '' : 'chip-off'}`}
-                style={on ? { background: `${cfg.color}1f` } : undefined}
+                className={`chip ${onlyProvider ? '' : 'chip-off'}`}
+                style={onlyProvider ? { background: `${cfg.color}1f` } : undefined}
                 onClick={() => onProviderSelect(key)}
-                aria-pressed={on}
-                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. ${clickAction}.`}
-                title={onlyProvider ? 'Show all providers' : `Show only ${cfg.name}`}
+                aria-pressed={onlyProvider}
+                aria-label={`${cfg.name}, ${providerCounts[key] ?? 0}. Show only.`}
+                title={`Show only ${cfg.name}`}
               >
                 <span className="chip-dot" style={{ background: cfg.color }} aria-hidden="true" />
                 {cfg.name}

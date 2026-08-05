@@ -181,6 +181,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         visibleProviderCounts[provider, default: 0]
     }
 
+    var allProviderCount: Int {
+        visibleProviderCounts.values.reduce(0, +)
+    }
+
     func formattedDistance(for scooter: Scooter) -> String? {
         guard let userLocation else { return nil }
         return scooter.formattedDistance(from: userLocation)
@@ -227,8 +231,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         scheduleFetch(for: viewport.expanded(by: 0.25), debounce: false)
     }
 
-    func toggle(provider: ScooterProvider) {
-        selectedProvider = selectedProvider == provider ? nil : provider
+    func showAllProviders() {
+        selectedProvider = nil
+        clearSelectionIfHidden()
+    }
+
+    func select(provider: ScooterProvider) {
+        selectedProvider = provider
         clearSelectionIfHidden()
     }
 

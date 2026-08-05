@@ -211,11 +211,11 @@ export default function Home() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleProviderSelect = (p: string) => {
-    setEnabledProviders(prev =>
-      prev.size === 1 && prev.has(p)
-        ? new Set(Object.keys(PROVIDERS))
-        : new Set([p])
-    );
+    setEnabledProviders(new Set([p]));
+  };
+
+  const handleShowAllProviders = () => {
+    setEnabledProviders(new Set(Object.keys(PROVIDERS)));
   };
 
   const handleViewportChange = useCallback((bounds: MapBounds) => {
@@ -323,6 +323,7 @@ export default function Home() {
         dataHealthNotice={dataHealthNotice}
         tileLayer={tileLayer}
         onMinBatteryChange={setMinBattery}
+        onShowAllProviders={handleShowAllProviders}
         onProviderSelect={handleProviderSelect}
         onTileLayerChange={setTileLayer}
         onExpandedChange={setControlsExpanded}

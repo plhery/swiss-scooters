@@ -228,6 +228,7 @@ struct ScooterControlDock: View {
         GlassEffectContainer(spacing: 8) {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
+                    allProvidersButton
                     ForEach(ScooterProvider.allCases) { provider in
                         providerButton(provider)
                     }
@@ -242,12 +243,44 @@ struct ScooterControlDock: View {
         .padding(.bottom, 11)
     }
 
+    private var allProvidersButton: some View {
+        let isSelected = model.selectedProvider == nil
+
+        return Button {
+            model.showAllProviders()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "circle.grid.2x2.fill")
+                    .foregroundStyle(.blue)
+                Text("All")
+                    .fontWeight(.semibold)
+                Text(model.allProviderCount, format: .number)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .font(.caption)
+            .padding(.horizontal, 11)
+            .frame(minHeight: 40)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(
+            .regular
+                .tint(isSelected ? Color.blue.opacity(0.22) : nil)
+                .interactive(),
+            in: Capsule()
+        )
+        .opacity(isSelected ? 1 : 0.48)
+        .accessibilityLabel(
+            "All providers, \(model.allProviderCount) scooters, \(isSelected ? "selected" : "not selected")"
+        )
+    }
+
     private func providerButton(_ provider: ScooterProvider) -> some View {
         let isSelected = model.selectedProvider == provider
         let isDimmed = model.selectedProvider != nil && !isSelected
 
         return Button {
-            model.toggle(provider: provider)
+            model.select(provider: provider)
         } label: {
             HStack(spacing: 6) {
                 Circle()
