@@ -674,6 +674,50 @@ button {
   text-decoration: none;
 }
 
+.map-zoom-controls {
+  position: absolute;
+  z-index: 1000;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(24, 28, 34, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+
+.map-zoom-controls button {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: none;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--blue);
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 40px;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.map-zoom-controls button + button {
+  border-top: 0.5px solid var(--hairline);
+}
+
+.map-zoom-controls button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid rgba(10, 132, 255, 0.4);
+  outline-offset: -3px;
+}
+
+.map-zoom-controls button:disabled {
+  background: rgba(245, 245, 245, 0.78);
+  color: var(--ink-3);
+}
+
 .leaflet-marker-icon {
   will-change: transform;
 }

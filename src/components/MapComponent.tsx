@@ -82,6 +82,50 @@ function ViewportController({
   return null;
 }
 
+function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
+  const controlRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!controlRef.current) return;
+    L.DomEvent.disableClickPropagation(controlRef.current);
+    L.DomEvent.disableScrollPropagation(controlRef.current);
+  }, []);
+
+  return (
+    <div ref={controlRef} className="map-zoom-controls" role="group" aria-label="Map zoom">
+      <button
+        type="button"
+        aria-label="Zoom in"
+        title="Zoom in"
+        onClick={() => mapRef.current?.zoomIn()}
+      >
+        <span aria-hidden="true">+</span>
+      </button>
+      <button
+        type="button"
+        aria-label="Zoom out"
+        title="Zoom out"
+        onClick={() => mapRef.current?.zoomOut()}
+      >
+        <span aria-hidden="true">−</span>
+      </button>
+    </div>
+  );
+}
+
+function MapReady({ mapRef }: { mapRef: { current: L.Map | null } }) {
+  const map = useMap();
+
+  useEffect(() => {
+    mapRef.current = map;
+    return () => {
+      mapRef.current = null;
+    };
+  }, [map, mapRef]);
+
+  return null;
+}
+
 const TILE_URLS: Record<string, string> = {
   osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -353,6 +397,7 @@ export default function MapComponent({
   focusVersion,
   onViewportChange,
 }: MapComponentProps) {
+  const mapRef = useRef<L.Map | null>(null);
   // Pre-create all provider icons (stable across renders)
   const iconMap = useMemo(() => {
     const icons: Record<string, L.DivIcon> = {};
@@ -365,41 +410,45 @@ export default function MapComponent({
   const userLocationIcon = useMemo(() => createUserLocationIcon(), []);
 
   return (
-    <MapContainer
-      center={origin}
-      zoom={17}
-      className="w-full h-full"
-      zoomControl={false}
-      attributionControl={false}
-      preferCanvas
-      zoomAnimation
-      fadeAnimation
-      markerZoomAnimation
-    >
-      <AttributionControl position="topright" prefix={false} />
-      <TileLayer
-        key={tileLayer}
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a> · Mobility data: <a href="https://sharedmobility.ch/">SFOE Shared Mobility</a>'
-        url={TILE_URLS[tileLayer]}
-        subdomains="abc"
-        updateWhenZooming={false}
-        keepBuffer={2}
-      />
-
-      <ViewportController
-        focusLocation={focusLocation}
-        focusVersion={focusVersion}
-        onViewportChange={onViewportChange}
-      />
-
-      {userLocation && (
-        <UserLocationMarker
-          position={userLocation}
-          icon={userLocationIcon}
+    <>
+      <MapContainer
+        center={origin}
+        zoom={17}
+        className="w-full h-full"
+        zoomControl={false}
+        attributionControl={false}
+        preferCanvas
+        zoomAnimation
+        fadeAnimation
+        markerZoomAnimation
+      >
+        <MapReady mapRef={mapRef} />
+        <AttributionControl position="topright" prefix={false} />
+        <TileLayer
+          key={tileLayer}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a> · Mobility data: <a href="https://sharedmobility.ch/">SFOE Shared Mobility</a>'
+          url={TILE_URLS[tileLayer]}
+          subdomains="abc"
+          updateWhenZooming={false}
+          keepBuffer={2}
         />
-      )}
 
-      <VehicleMarkers vehicles={vehicles} icons={iconMap} />
-    </MapContainer>
+        <ViewportController
+          focusLocation={focusLocation}
+          focusVersion={focusVersion}
+          onViewportChange={onViewportChange}
+        />
+
+        {userLocation && (
+          <UserLocationMarker
+            position={userLocation}
+            icon={userLocationIcon}
+          />
+        )}
+
+        <VehicleMarkers vehicles={vehicles} icons={iconMap} />
+      </MapContainer>
+      <MapZoomControls mapRef={mapRef} />
+    </>
   );
 }
