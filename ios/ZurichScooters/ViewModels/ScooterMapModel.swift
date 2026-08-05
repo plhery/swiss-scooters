@@ -27,6 +27,24 @@ enum ScooterLocationPolicy {
     }
 }
 
+enum LocationAuthorizationIssue: Equatable {
+    case denied
+    case restricted
+
+    var message: String {
+        switch self {
+        case .denied:
+            "Location access is off. Enable it in Settings to find scooters near you."
+        case .restricted:
+            "Location access is restricted on this device. You can still browse the map manually."
+        }
+    }
+
+    var canOpenSettings: Bool {
+        self == .denied
+    }
+}
+
 @MainActor
 @Observable
 final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
@@ -51,6 +69,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var errorMessage: String?
     var lastUpdated: Date?
     var userLocation: GeoPoint?
+    private(set) var locationAuthorizationIssue: LocationAuthorizationIssue?
     var selectedProvider: ScooterProvider? {
         didSet {
             rebuildMapScooters()
@@ -294,16 +313,23 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     private func requestLocationAccess() {
         switch locationManager.authorizationStatus {
         case .notDetermined:
+            locationAuthorizationIssue = nil
             isLocating = true
             locationManager.requestWhenInUseAuthorization()
             beginLocationTimeout()
         case .authorizedAlways, .authorizedWhenInUse:
+            locationAuthorizationIssue = nil
             isLocating = true
             locationManager.startUpdatingLocation()
             if userLocation == nil {
                 beginLocationTimeout()
             }
-        case .denied, .restricted:
+        case .denied:
+            locationAuthorizationIssue = .denied
+            isLocating = false
+            finishLocationAttemptWithoutFix()
+        case .restricted:
+            locationAuthorizationIssue = .restricted
             isLocating = false
             finishLocationAttemptWithoutFix()
         @unknown default:
@@ -315,15 +341,22 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
+            locationAuthorizationIssue = nil
             isLocating = true
             manager.startUpdatingLocation()
             if userLocation == nil {
                 beginLocationTimeout()
             }
-        case .denied, .restricted:
+        case .denied:
+            locationAuthorizationIssue = .denied
+            isLocating = false
+            finishLocationAttemptWithoutFix()
+        case .restricted:
+            locationAuthorizationIssue = .restricted
             isLocating = false
             finishLocationAttemptWithoutFix()
         case .notDetermined:
+            locationAuthorizationIssue = nil
             break
         @unknown default:
             isLocating = false
@@ -371,6 +404,16 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if let locationError = error as? CLError, locationError.code == .denied {
+            switch manager.authorizationStatus {
+            case .denied:
+                locationAuthorizationIssue = .denied
+            case .restricted:
+                locationAuthorizationIssue = .restricted
+            default:
+                break
+            }
+        }
         isLocating = false
         finishLocationAttemptWithoutFix()
     }

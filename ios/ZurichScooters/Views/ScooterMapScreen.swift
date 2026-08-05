@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ScooterMapScreen: View {
     @State private var model = ScooterMapModel()
@@ -62,15 +63,33 @@ struct ScooterMapScreen: View {
             if let errorMessage = model.errorMessage {
                 MapStatusBanner(
                     message: errorMessage,
-                    isError: true,
-                    retry: model.refresh
+                    style: .error,
+                    actionTitle: "Retry",
+                    action: model.refresh
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else if model.locationAuthorizationIssue == .denied {
+                MapStatusBanner(
+                    message: LocationAuthorizationIssue.denied.message,
+                    style: .location,
+                    actionTitle: "Settings",
+                    action: openLocationSettings
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else if model.locationAuthorizationIssue == .restricted {
+                MapStatusBanner(
+                    message: LocationAuthorizationIssue.restricted.message,
+                    style: .location,
+                    actionTitle: nil,
+                    action: nil
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             } else if model.isLocating {
                 MapStatusBanner(
                     message: "Finding your location…",
-                    isError: false,
-                    retry: nil
+                    style: .progress,
+                    actionTitle: nil,
+                    action: nil
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -80,7 +99,13 @@ struct ScooterMapScreen: View {
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity)
         .animation(.snappy(duration: 0.3), value: model.errorMessage)
+        .animation(.snappy(duration: 0.3), value: model.locationAuthorizationIssue)
         .animation(.snappy(duration: 0.3), value: model.isLocating)
+    }
+
+    private func openLocationSettings() {
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(settingsURL)
     }
 
     private func handleSelection(_ id: String?) {

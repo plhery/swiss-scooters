@@ -4,13 +4,26 @@ protocol ScooterAPIClient: Sendable {
     func scooters(origin: GeoPoint, bounds: GeoBounds) async throws -> ScooterResponse
 }
 
+protocol ScooterNetworkSession: Sendable {
+    func scooterData(for request: URLRequest) async throws -> (Data, URLResponse)
+}
+
+extension URLSession: ScooterNetworkSession {
+    func scooterData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await data(for: request)
+    }
+}
+
 actor ScooterAPI: ScooterAPIClient {
     static let productionBaseURL = URL(string: "https://zurich-scooter.plhery.com")!
 
     private let baseURL: URL
-    private let session: URLSession
+    private let session: any ScooterNetworkSession
 
-    init(baseURL: URL = productionBaseURL, session: URLSession = .shared) {
+    init(
+        baseURL: URL = productionBaseURL,
+        session: any ScooterNetworkSession = URLSession.shared
+    ) {
         self.baseURL = baseURL
         self.session = session
     }
@@ -38,10 +51,35 @@ actor ScooterAPI: ScooterAPIClient {
         request.cachePolicy = .reloadRevalidatingCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200 ... 299).contains(httpResponse.statusCode) else {
-            throw ScooterAPIError.badResponse
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.scooterData(for: request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError {
+            switch error.code {
+            case .cancelled:
+                throw CancellationError()
+            case .notConnectedToInternet,
+                 .networkConnectionLost,
+                 .dataNotAllowed,
+                 .internationalRoamingOff:
+                throw ScooterAPIError.offline
+            case .timedOut:
+                throw ScooterAPIError.timedOut
+            default:
+                throw ScooterAPIError.network(error)
+            }
+        } catch {
+            throw ScooterAPIError.network(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ScooterAPIError.invalidResponse
+        }
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            throw ScooterAPIError.httpStatus(httpResponse.statusCode)
         }
 
         do {
@@ -54,17 +92,38 @@ actor ScooterAPI: ScooterAPIClient {
 
 enum ScooterAPIError: LocalizedError {
     case invalidURL
-    case badResponse
+    case offline
+    case timedOut
+    case invalidResponse
+    case httpStatus(Int)
     case invalidData(Error)
+    case network(Error)
+
+    var statusCode: Int? {
+        guard case let .httpStatus(statusCode) = self else { return nil }
+        return statusCode
+    }
 
     var errorDescription: String? {
         switch self {
         case .invalidURL:
             "The scooter service URL is invalid."
-        case .badResponse:
-            "The scooter service didn’t respond."
+        case .offline:
+            "You appear to be offline. Check your connection and try again."
+        case .timedOut:
+            "The scooter service took too long to respond. Please try again."
+        case .invalidResponse:
+            "The scooter service returned an invalid response."
+        case let .httpStatus(statusCode) where statusCode == 429:
+            "The scooter service is receiving too many requests (HTTP 429). Please try again shortly."
+        case let .httpStatus(statusCode) where (500 ... 599).contains(statusCode):
+            "The scooter service is temporarily unavailable (HTTP \(statusCode))."
+        case let .httpStatus(statusCode):
+            "The scooter request failed (HTTP \(statusCode))."
         case .invalidData:
             "The scooter data could not be read."
+        case let .network(error):
+            "A network error prevented the scooter update: \(error.localizedDescription)"
         }
     }
 }

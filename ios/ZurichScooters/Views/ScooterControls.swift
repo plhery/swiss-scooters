@@ -488,37 +488,50 @@ struct FloatingMapControls: View {
     }
 }
 
+enum MapStatusBannerStyle: Equatable {
+    case progress
+    case error
+    case location
+}
+
 struct MapStatusBanner: View {
     let message: String
-    let isError: Bool
-    let retry: (() -> Void)?
+    let style: MapStatusBannerStyle
+    let actionTitle: String?
+    let action: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 9) {
-            if isError {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-            } else {
+            switch style {
+            case .progress:
                 ProgressView()
                     .controlSize(.small)
+                    .accessibilityHidden(true)
+            case .error:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .accessibilityHidden(true)
+            case .location:
+                Image(systemName: "location.slash.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
             }
 
             Text(message)
                 .font(.caption.weight(.semibold))
-                .lineLimit(2)
+                .lineLimit(3)
 
-            if let retry {
-                Button("Retry", action: retry)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
                     .font(.caption.weight(.bold))
                     .buttonStyle(.glassProminent)
-                    .tint(.red)
+                    .tint(style == .error ? .red : .blue)
             }
         }
         .padding(.leading, 14)
-        .padding(.trailing, retry == nil ? 14 : 5)
-        .padding(.vertical, retry == nil ? 10 : 5)
+        .padding(.trailing, action == nil ? 14 : 5)
+        .padding(.vertical, action == nil ? 10 : 5)
         .glassEffect(.regular, in: Capsule())
         .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-        .accessibilityElement(children: .combine)
     }
 }

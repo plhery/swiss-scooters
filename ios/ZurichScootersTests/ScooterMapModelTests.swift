@@ -96,6 +96,13 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(ScooterLocationPolicy.bestCandidate(in: [fallback, stale, preferred]) === preferred)
     }
 
+    func testOnlyDeniedLocationAccessOffersASettingsShortcut() {
+        XCTAssertTrue(LocationAuthorizationIssue.denied.canOpenSettings)
+        XCTAssertFalse(LocationAuthorizationIssue.restricted.canOpenSettings)
+        XCTAssertTrue(LocationAuthorizationIssue.denied.message.contains("Settings"))
+        XCTAssertTrue(LocationAuthorizationIssue.restricted.message.contains("browse the map"))
+    }
+
     private func makeModel(api: any ScooterAPIClient) -> ScooterMapModel {
         ScooterMapModel(
             api: api,
