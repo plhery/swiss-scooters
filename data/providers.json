@@ -1,0 +1,54 @@
+[
+  {
+    "key": "bolt",
+    "name": "Bolt",
+    "color": "#00cc44",
+    "initial": "B",
+    "systemIds": { "prefixes": ["bolt"] }
+  },
+  {
+    "key": "bird",
+    "name": "Bird",
+    "color": "#222222",
+    "initial": "Bi",
+    "systemIds": { "prefixes": ["bird"] }
+  },
+  {
+    "key": "dott",
+    "name": "Dott",
+    "color": "#ff6600",
+    "initial": "D",
+    "systemIds": { "prefixes": ["dott"] }
+  },
+  {
+    "key": "hopp",
+    "name": "Hopp",
+    "color": "#00bcd4",
+    "initial": "H",
+    "systemIds": { "prefixes": ["hopp"] }
+  },
+  {
+    "key": "lime",
+    "name": "Lime",
+    "color": "#32cd32",
+    "initial": "L",
+    "systemIds": { "prefixes": ["lime"] }
+  },
+  {
+    "key": "voi",
+    "name": "Voi",
+    "color": "#ff1493",
+    "initial": "V",
+    "systemIds": { "prefixes": ["voi"] }
+  },
+  {
+    "key": "publibike",
+    "name": "PubliBike / Velospot",
+    "color": "#9b59b6",
+    "initial": "PB",
+    "systemIds": {
+      "exact": ["velospot"],
+      "prefixes": ["publibike"]
+    }
+  }
+]

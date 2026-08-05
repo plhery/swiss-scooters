@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swiss-scooters.plhery.com/schemas/scooter-api-response.json",
+  "title": "ScooterResponse",
+  "x-swift-name": "ScooterAPIResponsePayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["vehicles", "clusters", "providers", "meta"],
+  "properties": {
+    "vehicles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Vehicle" }
+    },
+    "clusters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ScooterCluster" }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "meta": { "$ref": "#/$defs/ScooterResponseMeta" }
+  },
+  "$defs": {
+    "FeedSourceStatus": {
+      "x-swift-name": "ScooterFeedSourceStatusPayload",
+      "type": "string",
+      "enum": ["fresh", "stale", "partial", "failed", "skipped"]
+    },
+    "ScooterResponseMode": {
+      "x-swift-name": "ScooterResponseModePayload",
+      "type": "string",
+      "enum": ["vehicles", "clusters"]
+    },
+    "Vehicle": {
+      "x-swift-name": "ScooterVehiclePayload",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "lat",
+        "lng",
+        "battery",
+        "range_m",
+        "vehicle_id",
+        "deep_link",
+        "distance_m"
+      ],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "lat": {
+          "x-swift-name": "latitude",
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "lng": {
+          "x-swift-name": "longitude",
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "battery": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0, "maximum": 100 },
+            { "type": "null" }
+          ]
+        },
+        "range_m": {
+          "x-swift-name": "rangeMeters",
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "vehicle_id": {
+          "x-swift-name": "vehicleID",
+          "anyOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        },
+        "deep_link": {
+          "x-swift-name": "deepLink",
+          "anyOf": [
+            { "type": "string", "format": "uri" },
+            { "type": "null" }
+          ]
+        },
+        "distance_m": {
+          "x-swift-name": "distanceMeters",
+          "anyOf": [
+            { "type": "number", "minimum": 0 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "ScooterCluster": {
+      "x-swift-name": "ScooterClusterPayload",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "lat", "lng", "count", "providers"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "lat": {
+          "x-swift-name": "latitude",
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "lng": {
+          "x-swift-name": "longitude",
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "count": { "type": "integer", "minimum": 2 },
+        "providers": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "ScooterResponseMeta": {
+      "x-swift-name": "ScooterResponseMetadataPayload",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "partial",
+        "stale",
+        "failedSources",
+        "sources",
+        "generatedAt",
+        "truncated",
+        "totalVehicles",
+        "mode",
+        "zoom"
+      ],
+      "properties": {
+        "partial": { "type": "boolean" },
+        "stale": { "type": "boolean" },
+        "failedSources": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/FeedSourceStatus" }
+        },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "truncated": { "type": "boolean" },
+        "totalVehicles": { "type": "integer", "minimum": 0 },
+        "mode": { "$ref": "#/$defs/ScooterResponseMode" },
+        "zoom": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0, "maximum": 22 },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

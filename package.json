@@ -1,0 +1,54 @@
+{
+  "name": "swiss-scooters",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "generate:providers": "node scripts/generate-provider-catalog.mjs",
+    "check:providers": "node scripts/generate-provider-catalog.mjs --check",
+    "generate:api-contract": "node scripts/generate-api-contract.mjs",
+    "check:api-contract": "node scripts/generate-api-contract.mjs --check",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "test:contract": "node scripts/check-live-contract.mjs"
+  },
+  "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.2",
+    "leaflet": "^1.9.4",
+    "next": "^16.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.0",
+    "jsdom": "^30.0.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.119.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.25",
+    "miniflare": {
+      "undici": "7.29.0"
+    }
+  }
+}

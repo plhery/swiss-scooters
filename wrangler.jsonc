@@ -1,0 +1,46 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "swiss-scooters",
+  "main": "worker.ts",
+  "compatibility_date": "2026-07-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "swiss-scooters.plhery.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "zurich-scooter.plhery.com",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "ratelimits": [
+    {
+      "name": "SCOOTER_API_RATE_LIMITER",
+      "namespace_id": "1824001",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    },
+    {
+      "name": "GEOCODE_API_RATE_LIMITER",
+      "namespace_id": "1824002",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    }
+  }
+}

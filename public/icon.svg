@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Swiss Scooters">
+  <rect width="512" height="512" fill="#1c1d1b"/>
+
+  <g fill="none" stroke="#f7f1e8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="142" cy="346" r="42" stroke-width="22"/>
+    <circle cx="374" cy="346" r="42" stroke-width="22"/>
+    <path d="M152 322h150l43-58 29 82" stroke-width="22"/>
+    <path d="M345 264 311 136" stroke-width="22"/>
+    <path d="M281 136h47" stroke-width="22"/>
+  </g>
+
+  <path d="M207 322h73" fill="none" stroke="#c7ff00" stroke-width="22"/>
+</svg>
