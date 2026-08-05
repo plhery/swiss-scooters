@@ -123,6 +123,35 @@ final class ScooterAPITests: XCTestCase {
     }
 }
 
+final class AddressSearchAPITests: XCTestCase {
+    func testSwissGeocoderResponseIsDecodedAndRequestIsLocalized() async throws {
+        let data = Data(#"[{"lat":47.3762772,"lng":8.5280816,"display_name":"114, Ankerstrasse, Zurich, Switzerland"}]"#.utf8)
+        let session = StubAddressSearchSession(data: data)
+        let api = AddressSearchAPI(
+            baseURL: URL(string: "https://example.com")!,
+            session: session
+        )
+
+        let results = try await api.search(query: "Ankerstrasse 114", language: "de")
+
+        XCTAssertEqual(results, [AddressSearchResult(
+            latitude: 47.3762772,
+            longitude: 8.5280816,
+            displayName: "114, Ankerstrasse, Zurich, Switzerland"
+        )])
+
+        let request = await session.lastRequest
+        let components = URLComponents(url: try XCTUnwrap(request?.url), resolvingAgainstBaseURL: false)
+        XCTAssertEqual(components?.path, "/api/geocode")
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: components?.queryItems?.compactMap { item in
+                item.value.map { (item.name, $0) }
+            } ?? []),
+            ["q": "Ankerstrasse 114", "lang": "de"]
+        )
+    }
+}
+
 private actor StubNetworkSession: ScooterNetworkSession {
     enum Mode: Sendable {
         case response(statusCode: Int, data: Data)
@@ -148,5 +177,27 @@ private actor StubNetworkSession: ScooterNetworkSession {
         case let .urlError(code):
             throw URLError(code)
         }
+    }
+}
+
+private actor StubAddressSearchSession: AddressSearchNetworkSession {
+    let data: Data
+    private(set) var lastRequest: URLRequest?
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    func addressData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        lastRequest = request
+        return (
+            data,
+            HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+        )
     }
 }

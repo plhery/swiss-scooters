@@ -52,3 +52,9 @@
 "The scooter service is temporarily unavailable (HTTP %lld)." = "Der Scooter-Dienst ist vorübergehend nicht verfügbar (HTTP %lld).";
 "The scooter request failed (HTTP %lld)." = "Die Scooter-Anfrage ist fehlgeschlagen (HTTP %lld).";
 "A network error prevented the scooter update: %@" = "Ein Netzwerkfehler hat die Scooter-Aktualisierung verhindert: %@";
+"Address search" = "Adresssuche";
+"Search a Swiss address" = "Schweizer Adresse suchen";
+"Clear address search" = "Adresssuche löschen";
+"Searching addresses…" = "Adressen werden gesucht…";
+"No Swiss addresses found." = "Keine Schweizer Adressen gefunden.";
+"Address search is unavailable. Try again." = "Die Adresssuche ist nicht verfügbar. Versuche es erneut.";

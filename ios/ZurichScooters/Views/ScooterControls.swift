@@ -40,6 +40,8 @@ struct ScooterControlDock: View {
                 }
 
                 VStack(spacing: 18) {
+                    addressSearch
+
                     if let scooter = model.selectedScooter {
                         selectedScooterActions(scooter)
                     }
@@ -385,6 +387,16 @@ struct ScooterControlDock: View {
         }
         .padding(14)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var addressSearch: some View {
+        SwissAddressSearch(
+            onSelect: { destination in
+                model.focusOnAddress(destination)
+                setExpanded(false)
+            },
+            onClear: model.clearAddressSearch
+        )
     }
 
     private func metric(

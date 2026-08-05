@@ -254,3 +254,8 @@ struct MapFocusRequest: Equatable, Sendable {
     let point: GeoPoint
     let token: Int
 }
+
+struct MapDestination: Equatable, Sendable {
+    let title: String
+    let point: GeoPoint
+}

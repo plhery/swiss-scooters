@@ -14,6 +14,7 @@ struct ScooterMapView: UIViewRepresentable {
     let scooters: [Scooter]
     let mapStyle: AppleMapStyle
     let focusRequest: MapFocusRequest?
+    let destination: MapDestination?
     let selectedScooterID: String?
     let onRegionChange: (MKCoordinateRegion) -> Void
     let onSelectionChange: (String?) -> Void
@@ -39,6 +40,10 @@ struct ScooterMapView: UIViewRepresentable {
             ScooterClusterAnnotationView.self,
             forAnnotationViewWithReuseIdentifier: ScooterClusterAnnotationView.reuseIdentifier
         )
+        mapView.register(
+            MKMarkerAnnotationView.self,
+            forAnnotationViewWithReuseIdentifier: SearchedAddressAnnotation.reuseIdentifier
+        )
         mapView.setRegion(ScooterMapModel.initialRegion, animated: false)
         return mapView
     }
@@ -50,6 +55,7 @@ struct ScooterMapView: UIViewRepresentable {
         }
         context.coordinator.updateClusteringMode(on: mapView)
         context.coordinator.reconcile(scooters, on: mapView)
+        context.coordinator.applyDestination(destination, on: mapView)
         context.coordinator.applySelection(selectedScooterID, on: mapView)
         context.coordinator.applyFocus(focusRequest, on: mapView)
     }
@@ -61,6 +67,8 @@ struct ScooterMapView: UIViewRepresentable {
         private var appliedSelectionID: String?
         private var reconciledScooters: [Scooter] = []
         private var clusteringEnabled: Bool?
+        private var appliedDestination: MapDestination?
+        private var destinationAnnotation: SearchedAddressAnnotation?
 
         init(parent: ScooterMapView) {
             self.parent = parent
@@ -125,6 +133,21 @@ struct ScooterMapView: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
 
+        func applyDestination(_ destination: MapDestination?, on mapView: MKMapView) {
+            guard destination != appliedDestination else { return }
+            appliedDestination = destination
+
+            if let destinationAnnotation {
+                mapView.removeAnnotation(destinationAnnotation)
+                self.destinationAnnotation = nil
+            }
+
+            guard let destination else { return }
+            let annotation = SearchedAddressAnnotation(destination: destination)
+            destinationAnnotation = annotation
+            mapView.addAnnotation(annotation)
+        }
+
         func updateClusteringMode(on mapView: MKMapView) {
             guard mapView.bounds.width > 0, mapView.visibleMapRect.width > 0 else { return }
 
@@ -156,6 +179,20 @@ struct ScooterMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             if annotation is MKUserLocation {
                 return nil
+            }
+
+            if let address = annotation as? SearchedAddressAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: SearchedAddressAnnotation.reuseIdentifier,
+                    for: address
+                ) as! MKMarkerAnnotationView
+                view.markerTintColor = .systemBlue
+                view.glyphImage = UIImage(systemName: "magnifyingglass")
+                view.canShowCallout = true
+                view.displayPriority = .required
+                view.clusteringIdentifier = nil
+                view.accessibilityLabel = address.title
+                return view
             }
 
             if let cluster = annotation as? MKClusterAnnotation {
@@ -203,6 +240,19 @@ struct ScooterMapView: UIViewRepresentable {
             appliedSelectionID = nil
             parent.onSelectionChange(nil)
         }
+    }
+}
+
+final class SearchedAddressAnnotation: NSObject, MKAnnotation {
+    static let reuseIdentifier = "searched-address"
+
+    let coordinate: CLLocationCoordinate2D
+    let title: String?
+
+    init(destination: MapDestination) {
+        coordinate = destination.point.coordinate
+        title = destination.title
+        super.init()
     }
 }
 

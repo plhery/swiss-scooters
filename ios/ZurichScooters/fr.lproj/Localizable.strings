@@ -52,3 +52,9 @@
 "The scooter service is temporarily unavailable (HTTP %lld)." = "Le service de trottinettes est temporairement indisponible (HTTP %lld).";
 "The scooter request failed (HTTP %lld)." = "La demande de trottinettes a échoué (HTTP %lld).";
 "A network error prevented the scooter update: %@" = "Une erreur réseau a empêché l’actualisation des trottinettes : %@";
+"Address search" = "Recherche d’adresse";
+"Search a Swiss address" = "Rechercher une adresse en Suisse";
+"Clear address search" = "Effacer la recherche d’adresse";
+"Searching addresses…" = "Recherche d’adresses…";
+"No Swiss addresses found." = "Aucune adresse suisse trouvée.";
+"Address search is unavailable. Try again." = "La recherche d’adresse est indisponible. Réessayez.";

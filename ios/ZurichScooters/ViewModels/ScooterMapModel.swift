@@ -92,6 +92,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
     }
     var selectedScooterID: String?
+    var searchedDestination: MapDestination?
     var focusRequest: MapFocusRequest?
 
     var minimumBattery: Double {
@@ -262,6 +263,17 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             isLocating = true
             requestLocationAccess()
         }
+    }
+
+    func focusOnAddress(_ destination: MapDestination) {
+        selectedScooterID = nil
+        searchedDestination = destination
+        focusToken += 1
+        focusRequest = MapFocusRequest(point: destination.point, token: focusToken)
+    }
+
+    func clearAddressSearch() {
+        searchedDestination = nil
     }
 
     func selectScooter(_ id: String?) {

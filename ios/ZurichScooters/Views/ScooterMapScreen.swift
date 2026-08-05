@@ -14,6 +14,7 @@ struct ScooterMapScreen: View {
                     scooters: model.mapScooters,
                     mapStyle: model.mapStyle,
                     focusRequest: model.focusRequest,
+                    destination: model.searchedDestination,
                     selectedScooterID: model.selectedScooterID,
                     onRegionChange: model.updateViewport,
                     onSelectionChange: handleSelection

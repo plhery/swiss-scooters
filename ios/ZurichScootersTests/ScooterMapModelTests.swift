@@ -154,6 +154,35 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(LocationAuthorizationIssue.restricted.message.contains("browse the map"))
     }
 
+    func testAddressSelectionCreatesDestinationAndNewFocusRequests() {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        let firstDestination = MapDestination(
+            title: "Zürich HB",
+            point: GeoPoint(latitude: 47.3782, longitude: 8.5402)
+        )
+        let secondDestination = MapDestination(
+            title: "Bellevue",
+            point: GeoPoint(latitude: 47.3665, longitude: 8.5451)
+        )
+
+        model.selectScooter("lime:selected")
+        model.focusOnAddress(firstDestination)
+
+        XCTAssertNil(model.selectedScooterID)
+        XCTAssertEqual(model.searchedDestination, firstDestination)
+        XCTAssertEqual(model.focusRequest?.point, firstDestination.point)
+        let firstToken = model.focusRequest?.token
+
+        model.focusOnAddress(secondDestination)
+
+        XCTAssertEqual(model.searchedDestination, secondDestination)
+        XCTAssertEqual(model.focusRequest?.point, secondDestination.point)
+        XCTAssertNotEqual(model.focusRequest?.token, firstToken)
+
+        model.clearAddressSearch()
+        XCTAssertNil(model.searchedDestination)
+    }
+
     private func makeModel(api: any ScooterAPIClient) -> ScooterMapModel {
         ScooterMapModel(
             api: api,
