@@ -162,6 +162,18 @@ export default function Home() {
     saveParamsToStorage(stored);
   }, [origin, minBattery, tileLayer]);
 
+  useEffect(() => {
+    const darkMap = tileLayer === 'dark';
+    document.documentElement.style.colorScheme = darkMap ? 'dark' : 'light';
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', darkMap ? '#1c1c1e' : '#e0ddd8');
+
+    return () => {
+      document.documentElement.style.colorScheme = '';
+    };
+  }, [tileLayer]);
+
   const fetchScooters = useCallback(async (requestedBounds?: MapBounds) => {
     const bounds = requestedBounds ?? queryBoundsRef.current;
     if (!bounds) return;
@@ -281,7 +293,7 @@ export default function Home() {
   );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-map-theme={tileLayer}>
       <MapWrapper
         vehicles={viewportData.visibleVehicles}
         origin={origin}

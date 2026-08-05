@@ -8,6 +8,22 @@
   --fill-quaternary: rgba(120, 120, 128, 0.12);
   --fill-tertiary: rgba(120, 120, 128, 0.18);
   --hairline: rgba(60, 60, 67, 0.12);
+  --page-bg: #e8e6e1;
+  --top-scrim: rgba(255, 255, 255, 0.42);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --sheet-bg: rgba(250, 250, 250, 0.86);
+  --grabber-bg: rgba(60, 60, 67, 0.24);
+  --raised-bg: #fff;
+  --focus-bg: rgba(255, 255, 255, 0.9);
+  --slider-thumb-bg: #fff;
+  --map-bg: #dce6e8;
+  --attribution-bg: rgba(255, 255, 255, 0.74);
+  --attribution-ink: rgba(28, 28, 30, 0.58);
+  --map-control-bg: rgba(255, 255, 255, 0.84);
+  --map-control-disabled-bg: rgba(245, 245, 245, 0.78);
+  --popup-bg: #fff;
+  --warning-ink: #9a5b00;
+  --warning-bg: rgba(255, 149, 0, 0.16);
   --sab: env(safe-area-inset-bottom, 0px);
   --sat: env(safe-area-inset-top, 0px);
   --sheet-peek-h: 160px;
@@ -20,7 +36,7 @@ html, body {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background-color: #e8e6e1;
+  background-color: var(--page-bg);
   overscroll-behavior: none;
 }
 
@@ -47,6 +63,33 @@ body {
   isolation: isolate;
 }
 
+.app-shell[data-map-theme="dark"] {
+  color-scheme: dark;
+  color: #f2f2f7;
+  --ink: #f2f2f7;
+  --ink-2: #aeaeb2;
+  --ink-3: #8e8e93;
+  --fill-quaternary: rgba(118, 118, 128, 0.24);
+  --fill-tertiary: rgba(118, 118, 128, 0.34);
+  --hairline: rgba(235, 235, 245, 0.16);
+  --page-bg: #1c1c1e;
+  --top-scrim: rgba(0, 0, 0, 0.46);
+  --glass-bg: rgba(28, 28, 30, 0.82);
+  --sheet-bg: rgba(28, 28, 30, 0.9);
+  --grabber-bg: rgba(235, 235, 245, 0.28);
+  --raised-bg: #2c2c2e;
+  --focus-bg: rgba(58, 58, 60, 0.94);
+  --slider-thumb-bg: #f2f2f7;
+  --map-bg: #1c1c1e;
+  --attribution-bg: rgba(28, 28, 30, 0.78);
+  --attribution-ink: rgba(235, 235, 245, 0.68);
+  --map-control-bg: rgba(28, 28, 30, 0.84);
+  --map-control-disabled-bg: rgba(44, 44, 46, 0.8);
+  --popup-bg: #2c2c2e;
+  --warning-ink: #ffd60a;
+  --warning-bg: rgba(255, 214, 10, 0.16);
+}
+
 .app-shell::after {
   content: "";
   position: absolute;
@@ -54,7 +97,7 @@ body {
   height: calc(var(--sat) + 72px);
   z-index: 500;
   pointer-events: none;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.42), transparent);
+  background: linear-gradient(to bottom, var(--top-scrim), transparent);
 }
 
 @media all and (display-mode: standalone) {
@@ -72,7 +115,7 @@ button {
 
 /* ---------- Glass surface ---------- */
 .glass {
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--glass-bg);
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
 }
@@ -83,7 +126,7 @@ button {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(250, 250, 250, 0.86);
+  background: var(--sheet-bg);
   margin: 0 auto;
   max-width: 560px;
   z-index: 1000;
@@ -118,7 +161,7 @@ button {
   width: 34px;
   height: 4px;
   border-radius: 3px;
-  background: rgba(60, 60, 67, 0.24);
+  background: var(--grabber-bg);
   margin: 8px auto 9px;
 }
 
@@ -155,7 +198,7 @@ button {
   gap: 5px;
   max-width: min(430px, calc(100vw - 92px));
   margin-top: 4px;
-  color: #9a5b00;
+  color: var(--warning-ink);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.25;
@@ -168,7 +211,7 @@ button {
   place-items: center;
   flex-shrink: 0;
   border-radius: 50%;
-  background: rgba(255, 149, 0, 0.16);
+  background: var(--warning-bg);
   font-size: 10px;
   font-weight: 800;
 }
@@ -377,7 +420,7 @@ button {
 }
 
 .field:focus-within {
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--focus-bg);
   box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.18);
 }
 
@@ -419,7 +462,7 @@ button {
 }
 
 .results {
-  background: #fff;
+  background: var(--raised-bg);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   margin-top: 6px;
@@ -493,7 +536,7 @@ button {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--slider-thumb-bg);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   margin-top: -11px;
 }
@@ -514,7 +557,7 @@ button {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--slider-thumb-bg);
   border: none;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
 }
@@ -541,7 +584,7 @@ button {
 }
 
 .seg button[aria-pressed="true"] {
-  background: #fff;
+  background: var(--raised-bg);
   color: var(--ink);
   font-weight: 600;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
@@ -646,7 +689,7 @@ button {
 /* ---------- Leaflet overrides ---------- */
 .leaflet-container {
   font-family: inherit;
-  background: #dce6e8;
+  background: var(--map-bg);
   cursor: grab;
 }
 
@@ -666,10 +709,10 @@ button {
   margin: 0 8px 0 0 !important;
   padding: 3px 7px !important;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.74) !important;
+  background: var(--attribution-bg) !important;
   backdrop-filter: blur(12px) saturate(160%);
   -webkit-backdrop-filter: blur(12px) saturate(160%);
-  color: rgba(28, 28, 30, 0.58);
+  color: var(--attribution-ink);
   font-size: 9px !important;
   line-height: 1.3 !important;
   box-shadow: 0 1px 5px rgba(24, 28, 34, 0.08);
@@ -698,7 +741,7 @@ button {
   height: 42px;
   padding: 0;
   border: none;
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--map-control-bg);
   color: var(--blue);
   font-family: inherit;
   font-size: 24px;
@@ -720,7 +763,7 @@ button {
 }
 
 .map-zoom-controls button:disabled {
-  background: rgba(245, 245, 245, 0.78);
+  background: var(--map-control-disabled-bg);
   color: var(--ink-3);
 }
 
@@ -861,6 +904,8 @@ button {
 }
 
 .scooter-popup .leaflet-popup-content-wrapper {
+  background: var(--popup-bg);
+  color: var(--ink);
   border-radius: 16px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   padding: 8px 14px;
@@ -873,6 +918,7 @@ button {
 }
 
 .scooter-popup .leaflet-popup-tip {
+  background: var(--popup-bg);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
 }
 
