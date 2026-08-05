@@ -1,9 +1,9 @@
 import type { FeedQuery } from '@/lib/scooterFeeds';
+import { SWISS_MOBILITY_BOUNDS } from '@/lib/feedCoverage';
+import { boundsIntersection } from '@/lib/geo';
 import { PROVIDERS } from '@/lib/types';
 
-export const MAX_LATITUDE_SPAN = 0.5;
-export const MAX_LONGITUDE_SPAN = 0.75;
-export const MAX_SCOOTER_RESULTS = 5_000;
+export const MAX_SCOOTER_RESULTS = 25_000;
 
 interface ValidQuery {
   ok: true;
@@ -45,10 +45,6 @@ export function parseScooterQuery(params: URLSearchParams): ScooterQueryResult {
     return { ok: false, error: 'Invalid scooter search parameters' };
   }
 
-  if (north - south > MAX_LATITUDE_SPAN || east - west > MAX_LONGITUDE_SPAN) {
-    return { ok: false, error: 'Map area is too large. Zoom in to load scooters.' };
-  }
-
   const providerParam = params.get('provider');
   let providers: Set<string> | undefined;
   if (providerParam !== null) {
@@ -65,14 +61,18 @@ export function parseScooterQuery(params: URLSearchParams): ScooterQueryResult {
     providers = new Set(requestedProviders);
   }
 
+  const requestedBounds = { south, west, north, east };
+  const swissBounds = boundsIntersection(requestedBounds, SWISS_MOBILITY_BOUNDS);
+
   return {
     ok: true,
     query: {
       lat,
       lng,
-      bounds: { south, west, north, east },
+      bounds: swissBounds ?? requestedBounds,
       minBattery,
       providers,
+      outsideCoverage: swissBounds === null,
     },
   };
 }

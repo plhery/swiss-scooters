@@ -16,6 +16,10 @@ The application does not require secret API keys, a database, or persistent
 storage. It identifies itself to the national GBFS 2.3 service with
 `zurich-scooter@plhery.com`. Set the optional, non-secret
 `SHAREDMOBILITY_AUTH_EMAIL` environment variable to use a different contact.
+Provider discovery, coverage metadata, spatial probes, and live status feeds
+are coalesced and cached in each warm Worker instance. For the expected small
+audience this avoids the operational overhead of persistent storage or a
+separate ingestion service.
 
 ## Validate locally
 

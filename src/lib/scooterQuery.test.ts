@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  MAX_LATITUDE_SPAN,
-  MAX_LONGITUDE_SPAN,
-  parseScooterQuery,
-} from '@/lib/scooterQuery';
+import { SWISS_MOBILITY_BOUNDS } from '@/lib/feedCoverage';
+import { parseScooterQuery } from '@/lib/scooterQuery';
 
 describe('parseScooterQuery', () => {
   it('parses valid bounds and known providers', () => {
@@ -24,18 +21,33 @@ describe('parseScooterQuery', () => {
     expect(result.query.providers).toEqual(new Set(['lime', 'dott']));
   });
 
-  it('rejects world-sized requests with a zoom-in message', () => {
+  it('clamps world-sized requests to the Swiss service envelope', () => {
     const result = parseScooterQuery(new URLSearchParams({
-      south: String(-MAX_LATITUDE_SPAN),
-      north: String(MAX_LATITUDE_SPAN),
-      west: String(-MAX_LONGITUDE_SPAN),
-      east: String(MAX_LONGITUDE_SPAN),
+      south: '-90',
+      north: '90',
+      west: '-180',
+      east: '180',
     }));
 
-    expect(result).toEqual({
-      ok: false,
-      error: 'Map area is too large. Zoom in to load scooters.',
-    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.query.bounds).toEqual(SWISS_MOBILITY_BOUNDS);
+    expect(result.query.outsideCoverage).toBe(false);
+  });
+
+  it('marks views outside Switzerland so feeds can be skipped', () => {
+    const result = parseScooterQuery(new URLSearchParams({
+      lat: '48.86',
+      lng: '2.35',
+      south: '48.80',
+      north: '48.92',
+      west: '2.25',
+      east: '2.45',
+    }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.query.outsideCoverage).toBe(true);
   });
 
   it('rejects unknown providers and non-integer battery values', () => {

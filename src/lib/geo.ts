@@ -30,6 +30,25 @@ export function boundsContainBounds(container: MapBounds, contained: MapBounds):
   );
 }
 
+export function boundsIntersect(a: MapBounds, b: MapBounds): boolean {
+  return (
+    a.south <= b.north &&
+    a.north >= b.south &&
+    a.west <= b.east &&
+    a.east >= b.west
+  );
+}
+
+export function boundsIntersection(a: MapBounds, b: MapBounds): MapBounds | null {
+  if (!boundsIntersect(a, b)) return null;
+  return {
+    south: Math.max(a.south, b.south),
+    west: Math.max(a.west, b.west),
+    north: Math.min(a.north, b.north),
+    east: Math.min(a.east, b.east),
+  };
+}
+
 export function expandBounds(bounds: MapBounds, paddingRatio: number): MapBounds {
   const latPadding = (bounds.north - bounds.south) * paddingRatio;
   const lngPadding = (bounds.east - bounds.west) * paddingRatio;

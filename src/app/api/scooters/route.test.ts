@@ -30,6 +30,7 @@ vi.mock('@/lib/scooterFeeds', () => {
 
 import { GET } from '@/app/api/scooters/route';
 import { ScooterFeedsUnavailableError } from '@/lib/scooterFeeds';
+import { MAX_SCOOTER_RESULTS } from '@/lib/scooterQuery';
 
 function request(query = ''): NextRequest {
   return new NextRequest(`https://example.com/api/scooters${query}`);
@@ -64,14 +65,29 @@ describe('GET /api/scooters', () => {
     expect(mocks.fetchScooters).not.toHaveBeenCalled();
   });
 
-  it('rejects oversized map bounds', async () => {
-    const response = await GET(request('?south=40&north=50&west=0&east=10'));
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: 'Map area is too large. Zoom in to load scooters.',
+  it('accepts oversized bounds and clamps feed work to Switzerland', async () => {
+    mocks.fetchScooters.mockResolvedValue({
+      vehicles: [],
+      meta: {
+        partial: false,
+        stale: false,
+        failedSources: [],
+        sources: { national: 'fresh', hopp: 'skipped' },
+      },
     });
-    expect(mocks.fetchScooters).not.toHaveBeenCalled();
+
+    const response = await GET(request('?south=-90&north=90&west=-180&east=180'));
+
+    expect(response.status).toBe(200);
+    expect(mocks.fetchScooters).toHaveBeenCalledWith(expect.objectContaining({
+      bounds: {
+        south: 45.7,
+        west: 5.7,
+        north: 47.95,
+        east: 10.75,
+      },
+      outsideCoverage: false,
+    }));
   });
 
   it('returns 503 with source metadata when all feeds fail', async () => {
@@ -91,7 +107,7 @@ describe('GET /api/scooters', () => {
 
   it('caps large responses and marks partial results as degraded', async () => {
     mocks.fetchScooters.mockResolvedValue({
-      vehicles: Array.from({ length: 5_001 }, (_, index) => vehicle(index)),
+      vehicles: Array.from({ length: MAX_SCOOTER_RESULTS + 1 }, (_, index) => vehicle(index)),
       meta: {
         partial: true,
         stale: false,
@@ -109,7 +125,10 @@ describe('GET /api/scooters', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-mobility-data-status')).toBe('partial');
     expect(response.headers.get('cache-control')).toContain('max-age=10');
-    expect(body.vehicles).toHaveLength(5_000);
-    expect(body.meta).toMatchObject({ truncated: true, totalVehicles: 5_001 });
+    expect(body.vehicles).toHaveLength(MAX_SCOOTER_RESULTS);
+    expect(body.meta).toMatchObject({
+      truncated: true,
+      totalVehicles: MAX_SCOOTER_RESULTS + 1,
+    });
   });
 });

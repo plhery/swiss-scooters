@@ -1,4 +1,7 @@
-const DEFAULT_MAX_ENTRIES = 64;
+// Coverage-aware discovery adds small manifest, type, region, and spatial-probe
+// entries alongside the larger status feeds. Keep enough entries for several
+// Swiss cities so panning does not evict useful metadata immediately.
+const DEFAULT_MAX_ENTRIES = 128;
 const DEFAULT_ERROR_RETRY_SECONDS = 15;
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;

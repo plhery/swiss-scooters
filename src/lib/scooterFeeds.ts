@@ -1,10 +1,16 @@
+import {
+  coverageForRegionNames,
+  coverageIntersects,
+  HOPP_COVERAGE,
+  knownSystemCoverage,
+} from '@/lib/feedCoverage';
 import { boundsContainPoint, haversineM } from '@/lib/geo';
 import type { MapBounds, Vehicle } from '@/lib/types';
 import { upstreamJsonCache, type CachedJson } from '@/lib/upstreamJsonCache';
 
 const NATIONAL_V23_REGISTRY_URL = 'https://sharedmobility.ch/v2/gbfs';
-const HOPP_STATUS_URL = 'https://api.hopp.bike/gbfs/ch-zurich/en/free_bike_status.json';
-const HOPP_TYPES_URL = 'https://api.hopp.bike/gbfs/ch-zurich/en/vehicle_types.json';
+const SPATIAL_IDENTIFY_URL = 'https://api.sharedmobility.ch/v1/sharedmobility/identify';
+const HOPP_DISCOVERY_URL = 'https://api.hopp.bike/gbfs/ch-zurich/gbfs.json';
 
 const STATUS_REVALIDATE_SECONDS = 30;
 const METADATA_REVALIDATE_SECONDS = 3600;
@@ -58,6 +64,38 @@ interface RegistryFeed {
   }>;
 }
 
+interface DiscoveryFeedEntry {
+  name: string;
+  url: string;
+}
+
+interface DiscoveryFeed {
+  data?: {
+    feeds?: DiscoveryFeedEntry[];
+    [language: string]: unknown;
+  };
+}
+
+interface SystemRegionsFeed {
+  data?: {
+    regions?: Array<{
+      name?: string;
+    }>;
+  };
+}
+
+interface SpatialFeature {
+  properties?: {
+    provider?: {
+      id?: string;
+    };
+  };
+}
+
+type SpatialResponse = SpatialFeature[] | {
+  geoJsonSearchInformations?: SpatialFeature[];
+};
+
 type ProviderKey = 'bolt' | 'bird' | 'dott' | 'lime' | 'voi' | 'hopp' | 'publibike';
 
 export interface FeedQuery {
@@ -66,6 +104,7 @@ export interface FeedQuery {
   bounds: MapBounds;
   minBattery: number;
   providers?: Set<string>;
+  outsideCoverage?: boolean;
 }
 
 export type FeedSourceStatus = 'fresh' | 'stale' | 'failed' | 'skipped';
@@ -89,6 +128,13 @@ interface SourceVehicles {
   vehicles: Vehicle[];
   stale: boolean;
   skipped?: boolean;
+}
+
+interface NationalSystem {
+  id: string;
+  provider: ProviderKey;
+  discoveryUrl: string;
+  baseUrl: string;
 }
 
 export class ScooterFeedsUnavailableError extends Error {
@@ -233,54 +279,206 @@ function typeMap(feed: VehicleTypesFeed): Map<string, VehicleType> {
   return new Map((feed.data?.vehicle_types ?? []).map(type => [type.vehicle_type_id, type]));
 }
 
-function registryBaseUrl(systemUrl: string): string | null {
+function registrySystem(systemId: string, systemUrl: string): NationalSystem | null {
   try {
     const url = new URL(systemUrl);
     if (url.protocol !== 'https:' || url.hostname !== 'sharedmobility.ch') return null;
     if (!url.pathname.endsWith('/gbfs')) return null;
+
+    const provider = normalizeProvider(systemId);
+    if (!provider || provider === 'hopp') return null;
+
+    const discoveryUrl = url.toString();
     url.pathname = url.pathname.slice(0, -'/gbfs'.length);
     url.search = '';
     url.hash = '';
-    return url.toString().replace(/\/$/, '');
+    return {
+      id: systemId,
+      provider,
+      discoveryUrl,
+      baseUrl: url.toString().replace(/\/$/, ''),
+    };
   } catch {
     return null;
   }
 }
 
-async function fetchSystemVehicles(
+function discoveryFeedEntries(feed: DiscoveryFeed): DiscoveryFeedEntry[] {
+  const data = feed.data;
+  if (!data) return [];
+  if (Array.isArray(data.feeds)) return data.feeds;
+
+  for (const value of Object.values(data)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      'feeds' in value &&
+      Array.isArray(value.feeds)
+    ) {
+      return value.feeds as DiscoveryFeedEntry[];
+    }
+  }
+  return [];
+}
+
+function trustedFeedUrl(rawUrl: string | undefined, trustedBaseUrl: string): string | null {
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl);
+    const base = new URL(trustedBaseUrl);
+    const basePath = base.pathname.replace(/\/$/, '');
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== base.hostname ||
+      !url.pathname.startsWith(`${basePath}/`)
+    ) return null;
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function discoveredFeedUrl(
+  entries: DiscoveryFeedEntry[],
+  name: string,
+  trustedBaseUrl: string
+): string | null {
+  return trustedFeedUrl(entries.find(entry => entry.name === name)?.url, trustedBaseUrl);
+}
+
+function hasElectricScooter(types: Map<string, VehicleType>): boolean {
+  return [...types.values()].some(isElectricScooter);
+}
+
+function spatialFeatures(response: SpatialResponse): SpatialFeature[] {
+  return Array.isArray(response) ? response : response.geoJsonSearchInformations ?? [];
+}
+
+function spatialQueryUrl(systemId: string, bounds: MapBounds): string {
+  const centerLat = (bounds.south + bounds.north) / 2;
+  const centerLng = (bounds.west + bounds.east) / 2;
+  const radiusM = Math.ceil(Math.max(
+    haversineM(centerLat, centerLng, bounds.south, bounds.west),
+    haversineM(centerLat, centerLng, bounds.south, bounds.east),
+    haversineM(centerLat, centerLng, bounds.north, bounds.west),
+    haversineM(centerLat, centerLng, bounds.north, bounds.east)
+  ) + 250);
+  const url = new URL(SPATIAL_IDENTIFY_URL);
+  url.searchParams.append('filters', 'ch.bfe.sharedmobility.vehicle_type=E-Scooter');
+  url.searchParams.append('filters', `ch.bfe.sharedmobility.provider.id=${systemId}`);
+  url.searchParams.set('Geometry', `${centerLng},${centerLat}`);
+  url.searchParams.set('Tolerance', String(radiusM));
+  url.searchParams.set('offset', '0');
+  url.searchParams.set('geometryFormat', 'geojson');
+  return url.toString();
+}
+
+async function spatialSystemMayServe(
   systemId: string,
-  baseUrl: string,
-  query: FeedQuery
-): Promise<SourceVehicles> {
-  const status = await fetchJson<StatusFeed>(`${baseUrl}/free_bike_status`, {
-    authenticated: true,
+  bounds: MapBounds
+): Promise<{ mayServe: boolean; stale: boolean }> {
+  const result = await fetchJson<SpatialResponse>(spatialQueryUrl(systemId, bounds), {
     revalidate: STATUS_REVALIDATE_SECONDS,
   });
-  const nearbyVehicles = rawVehicles(status.data).filter(raw => {
-    if (isUnavailable(raw.is_disabled) || isUnavailable(raw.is_reserved)) return false;
-    if (!raw.vehicle_type_id) return false;
+  const mayServe = spatialFeatures(result.data).some(feature => (
+    feature.properties?.provider?.id === systemId
+  ));
+  return { mayServe, stale: result.stale };
+}
 
-    const lat = raw.lat;
-    const lng = raw.lon ?? raw.lng;
-    return (
-      lat != null && lng != null &&
-      Number.isFinite(lat) && Number.isFinite(lng) &&
-      boundsContainPoint(query.bounds, lat, lng)
-    );
-  });
+async function unresolvedSystemMayServe(
+  system: NationalSystem,
+  entries: DiscoveryFeedEntry[],
+  query: FeedQuery
+): Promise<{ mayServe: boolean; stale: boolean }> {
+  // Velospot regions mix many vehicle modes, so region membership cannot prove
+  // that e-scooters are offered there. Use the spatial API for it directly.
+  const regionsUrl = system.id === 'velospot'
+    ? null
+    : discoveredFeedUrl(entries, 'system_regions', system.baseUrl);
 
-  if (nearbyVehicles.length === 0) {
-    return { vehicles: [], stale: status.stale };
+  if (regionsUrl) {
+    try {
+      const regions = await fetchJson<SystemRegionsFeed>(regionsUrl, {
+        authenticated: true,
+        revalidate: METADATA_REVALIDATE_SECONDS,
+      });
+      const names = (regions.data.data?.regions ?? [])
+        .map(region => region.name)
+        .filter((name): name is string => Boolean(name));
+      const coverage = coverageForRegionNames(names);
+      if (coverageIntersects(coverage.bounds, query.bounds)) {
+        return { mayServe: true, stale: regions.stale };
+      }
+      if (coverage.complete) {
+        return { mayServe: false, stale: regions.stale };
+      }
+    } catch (error) {
+      logFallback(`${system.id}:system_regions`, error);
+    }
   }
 
-  const types = await fetchJson<VehicleTypesFeed>(`${baseUrl}/vehicle_types`, {
+  try {
+    return await spatialSystemMayServe(system.id, query.bounds);
+  } catch (error) {
+    // Coverage discovery must never hide valid scooters during an API outage.
+    // Fetching one extra GBFS system is the conservative failure mode.
+    logFallback(`${system.id}:spatial_coverage`, error);
+    return { mayServe: true, stale: true };
+  }
+}
+
+async function fetchSystemVehicles(
+  system: NationalSystem,
+  query: FeedQuery
+): Promise<SourceVehicles> {
+  const knownCoverage = knownSystemCoverage(system.id);
+  if (knownCoverage && !coverageIntersects(knownCoverage, query.bounds)) {
+    return { vehicles: [], stale: false, skipped: true };
+  }
+
+  const discovery = await fetchJson<DiscoveryFeed>(system.discoveryUrl, {
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
+  const entries = discoveryFeedEntries(discovery.data);
+  const statusUrl = discoveredFeedUrl(entries, 'free_bike_status', system.baseUrl);
+  const typesUrl = discoveredFeedUrl(entries, 'vehicle_types', system.baseUrl);
+  if (!statusUrl || !typesUrl) {
+    return { vehicles: [], stale: discovery.stale, skipped: true };
+  }
+
+  const types = await fetchJson<VehicleTypesFeed>(typesUrl, {
+    authenticated: true,
+    revalidate: METADATA_REVALIDATE_SECONDS,
+  });
+  const typesById = typeMap(types.data);
+  if (!hasElectricScooter(typesById)) {
+    return { vehicles: [], stale: discovery.stale || types.stale, skipped: true };
+  }
+
+  let coverageStale = false;
+  if (!knownCoverage) {
+    const coverage = await unresolvedSystemMayServe(system, entries, query);
+    coverageStale = coverage.stale;
+    if (!coverage.mayServe) {
+      return {
+        vehicles: [],
+        stale: discovery.stale || types.stale || coverageStale,
+        skipped: true,
+      };
+    }
+  }
+
+  const status = await fetchJson<StatusFeed>(statusUrl, {
+    authenticated: true,
+    revalidate: STATUS_REVALIDATE_SECONDS,
+  });
 
   return {
-    vehicles: filterVehicles(systemId, nearbyVehicles, typeMap(types.data), query),
-    stale: status.stale || types.stale,
+    vehicles: filterVehicles(system.id, rawVehicles(status.data), typesById, query),
+    stale: discovery.stale || types.stale || coverageStale || status.stale,
   };
 }
 
@@ -292,31 +490,27 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> 
 
   const systems =
     (registry.data.systems ?? [])
-      .map(system => ({
-        id: system.id,
-        provider: normalizeProvider(system.id),
-        baseUrl: registryBaseUrl(system.url),
-      }))
-      .filter((system): system is { id: string; provider: ProviderKey; baseUrl: string } => (
-        system.provider !== null &&
-        system.provider !== 'hopp' &&
-        system.baseUrl !== null &&
+      .map(system => registrySystem(system.id, system.url))
+      .filter((system): system is NationalSystem => (
+        system !== null &&
         (!query.providers || query.providers.has(system.provider))
       ));
 
   if (systems.length === 0) {
-    throw new Error('National GBFS registry contains no relevant supported systems');
+    return { vehicles: [], stale: registry.stale, skipped: true };
   }
 
   const results = await Promise.allSettled(
-    systems.map(system => fetchSystemVehicles(system.id, system.baseUrl, query))
+    systems.map(system => fetchSystemVehicles(system, query))
   );
 
   const availableResults: SourceVehicles[] = [];
+  const fulfilledResults: SourceVehicles[] = [];
   let failedSystemCount = 0;
   results.forEach((result, index) => {
     if (result.status === 'fulfilled') {
-      availableResults.push(result.value);
+      fulfilledResults.push(result.value);
+      if (!result.value.skipped) availableResults.push(result.value);
       return;
     }
 
@@ -325,7 +519,14 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> 
   });
 
   if (availableResults.length === 0) {
-    throw new Error('Every relevant national GBFS system failed');
+    if (failedSystemCount > 0) {
+      throw new Error('Every relevant national GBFS system failed or was unavailable');
+    }
+    return {
+      vehicles: [],
+      stale: registry.stale || fulfilledResults.some(result => result.stale),
+      skipped: true,
+    };
   }
 
   return {
@@ -339,14 +540,33 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
     return { vehicles: [], stale: false, skipped: true };
   }
 
+  if (!coverageIntersects([HOPP_COVERAGE], query.bounds)) {
+    return { vehicles: [], stale: false, skipped: true };
+  }
+
+  const discovery = await fetchJson<DiscoveryFeed>(HOPP_DISCOVERY_URL, {
+    revalidate: METADATA_REVALIDATE_SECONDS,
+  });
+  const entries = discoveryFeedEntries(discovery.data);
+  const hoppBaseUrl = 'https://api.hopp.bike/gbfs/ch-zurich';
+  const statusUrl = discoveredFeedUrl(entries, 'free_bike_status', hoppBaseUrl);
+  const typesUrl = discoveredFeedUrl(entries, 'vehicle_types', hoppBaseUrl);
+  if (!statusUrl || !typesUrl) {
+    throw new Error('Hopp GBFS discovery contains no supported scooter feeds');
+  }
+
   const [status, types] = await Promise.all([
-    fetchJson<StatusFeed>(HOPP_STATUS_URL, { revalidate: STATUS_REVALIDATE_SECONDS }),
-    fetchJson<VehicleTypesFeed>(HOPP_TYPES_URL, { revalidate: METADATA_REVALIDATE_SECONDS }),
+    fetchJson<StatusFeed>(statusUrl, { revalidate: STATUS_REVALIDATE_SECONDS }),
+    fetchJson<VehicleTypesFeed>(typesUrl, { revalidate: METADATA_REVALIDATE_SECONDS }),
   ]);
+  const typesById = typeMap(types.data);
+  if (!hasElectricScooter(typesById)) {
+    return { vehicles: [], stale: discovery.stale || types.stale, skipped: true };
+  }
 
   return {
-    vehicles: filterVehicles('hopp', rawVehicles(status.data), typeMap(types.data), query),
-    stale: status.stale || types.stale,
+    vehicles: filterVehicles('hopp', rawVehicles(status.data), typesById, query),
+    stale: discovery.stale || status.stale || types.stale,
   };
 }
 
@@ -372,6 +592,18 @@ function logFallback(source: string, reason: unknown): void {
 }
 
 export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResult> {
+  if (query.outsideCoverage) {
+    return {
+      vehicles: [],
+      meta: {
+        partial: false,
+        stale: false,
+        failedSources: [],
+        sources: { national: 'skipped', hopp: 'skipped' },
+      },
+    };
+  }
+
   const [nationalResult, hoppResult] = await Promise.allSettled([
     nationalSourceIsRelevant(query)
       ? fetchNationalVehicles(query)

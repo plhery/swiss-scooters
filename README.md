@@ -22,6 +22,7 @@ A mobile-friendly PWA showing shared e-scooters across Switzerland in the curren
 - **Interactive map** with Leaflet + OpenStreetMap / CARTO tiles (light, dark, OSM)
 - **Viewport-wide discovery** — pan or zoom anywhere and see every scooter in that map area
 - **Rich GBFS 2.3 data** — nearby provider feeds preserve battery, range and rental links
+- **Coverage-aware fetching** — only systems whose declared city or region intersects the viewport are loaded
 - **Strict vehicle filtering** — excludes bikes, reserved vehicles and disabled vehicles
 - **Resilient feed aggregation** — stale-on-error caching, source-health metadata, and explicit outage responses
 - **Protected APIs** — bounded map queries, validation, response caps, and edge rate limits
@@ -46,6 +47,14 @@ The backend uses the Swiss Federal Office of Energy's
 [Shared Mobility dataset](https://data.opentransportdata.swiss/dataset/sharedmobility)
 for national discovery and provider-specific GBFS 2.3 feeds. Hopp remains a
 direct feed because it is not currently included in the national dataset.
+
+The backend reads each system's GBFS discovery document instead of assuming
+endpoint paths, rejects systems without individual electric-scooter data, and
+uses provider regions plus conservative city envelopes before downloading live
+vehicle status. Systems without trustworthy geographic metadata are checked
+through sharedmobility.ch's spatial `identify` API. This avoids downloading all
+Swiss provider feeds for a small map viewport while retaining battery, range,
+and rental-link data from GBFS.
 
 GBFS 2.3 requests identify this application with an email address, as required
 by sharedmobility.ch. The default is `zurich-scooter@plhery.com`; override it
@@ -143,6 +152,7 @@ src/
 │   └── MapWrapper.tsx         # Dynamic import wrapper (no SSR)
 └── lib/
     ├── geo.ts                 # Haversine distance and viewport bounds helpers
+    ├── feedCoverage.ts        # Provider-region and city coverage routing
     ├── scooterFeeds.ts        # Resilient national + direct GBFS aggregation
     ├── scooterQuery.ts        # API validation and request bounds
     ├── upstreamJsonCache.ts   # Fresh/stale feed cache and request coalescing
