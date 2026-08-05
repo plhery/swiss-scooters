@@ -444,6 +444,10 @@ button {
   color: var(--ink-3);
 }
 
+.field input::-webkit-search-cancel-button {
+  display: none;
+}
+
 .field-btn {
   width: 32px;
   height: 32px;
@@ -490,6 +494,21 @@ button {
 
 .results button:active {
   background: var(--fill-quaternary);
+}
+
+.results button[aria-selected="true"] {
+  background: var(--fill-quaternary);
+  color: var(--blue);
+}
+
+.search-status {
+  padding: 7px 4px 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.search-status-error {
+  color: #d70015;
 }
 
 /* ---------- Sliders ---------- */

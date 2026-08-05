@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import type { MapBounds, Vehicle } from '@/lib/types';
+import type { AddressResult } from '@/components/AddressSearch';
 
 const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
@@ -12,6 +13,7 @@ interface MapWrapperProps {
   userLocation: [number, number] | null;
   focusLocation: [number, number] | null;
   focusVersion: number;
+  destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds) => void;
 }
 

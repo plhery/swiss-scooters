@@ -4,6 +4,7 @@ import { rateLimitAllows } from '@/lib/rateLimit';
 const MAX_QUERY_LENGTH = 160;
 const GEOCODE_TIMEOUT_MS = 10_000;
 const DEFAULT_CONTACT_EMAIL = 'zurich-scooter@plhery.com';
+const SUPPORTED_LANGUAGES = new Set(['de', 'fr', 'it', 'en']);
 
 interface NominatimResult {
   lat?: string;
@@ -34,6 +35,9 @@ export async function GET(request: NextRequest) {
     return errorResponse('Address search must contain between 2 and 160 characters.', 400);
   }
 
+  const requestedLanguage = request.nextUrl.searchParams.get('lang')?.toLowerCase() ?? 'en';
+  const language = SUPPORTED_LANGUAGES.has(requestedLanguage) ? requestedLanguage : 'en';
+
   const contactEmail = process.env.SHAREDMOBILITY_AUTH_EMAIL ?? DEFAULT_CONTACT_EMAIL;
   const url = new URL('https://nominatim.openstreetmap.org/search');
   url.search = new URLSearchParams({
@@ -48,7 +52,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, {
       headers: {
         Accept: 'application/json',
-        'Accept-Language': 'en',
+        'Accept-Language': `${language}-CH,${language};q=0.9,en;q=0.6`,
         'User-Agent': `scooters-web/2.0 (zurich-scooter.plhery.com; ${contactEmail})`,
       },
       signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),

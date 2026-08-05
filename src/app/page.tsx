@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
 import BottomSheet from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
+import type { AddressResult } from '@/components/AddressSearch';
 import type { MapBounds, Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
@@ -84,6 +85,7 @@ export default function Home() {
     location: [number, number] | null;
     version: number;
   }>({ location: null, version: 0 });
+  const [searchedAddress, setSearchedAddress] = useState<AddressResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -232,6 +234,12 @@ export default function Home() {
     setEnabledProviders(new Set(Object.keys(PROVIDERS)));
   };
 
+  const handleAddressSelect = (result: AddressResult) => {
+    const location: [number, number] = [result.lat, result.lng];
+    setSearchedAddress(result);
+    setFocusRequest(current => ({ location, version: current.version + 1 }));
+  };
+
   const handleViewportChange = useCallback((bounds: MapBounds) => {
     setViewportBounds(current => boundsEqual(current, bounds) ? current : bounds);
 
@@ -310,6 +318,7 @@ export default function Home() {
         userLocation={userLocation}
         focusLocation={focusRequest.location}
         focusVersion={focusRequest.version}
+        destination={searchedAddress}
         onViewportChange={handleViewportChange}
       />
 
@@ -344,6 +353,8 @@ export default function Home() {
         dataHealthNotice={dataHealthNotice}
         tileLayer={tileLayer}
         onMinBatteryChange={setMinBattery}
+        onAddressSelect={handleAddressSelect}
+        onAddressClear={() => setSearchedAddress(null)}
         onShowAllProviders={handleShowAllProviders}
         onProviderSelect={handleProviderSelect}
         onTileLayerChange={setTileLayer}

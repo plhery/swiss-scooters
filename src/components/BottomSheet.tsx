@@ -4,6 +4,7 @@ import { useState, useRef, useLayoutEffect, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS } from '@/lib/types';
 import { SUPPORTED_LOCALES, useI18n, type AppLocale } from '@/lib/i18n';
+import AddressSearch, { type AddressResult } from '@/components/AddressSearch';
 
 interface BottomSheetProps {
   minBattery: number;
@@ -15,6 +16,8 @@ interface BottomSheetProps {
   dataHealthNotice: string | null;
   tileLayer: 'dark' | 'light' | 'osm';
   onMinBatteryChange: (b: number) => void;
+  onAddressSelect: (result: AddressResult) => void;
+  onAddressClear: () => void;
   onShowAllProviders: () => void;
   onProviderSelect: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
@@ -86,6 +89,8 @@ export default function BottomSheet({
   dataHealthNotice,
   tileLayer,
   onMinBatteryChange,
+  onAddressSelect,
+  onAddressClear,
   onShowAllProviders,
   onProviderSelect,
   onTileLayerChange,
@@ -298,6 +303,8 @@ export default function BottomSheet({
       </div>
 
       <div id="scooter-controls-body" className="sheet-body" inert={!controlsVisible}>
+        <AddressSearch onSelect={onAddressSelect} onClear={onAddressClear} />
+
         <div className="section">
           <div className="section-title">{t('filters.title')}</div>
           <SliderRow

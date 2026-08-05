@@ -15,6 +15,7 @@ import 'leaflet/dist/leaflet.css';
 import type { MapBounds, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
+import type { AddressResult } from '@/components/AddressSearch';
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type FormatNumber = (value: number, options?: Intl.NumberFormatOptions) => string;
@@ -39,6 +40,15 @@ function createUserLocationIcon(): L.DivIcon {
     </div>`,
     iconSize: [24, 24],
     iconAnchor: [12, 12],
+  });
+}
+
+function createDestinationIcon(): L.DivIcon {
+  return L.divIcon({
+    className: 'destination-marker-wrap',
+    html: `<div class="destination-marker"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></div>`,
+    iconSize: [38, 38],
+    iconAnchor: [19, 34],
   });
 }
 
@@ -315,6 +325,22 @@ function UserLocationMarker({
   );
 }
 
+function DestinationMarker({ destination, icon }: { destination: AddressResult; icon: L.DivIcon }) {
+  const { t } = useI18n();
+  const label = t('marker.searchedAddress', { name: destination.display_name });
+  const markerRef = useAccessibleMarker(label);
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={[destination.lat, destination.lng]}
+      icon={icon}
+      zIndexOffset={1800}
+      title={label}
+    />
+  );
+}
+
 const VehicleMarkers = memo(function VehicleMarkers({
   vehicles,
   icons,
@@ -400,6 +426,7 @@ interface MapComponentProps {
   userLocation: [number, number] | null;
   focusLocation: [number, number] | null;
   focusVersion: number;
+  destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds) => void;
 }
 
@@ -410,6 +437,7 @@ export default function MapComponent({
   userLocation,
   focusLocation,
   focusVersion,
+  destination,
   onViewportChange,
 }: MapComponentProps) {
   const mapRef = useRef<L.Map | null>(null);
@@ -423,6 +451,7 @@ export default function MapComponent({
   }, []);
 
   const userLocationIcon = useMemo(() => createUserLocationIcon(), []);
+  const destinationIcon = useMemo(() => createDestinationIcon(), []);
 
   return (
     <>
@@ -460,6 +489,8 @@ export default function MapComponent({
             icon={userLocationIcon}
           />
         )}
+
+        {destination && <DestinationMarker destination={destination} icon={destinationIcon} />}
 
         <VehicleMarkers vehicles={vehicles} icons={iconMap} />
       </MapContainer>

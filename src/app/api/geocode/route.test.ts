@@ -7,8 +7,11 @@ vi.mock('@/lib/rateLimit', () => ({ rateLimitAllows }));
 
 import { GET } from '@/app/api/geocode/route';
 
-function request(query: string): NextRequest {
-  return new NextRequest(`https://example.com/api/geocode?q=${encodeURIComponent(query)}`);
+function request(query: string, language?: string): NextRequest {
+  const url = new URL('https://example.com/api/geocode');
+  url.searchParams.set('q', query);
+  if (language) url.searchParams.set('lang', language);
+  return new NextRequest(url);
 }
 
 beforeEach(() => {
@@ -51,5 +54,21 @@ describe('GET /api/geocode', () => {
     await expect(response.json()).resolves.toEqual([
       { lat: 47.377, lng: 8.54, display_name: 'Zürich HB' },
     ]);
+  });
+
+  it('requests Swiss geocoding results in the selected language', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await GET(request('Lausanne Gare', 'fr'));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Accept-Language': 'fr-CH,fr;q=0.9,en;q=0.6',
+        }),
+      })
+    );
   });
 });
