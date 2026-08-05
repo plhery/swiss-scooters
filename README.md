@@ -23,7 +23,8 @@ A mobile-friendly PWA showing shared e-scooters across Switzerland in the curren
 - **Viewport-wide discovery** — pan or zoom anywhere and see every scooter in that map area
 - **Rich GBFS 2.3 data** — nearby provider feeds preserve battery, range and rental links
 - **Strict vehicle filtering** — excludes bikes, reserved vehicles and disabled vehicles
-- **Server-side bounds filtering** — no CORS issues, with cached upstream feeds and buffered viewport requests
+- **Resilient feed aggregation** — stale-on-error caching, source-health metadata, and explicit outage responses
+- **Protected APIs** — bounded map queries, validation, response caps, and edge rate limits
 - **Accurate provider chips** — counts always reflect the scooters currently visible on the map
 - **Instant local filters** — provider and battery changes do not trigger network requests
 - **PWA** — cached app shell for fast/offline launches, automatic refresh after deployments
@@ -101,7 +102,19 @@ Query params:
 - `minBattery` — minimum battery % (default: 0)
 - `provider` — comma-separated filter (e.g., `bolt,lime`)
 
-Response: `{ vehicles: Vehicle[], providers: Record<string, number> }`
+Oversized bounds are rejected, and responses are capped at 5,000 vehicles.
+The response includes source freshness and partial-outage metadata:
+
+```text
+{
+  vehicles: Vehicle[],
+  providers: Record<string, number>,
+  meta: { partial, stale, failedSources, sources, generatedAt, truncated, totalVehicles }
+}
+```
+
+If every relevant upstream feed is unavailable and no stale value remains, the
+endpoint returns `503` instead of an empty success response.
 
 ### `GET /api/geocode`
 
@@ -130,6 +143,8 @@ src/
 │   └── MapWrapper.tsx         # Dynamic import wrapper (no SSR)
 └── lib/
     ├── geo.ts                 # Haversine distance and viewport bounds helpers
-    ├── scooterFeeds.ts        # National discovery + rich GBFS aggregation
+    ├── scooterFeeds.ts        # Resilient national + direct GBFS aggregation
+    ├── scooterQuery.ts        # API validation and request bounds
+    ├── upstreamJsonCache.ts   # Fresh/stale feed cache and request coalescing
     └── types.ts               # Vehicle types, provider config
 ```

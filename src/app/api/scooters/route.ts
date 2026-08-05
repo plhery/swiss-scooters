@@ -1,50 +1,97 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchScooters } from '@/lib/scooterFeeds';
+import {
+  fetchScooters,
+  ScooterFeedsUnavailableError,
+} from '@/lib/scooterFeeds';
+import { rateLimitAllows } from '@/lib/rateLimit';
+import { MAX_SCOOTER_RESULTS, parseScooterQuery } from '@/lib/scooterQuery';
+
+const MOBILITY_SOURCE = 'Swiss Federal Office of Energy sharedmobility.ch; Hopp';
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
-  const lat = Number.parseFloat(searchParams.get('lat') ?? '47.376');
-  const lng = Number.parseFloat(searchParams.get('lng') ?? '8.528');
-  const south = Number.parseFloat(searchParams.get('south') ?? '47.33');
-  const west = Number.parseFloat(searchParams.get('west') ?? '8.45');
-  const north = Number.parseFloat(searchParams.get('north') ?? '47.43');
-  const east = Number.parseFloat(searchParams.get('east') ?? '8.62');
-  const minBattery = Number.parseInt(searchParams.get('minBattery') ?? '0', 10);
-  const providerFilter = searchParams.get('provider')?.split(',').map(p => p.trim().toLowerCase());
-
-  if (
-    !Number.isFinite(lat) || lat < -90 || lat > 90 ||
-    !Number.isFinite(lng) || lng < -180 || lng > 180 ||
-    !Number.isFinite(south) || south < -90 || south > 90 ||
-    !Number.isFinite(west) || west < -180 || west > 180 ||
-    !Number.isFinite(north) || north < -90 || north > 90 ||
-    !Number.isFinite(east) || east < -180 || east > 180 ||
-    south >= north || west >= east ||
-    !Number.isFinite(minBattery) || minBattery < 0 || minBattery > 100
-  ) {
-    return NextResponse.json({ error: 'Invalid scooter search parameters' }, { status: 400 });
+  if (!await rateLimitAllows(request, 'SCOOTER_API_RATE_LIMITER')) {
+    return NextResponse.json(
+      { error: 'Too many scooter requests. Please try again shortly.' },
+      {
+        status: 429,
+        headers: {
+          'Cache-Control': 'private, no-store',
+          'Retry-After': '60',
+        },
+      }
+    );
   }
 
-  const vehicles = await fetchScooters({
-    lat,
-    lng,
-    bounds: { south, west, north, east },
-    minBattery,
-    providers: providerFilter ? new Set(providerFilter) : undefined,
-  });
-
-  const providers: Record<string, number> = {};
-  for (const v of vehicles) {
-    providers[v.provider] = (providers[v.provider] ?? 0) + 1;
+  const parsed = parseScooterQuery(request.nextUrl.searchParams);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { error: parsed.error },
+      { status: 400, headers: { 'Cache-Control': 'private, no-store' } }
+    );
   }
 
-  return NextResponse.json(
-    { vehicles, providers },
-    {
-      headers: {
-        'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
-        'X-Mobility-Data-Source': 'Swiss Federal Office of Energy sharedmobility.ch; Hopp',
-      },
+  try {
+    const result = await fetchScooters(parsed.query);
+    const totalVehicles = result.vehicles.length;
+    const vehicles = result.vehicles.slice(0, MAX_SCOOTER_RESULTS);
+    const truncated = vehicles.length < totalVehicles;
+    const providers: Record<string, number> = {};
+    for (const vehicle of vehicles) {
+      providers[vehicle.provider] = (providers[vehicle.provider] ?? 0) + 1;
     }
-  );
+
+    const degraded = result.meta.partial || result.meta.stale;
+    const dataStatus = result.meta.stale
+      ? 'stale'
+      : result.meta.partial
+        ? 'partial'
+        : 'fresh';
+
+    return NextResponse.json(
+      {
+        vehicles,
+        providers,
+        meta: {
+          ...result.meta,
+          generatedAt: new Date().toISOString(),
+          truncated,
+          totalVehicles,
+        },
+      },
+      {
+        headers: {
+          'Cache-Control': degraded
+            ? 'public, max-age=10, s-maxage=10, stale-while-revalidate=30'
+            : 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
+          'X-Mobility-Data-Source': MOBILITY_SOURCE,
+          'X-Mobility-Data-Status': dataStatus,
+        },
+      }
+    );
+  } catch (error) {
+    if (error instanceof ScooterFeedsUnavailableError) {
+      return NextResponse.json(
+        {
+          error: 'Scooter data is temporarily unavailable. Please try again shortly.',
+          meta: { failedSources: error.failedSources },
+        },
+        {
+          status: 503,
+          headers: {
+            'Cache-Control': 'private, no-store',
+            'Retry-After': '30',
+            'X-Mobility-Data-Source': MOBILITY_SOURCE,
+            'X-Mobility-Data-Status': 'unavailable',
+          },
+        }
+      );
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ event: 'scooter_api_failure', message }));
+    return NextResponse.json(
+      { error: 'The scooter service encountered an unexpected error.' },
+      { status: 500, headers: { 'Cache-Control': 'private, no-store' } }
+    );
+  }
 }

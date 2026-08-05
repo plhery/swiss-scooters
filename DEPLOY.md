@@ -23,6 +23,7 @@ storage. It identifies itself to the national GBFS 2.3 service with
 npm ci
 npm audit
 npm run lint
+npm test
 npm run build
 npm run preview
 ```
@@ -59,8 +60,8 @@ After deployment, confirm:
 
 1. `/` renders the map and scooter controls.
 2. `/api/geocode?q=Zurich%20HB` returns a JSON array.
-3. `/api/scooters?lat=47.3769&lng=8.5417&radius=500&minBattery=0` returns a JSON
-   object with `vehicles` and `providers`.
-4. `/api/scooters?lat=47.5596&lng=7.5886&radius=1000&minBattery=0` returns Basel
-   providers from the national feed.
+3. `/api/scooters?lat=47.3769&lng=8.5417&south=47.36&west=8.52&north=47.39&east=8.57`
+   returns a JSON object with `vehicles`, `providers`, and source-health `meta`.
+4. An oversized bounding box returns `400`, and repeated excess API requests
+   return `429` with `Retry-After`.
 5. The Cloudflare Worker logs contain no runtime errors.

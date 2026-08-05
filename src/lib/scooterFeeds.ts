@@ -1,5 +1,6 @@
 import { boundsContainPoint, haversineM } from '@/lib/geo';
 import type { MapBounds, Vehicle } from '@/lib/types';
+import { upstreamJsonCache, type CachedJson } from '@/lib/upstreamJsonCache';
 
 const NATIONAL_STATUS_URL = 'https://sharedmobility.ch/free_bike_status.json';
 const NATIONAL_TYPES_URL = 'https://sharedmobility.ch/vehicle_types.json';
@@ -9,16 +10,10 @@ const HOPP_TYPES_URL = 'https://api.hopp.bike/gbfs/ch-zurich/en/vehicle_types.js
 
 const STATUS_REVALIDATE_SECONDS = 30;
 const METADATA_REVALIDATE_SECONDS = 3600;
+const STATUS_STALE_IF_ERROR_SECONDS = 300;
+const METADATA_STALE_IF_ERROR_SECONDS = 86400;
 const FETCH_TIMEOUT_MS = 15_000;
 const DEFAULT_AUTH_EMAIL = 'zurich-scooter@plhery.com';
-const MAX_MEMORY_CACHE_ENTRIES = 64;
-
-interface CacheEntry {
-  expiresAt: number;
-  value: Promise<unknown>;
-}
-
-const jsonCache = new Map<string, CacheEntry>();
 
 type AvailabilityFlag = boolean | 0 | 1;
 
@@ -76,6 +71,39 @@ export interface FeedQuery {
   providers?: Set<string>;
 }
 
+export type FeedSourceStatus = 'fresh' | 'stale' | 'failed' | 'skipped';
+
+export interface ScooterFetchMetadata {
+  partial: boolean;
+  stale: boolean;
+  failedSources: string[];
+  sources: {
+    national: FeedSourceStatus;
+    hopp: FeedSourceStatus;
+  };
+}
+
+export interface ScooterFetchResult {
+  vehicles: Vehicle[];
+  meta: ScooterFetchMetadata;
+}
+
+interface SourceVehicles {
+  vehicles: Vehicle[];
+  stale: boolean;
+  skipped?: boolean;
+}
+
+export class ScooterFeedsUnavailableError extends Error {
+  readonly failedSources: string[];
+
+  constructor(failedSources: string[]) {
+    super('Every configured scooter feed failed');
+    this.name = 'ScooterFeedsUnavailableError';
+    this.failedSources = failedSources;
+  }
+}
+
 function sharedMobilityHeaders(): Record<string, string> {
   return {
     Accept: 'application/json',
@@ -87,47 +115,19 @@ function sharedMobilityHeaders(): Record<string, string> {
 async function fetchJson<T>(
   url: string,
   options: { authenticated?: boolean; revalidate: number }
-): Promise<T> {
-  const now = Date.now();
-  const cached = jsonCache.get(url);
-  if (cached && cached.expiresAt > now) return cached.value as Promise<T>;
-  if (cached) jsonCache.delete(url);
-
-  for (const [key, entry] of jsonCache) {
-    if (entry.expiresAt <= now) jsonCache.delete(key);
-  }
-  while (jsonCache.size >= MAX_MEMORY_CACHE_ENTRIES) {
-    const oldestKey = jsonCache.keys().next().value;
-    if (oldestKey === undefined) break;
-    jsonCache.delete(oldestKey);
-  }
-
+): Promise<CachedJson<T>> {
   const headers = options.authenticated
     ? sharedMobilityHeaders()
     : { Accept: 'application/json', 'User-Agent': 'scooters-web/2.0 (zurich-scooter.plhery.com)' };
 
-  const value = fetch(url, {
+  return upstreamJsonCache.fetch<T>(url, {
     headers,
-    cache: 'no-store',
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  }).then(async response => {
-    if (!response.ok) {
-      throw new Error(`GBFS request failed with HTTP ${response.status}`);
-    }
-    return response.json() as Promise<T>;
+    freshSeconds: options.revalidate,
+    staleIfErrorSeconds: options.revalidate === STATUS_REVALIDATE_SECONDS
+      ? STATUS_STALE_IF_ERROR_SECONDS
+      : METADATA_STALE_IF_ERROR_SECONDS,
+    timeoutMs: FETCH_TIMEOUT_MS,
   });
-
-  jsonCache.set(url, {
-    expiresAt: now + options.revalidate * 1000,
-    value,
-  });
-
-  try {
-    return await value;
-  } catch (error) {
-    if (jsonCache.get(url)?.value === value) jsonCache.delete(url);
-    throw error;
-  }
 }
 
 function rawVehicles(feed: StatusFeed): RawVehicle[] {
@@ -254,7 +254,7 @@ async function fetchSystemVehicles(
   systemId: string,
   baseUrl: string,
   query: FeedQuery
-): Promise<Vehicle[]> {
+): Promise<SourceVehicles> {
   const [status, types] = await Promise.all([
     fetchJson<StatusFeed>(`${baseUrl}/free_bike_status`, {
       authenticated: true,
@@ -266,14 +266,20 @@ async function fetchSystemVehicles(
     }),
   ]);
 
-  return filterVehicles(systemId, rawVehicles(status), typeMap(types), query);
+  return {
+    vehicles: filterVehicles(systemId, rawVehicles(status.data), typeMap(types.data), query),
+    stale: status.stale || types.stale,
+  };
 }
 
-async function fetchNationalVehicles(query: FeedQuery): Promise<Vehicle[]> {
+async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> {
   const registryPromise = fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
-  }).catch(() => ({ systems: [] }));
+  }).catch((reason): CachedJson<RegistryFeed> => {
+    logFallback('national_registry', reason);
+    return { data: { systems: [] }, stale: false };
+  });
 
   const [status, types, registry] = await Promise.all([
     fetchJson<StatusFeed>(NATIONAL_STATUS_URL, { revalidate: STATUS_REVALIDATE_SECONDS }),
@@ -281,10 +287,10 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<Vehicle[]> {
     registryPromise,
   ]);
 
-  const nationalTypes = typeMap(types);
+  const nationalTypes = typeMap(types.data);
   const nearbyBySystem = new Map<string, RawVehicle[]>();
 
-  for (const raw of rawVehicles(status)) {
+  for (const raw of rawVehicles(status.data)) {
     const systemId = raw.provider_id;
     const provider = systemId ? normalizeProvider(systemId) : null;
     if (!systemId || !provider || (query.providers && !query.providers.has(provider))) continue;
@@ -302,7 +308,7 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<Vehicle[]> {
   }
 
   const registryUrls = new Map(
-    (registry.systems ?? [])
+    (registry.data.systems ?? [])
       .map(system => [system.id, registryBaseUrl(system.url)] as const)
       .filter((entry): entry is readonly [string, string] => entry[1] !== null)
   );
@@ -311,40 +317,97 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<Vehicle[]> {
     [...nearbyBySystem.entries()].map(async ([systemId, fallbackVehicles]) => {
       const baseUrl = registryUrls.get(systemId);
       if (!baseUrl) {
-        return filterVehicles(systemId, fallbackVehicles, nationalTypes, query);
+        return {
+          vehicles: filterVehicles(systemId, fallbackVehicles, nationalTypes, query),
+          stale: status.stale || types.stale,
+        };
       }
 
       try {
         return await fetchSystemVehicles(systemId, baseUrl, query);
-      } catch {
-        return filterVehicles(systemId, fallbackVehicles, nationalTypes, query);
+      } catch (reason) {
+        logFallback(systemId, reason);
+        return {
+          vehicles: filterVehicles(systemId, fallbackVehicles, nationalTypes, query),
+          stale: status.stale || types.stale,
+        };
       }
     })
   );
 
-  return results.flat();
+  return {
+    vehicles: results.flatMap(result => result.vehicles),
+    stale: status.stale || types.stale || registry.stale || results.some(result => result.stale),
+  };
 }
 
-async function fetchHoppVehicles(query: FeedQuery): Promise<Vehicle[]> {
-  if (query.providers && !query.providers.has('hopp')) return [];
+async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
+  if (query.providers && !query.providers.has('hopp')) {
+    return { vehicles: [], stale: false, skipped: true };
+  }
 
   const [status, types] = await Promise.all([
     fetchJson<StatusFeed>(HOPP_STATUS_URL, { revalidate: STATUS_REVALIDATE_SECONDS }),
     fetchJson<VehicleTypesFeed>(HOPP_TYPES_URL, { revalidate: METADATA_REVALIDATE_SECONDS }),
   ]);
 
-  return filterVehicles('hopp', rawVehicles(status), typeMap(types), query);
+  return {
+    vehicles: filterVehicles('hopp', rawVehicles(status.data), typeMap(types.data), query),
+    stale: status.stale || types.stale,
+  };
 }
 
-export async function fetchScooters(query: FeedQuery): Promise<Vehicle[]> {
+function nationalSourceIsRelevant(query: FeedQuery): boolean {
+  if (!query.providers) return true;
+  return [...query.providers].some(provider => provider !== 'hopp');
+}
+
+function sourceStatus(result: PromiseSettledResult<SourceVehicles>): FeedSourceStatus {
+  if (result.status === 'rejected') return 'failed';
+  if (result.value.skipped) return 'skipped';
+  return result.value.stale ? 'stale' : 'fresh';
+}
+
+function logSourceFailure(source: string, reason: unknown): void {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  console.error(JSON.stringify({ event: 'scooter_feed_failure', source, message }));
+}
+
+function logFallback(source: string, reason: unknown): void {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  console.warn(JSON.stringify({ event: 'scooter_feed_fallback', source, message }));
+}
+
+export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResult> {
   const [nationalResult, hoppResult] = await Promise.allSettled([
-    fetchNationalVehicles(query),
+    nationalSourceIsRelevant(query)
+      ? fetchNationalVehicles(query)
+      : Promise.resolve({ vehicles: [], stale: false, skipped: true }),
     fetchHoppVehicles(query),
   ]);
 
+  const sourceResults = [
+    ['national', nationalResult],
+    ['hopp', hoppResult],
+  ] as const;
+  const failedSources: string[] = [];
+  for (const [source, result] of sourceResults) {
+    if (result.status === 'rejected') {
+      logSourceFailure(source, result.reason);
+      failedSources.push(source);
+    }
+  }
+
+  const attemptedSourceCount = sourceResults.filter(([, result]) => (
+    result.status === 'rejected' || !result.value.skipped
+  )).length;
+  if (attemptedSourceCount > 0 && failedSources.length === attemptedSourceCount) {
+    throw new ScooterFeedsUnavailableError(failedSources);
+  }
+
   const vehicles = [
-    ...(nationalResult.status === 'fulfilled' ? nationalResult.value : []),
-    ...(hoppResult.status === 'fulfilled' ? hoppResult.value : []),
+    ...(nationalResult.status === 'fulfilled' ? nationalResult.value.vehicles : []),
+    ...(hoppResult.status === 'fulfilled' ? hoppResult.value.vehicles : []),
   ];
 
   const unique = new Map<string, Vehicle>();
@@ -355,10 +418,25 @@ export async function fetchScooters(query: FeedQuery): Promise<Vehicle[]> {
     unique.set(key, vehicle);
   }
 
-  return [...unique.values()]
+  const filtered = [...unique.values()]
     .filter(vehicle => (
       query.minBattery === 0 ||
       (vehicle.battery !== null && vehicle.battery >= query.minBattery)
     ))
     .sort((a, b) => a.distance_m - b.distance_m);
+
+  const sources = {
+    national: sourceStatus(nationalResult),
+    hopp: sourceStatus(hoppResult),
+  };
+
+  return {
+    vehicles: filtered,
+    meta: {
+      partial: failedSources.length > 0,
+      stale: sources.national === 'stale' || sources.hopp === 'stale',
+      failedSources,
+      sources,
+    },
+  };
 }

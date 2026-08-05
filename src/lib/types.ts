@@ -19,6 +19,15 @@ export interface MapBounds {
 export interface ScooterResponse {
   vehicles: Vehicle[];
   providers: Record<string, number>;
+  meta?: {
+    partial: boolean;
+    stale: boolean;
+    failedSources: string[];
+    sources: Record<string, 'fresh' | 'stale' | 'failed' | 'skipped'>;
+    generatedAt: string;
+    truncated: boolean;
+    totalVehicles: number;
+  };
 }
 
 export interface ProviderConfig {
