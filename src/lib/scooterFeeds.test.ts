@@ -21,11 +21,18 @@ function jsonResponse(value: unknown): Response {
 }
 
 function nationalResponse(url: string): Response | null {
-  if (url === 'https://sharedmobility.ch/free_bike_status.json') {
+  if (url === 'https://sharedmobility.ch/v2/gbfs') {
+    return jsonResponse({
+      systems: [{
+        id: 'lime_zurich',
+        url: 'https://sharedmobility.ch/v2/gbfs/lime_zurich/gbfs',
+      }],
+    });
+  }
+  if (url === 'https://sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status') {
     return jsonResponse({
       data: {
         bikes: [{
-          provider_id: 'lime_zurich',
           vehicle_type_id: 'lime-scooter',
           bike_id: 'lime-1',
           lat: 47.377,
@@ -38,7 +45,7 @@ function nationalResponse(url: string): Response | null {
       },
     });
   }
-  if (url === 'https://sharedmobility.ch/vehicle_types.json') {
+  if (url === 'https://sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types') {
     return jsonResponse({
       data: {
         vehicle_types: [{
@@ -48,9 +55,6 @@ function nationalResponse(url: string): Response | null {
         }],
       },
     });
-  }
-  if (url === 'https://sharedmobility.ch/v2/gbfs') {
-    return jsonResponse({ systems: [] });
   }
   return null;
 }
@@ -113,5 +117,59 @@ describe('fetchScooters source health', () => {
     expect(result.meta.sources.hopp).toBe('skipped');
     expect(result.meta.partial).toBe(false);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('hopp.bike'))).toBe(false);
+  });
+
+  it('loads supported systems from the authenticated national registry', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        Authorization: 'zurich-scooter@plhery.com',
+      });
+      const url = String(input);
+      const response = nationalResponse(url);
+      if (response) return response;
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+
+    expect(result.vehicles).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not load type metadata for systems outside the requested bounds', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://sharedmobility.ch/v2/gbfs') {
+        return jsonResponse({
+          systems: [{
+            id: 'lime_basel',
+            url: 'https://sharedmobility.ch/v2/gbfs/lime_basel/gbfs',
+          }],
+        });
+      }
+      if (url.endsWith('/lime_basel/free_bike_status')) {
+        return jsonResponse({
+          data: {
+            bikes: [{
+              vehicle_type_id: 'lime-scooter',
+              bike_id: 'basel-1',
+              lat: 47.56,
+              lon: 7.59,
+              is_reserved: false,
+              is_disabled: false,
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+
+    expect(result.vehicles).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('vehicle_types'))).toBe(false);
   });
 });

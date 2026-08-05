@@ -2,8 +2,6 @@ import { boundsContainPoint, haversineM } from '@/lib/geo';
 import type { MapBounds, Vehicle } from '@/lib/types';
 import { upstreamJsonCache, type CachedJson } from '@/lib/upstreamJsonCache';
 
-const NATIONAL_STATUS_URL = 'https://sharedmobility.ch/free_bike_status.json';
-const NATIONAL_TYPES_URL = 'https://sharedmobility.ch/vehicle_types.json';
 const NATIONAL_V23_REGISTRY_URL = 'https://sharedmobility.ch/v2/gbfs';
 const HOPP_STATUS_URL = 'https://api.hopp.bike/gbfs/ch-zurich/en/free_bike_status.json';
 const HOPP_TYPES_URL = 'https://api.hopp.bike/gbfs/ch-zurich/en/vehicle_types.json';
@@ -32,7 +30,6 @@ interface RawVehicle {
   is_reserved?: AvailabilityFlag;
   is_disabled?: AvailabilityFlag;
   rental_uris?: { ios?: string; android?: string };
-  provider_id?: string;
 }
 
 interface VehicleType {
@@ -255,89 +252,85 @@ async function fetchSystemVehicles(
   baseUrl: string,
   query: FeedQuery
 ): Promise<SourceVehicles> {
-  const [status, types] = await Promise.all([
-    fetchJson<StatusFeed>(`${baseUrl}/free_bike_status`, {
-      authenticated: true,
-      revalidate: STATUS_REVALIDATE_SECONDS,
-    }),
-    fetchJson<VehicleTypesFeed>(`${baseUrl}/vehicle_types`, {
-      authenticated: true,
-      revalidate: METADATA_REVALIDATE_SECONDS,
-    }),
-  ]);
+  const status = await fetchJson<StatusFeed>(`${baseUrl}/free_bike_status`, {
+    authenticated: true,
+    revalidate: STATUS_REVALIDATE_SECONDS,
+  });
+  const nearbyVehicles = rawVehicles(status.data).filter(raw => {
+    if (isUnavailable(raw.is_disabled) || isUnavailable(raw.is_reserved)) return false;
+    if (!raw.vehicle_type_id) return false;
+
+    const lat = raw.lat;
+    const lng = raw.lon ?? raw.lng;
+    return (
+      lat != null && lng != null &&
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      boundsContainPoint(query.bounds, lat, lng)
+    );
+  });
+
+  if (nearbyVehicles.length === 0) {
+    return { vehicles: [], stale: status.stale };
+  }
+
+  const types = await fetchJson<VehicleTypesFeed>(`${baseUrl}/vehicle_types`, {
+    authenticated: true,
+    revalidate: METADATA_REVALIDATE_SECONDS,
+  });
 
   return {
-    vehicles: filterVehicles(systemId, rawVehicles(status.data), typeMap(types.data), query),
+    vehicles: filterVehicles(systemId, nearbyVehicles, typeMap(types.data), query),
     stale: status.stale || types.stale,
   };
 }
 
 async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> {
-  const registryPromise = fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
+  const registry = await fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
-  }).catch((reason): CachedJson<RegistryFeed> => {
-    logFallback('national_registry', reason);
-    return { data: { systems: [] }, stale: false };
   });
 
-  const [status, types, registry] = await Promise.all([
-    fetchJson<StatusFeed>(NATIONAL_STATUS_URL, { revalidate: STATUS_REVALIDATE_SECONDS }),
-    fetchJson<VehicleTypesFeed>(NATIONAL_TYPES_URL, { revalidate: METADATA_REVALIDATE_SECONDS }),
-    registryPromise,
-  ]);
+  const systems =
+    (registry.data.systems ?? [])
+      .map(system => ({
+        id: system.id,
+        provider: normalizeProvider(system.id),
+        baseUrl: registryBaseUrl(system.url),
+      }))
+      .filter((system): system is { id: string; provider: ProviderKey; baseUrl: string } => (
+        system.provider !== null &&
+        system.provider !== 'hopp' &&
+        system.baseUrl !== null &&
+        (!query.providers || query.providers.has(system.provider))
+      ));
 
-  const nationalTypes = typeMap(types.data);
-  const nearbyBySystem = new Map<string, RawVehicle[]>();
-
-  for (const raw of rawVehicles(status.data)) {
-    const systemId = raw.provider_id;
-    const provider = systemId ? normalizeProvider(systemId) : null;
-    if (!systemId || !provider || (query.providers && !query.providers.has(provider))) continue;
-    if (isUnavailable(raw.is_disabled) || isUnavailable(raw.is_reserved)) continue;
-    if (!raw.vehicle_type_id || !isElectricScooter(nationalTypes.get(raw.vehicle_type_id))) continue;
-
-    const lat = raw.lat;
-    const lng = raw.lon ?? raw.lng;
-    if (lat == null || lng == null) continue;
-    if (!boundsContainPoint(query.bounds, lat, lng)) continue;
-
-    const current = nearbyBySystem.get(systemId) ?? [];
-    current.push(raw);
-    nearbyBySystem.set(systemId, current);
+  if (systems.length === 0) {
+    throw new Error('National GBFS registry contains no relevant supported systems');
   }
 
-  const registryUrls = new Map(
-    (registry.data.systems ?? [])
-      .map(system => [system.id, registryBaseUrl(system.url)] as const)
-      .filter((entry): entry is readonly [string, string] => entry[1] !== null)
+  const results = await Promise.allSettled(
+    systems.map(system => fetchSystemVehicles(system.id, system.baseUrl, query))
   );
 
-  const results = await Promise.all(
-    [...nearbyBySystem.entries()].map(async ([systemId, fallbackVehicles]) => {
-      const baseUrl = registryUrls.get(systemId);
-      if (!baseUrl) {
-        return {
-          vehicles: filterVehicles(systemId, fallbackVehicles, nationalTypes, query),
-          stale: status.stale || types.stale,
-        };
-      }
+  const availableResults: SourceVehicles[] = [];
+  let failedSystemCount = 0;
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      availableResults.push(result.value);
+      return;
+    }
 
-      try {
-        return await fetchSystemVehicles(systemId, baseUrl, query);
-      } catch (reason) {
-        logFallback(systemId, reason);
-        return {
-          vehicles: filterVehicles(systemId, fallbackVehicles, nationalTypes, query),
-          stale: status.stale || types.stale,
-        };
-      }
-    })
-  );
+    failedSystemCount += 1;
+    logFallback(systems[index].id, result.reason);
+  });
+
+  if (availableResults.length === 0) {
+    throw new Error('Every relevant national GBFS system failed');
+  }
 
   return {
-    vehicles: results.flatMap(result => result.vehicles),
-    stale: status.stale || types.stale || registry.stale || results.some(result => result.stale),
+    vehicles: availableResults.flatMap(result => result.vehicles),
+    stale: registry.stale || failedSystemCount > 0 || availableResults.some(result => result.stale),
   };
 }
 
