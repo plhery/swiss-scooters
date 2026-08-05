@@ -1,10 +1,14 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "zurich-scooter",
-  "main": ".open-next/worker.js",
+  "name": "swiss-scooters",
+  "main": "worker.ts",
   "compatibility_date": "2026-07-13",
   "compatibility_flags": ["nodejs_compat"],
   "routes": [
+    {
+      "pattern": "swiss-scooters.plhery.com",
+      "custom_domain": true
+    },
     {
       "pattern": "zurich-scooter.plhery.com",
       "custom_domain": true
@@ -33,6 +37,10 @@
     }
   ],
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    }
   }
 }

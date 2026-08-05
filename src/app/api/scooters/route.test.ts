@@ -72,7 +72,7 @@ describe('GET /api/scooters', () => {
         partial: false,
         stale: false,
         failedSources: [],
-        sources: { national: 'fresh', hopp: 'skipped' },
+        sources: { national: 'fresh' },
       },
     });
 
@@ -92,7 +92,7 @@ describe('GET /api/scooters', () => {
 
   it('returns 503 with source metadata when all feeds fail', async () => {
     mocks.fetchScooters.mockRejectedValue(
-      new ScooterFeedsUnavailableError(['national', 'hopp'])
+      new ScooterFeedsUnavailableError(['national'])
     );
 
     const response = await GET(request());
@@ -101,7 +101,7 @@ describe('GET /api/scooters', () => {
     expect(response.headers.get('x-mobility-data-status')).toBe('unavailable');
     expect(response.headers.get('cache-control')).toContain('no-store');
     await expect(response.json()).resolves.toMatchObject({
-      meta: { failedSources: ['national', 'hopp'] },
+      meta: { failedSources: ['national'] },
     });
   });
 
@@ -111,8 +111,8 @@ describe('GET /api/scooters', () => {
       meta: {
         partial: true,
         stale: false,
-        failedSources: ['hopp'],
-        sources: { national: 'fresh', hopp: 'failed' },
+        failedSources: ['national:lime_zurich'],
+        sources: { national: 'stale' },
       },
     });
 

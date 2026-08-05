@@ -349,6 +349,18 @@ export default function BottomSheet({
             ))}
           </div>
         </div>
+
+        <div className="sheet-footer">
+          <a href="/privacy">{t('links.privacy')}</a>
+          <span aria-hidden="true">·</span>
+          <a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/" target="_blank" rel="noreferrer">
+            Mobility data
+          </a>
+          <span aria-hidden="true">·</span>
+          <a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api" target="_blank" rel="noreferrer">
+            Address data © swisstopo
+          </a>
+        </div>
       </div>
     </div>
   );

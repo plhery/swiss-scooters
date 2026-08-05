@@ -12,6 +12,10 @@ function clientKey(request: Request): string {
     'local-development';
 }
 
+function failOpenInLocalDevelopment(): boolean {
+  return process.env.NODE_ENV !== 'production';
+}
+
 export async function rateLimitAllows(
   request: Request,
   bindingName: RateLimitBindingName
@@ -20,13 +24,13 @@ export async function rateLimitAllows(
     const context = await getCloudflareContext({ async: true });
     const binding = (context.env as CloudflareEnv & Record<string, unknown>)[bindingName] as
       RateLimitBinding | undefined;
-    if (!binding) return true;
+    if (!binding) return failOpenInLocalDevelopment();
 
     const result = await binding.limit({ key: clientKey(request) });
     return result.success;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(JSON.stringify({ event: 'rate_limit_unavailable', bindingName, message }));
-    return true;
+    return failOpenInLocalDevelopment();
   }
 }

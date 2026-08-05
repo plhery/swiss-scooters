@@ -3,32 +3,37 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-PROJECT_PATH="$PROJECT_ROOT/ios/ZurichScooters.xcodeproj"
-SCHEME="ZurichScooters"
+PROJECT_PATH="$PROJECT_ROOT/ios/SwissScooters.xcodeproj"
+SCHEME="SwissScooters"
 BUNDLE_ID="com.plhery.zurichscooters"
-DEVICE_NAME="${ZURICH_SCOOTERS_DEVICE_NAME:-iPhone de Paul}"
+DEVICE_NAME="${SWISS_SCOOTERS_DEVICE_NAME:-}"
 TEMP_ROOT="${TMPDIR:-/tmp}"
 TEMP_ROOT="${TEMP_ROOT%/}"
-CACHE_ROOT="$HOME/Library/Caches/ZurichScootersRefresh"
+CACHE_ROOT="$HOME/Library/Caches/SwissScootersRefresh"
 DERIVED_DATA="$CACHE_ROOT/DerivedData"
 BUILD_LOG="$CACHE_ROOT/refresh.log"
-WORK_DIR="$(mktemp -d "$TEMP_ROOT/zurich-scooters-refresh.XXXXXX")"
+WORK_DIR="$(mktemp -d "$TEMP_ROOT/swiss-scooters-refresh.XXXXXX")"
 PROFILE_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
 PROFILE_BACKUP_DIR="$WORK_DIR/profiles"
 SIGNING_BUILD_SUCCEEDED=0
+
+if [[ -z "$DEVICE_NAME" ]]; then
+  print -u2 "Set SWISS_SCOOTERS_DEVICE_NAME to the iPhone name shown by devicectl."
+  exit 1
+fi
 
 mkdir -p "$CACHE_ROOT" "$PROFILE_BACKUP_DIR"
 
 notify() {
   /usr/bin/osascript \
     -e 'on run argv' \
-    -e 'display notification (item 1 of argv) with title "Zurich Scooters"' \
+    -e 'display notification (item 1 of argv) with title "Swiss Scooters"' \
     -e 'end run' \
     "$1" >/dev/null 2>&1 || true
 }
 
 cleanup() {
-  if [[ -d "$WORK_DIR" && "$WORK_DIR" == "$TEMP_ROOT"/zurich-scooters-refresh.* ]]; then
+  if [[ -d "$WORK_DIR" && "$WORK_DIR" == "$TEMP_ROOT"/swiss-scooters-refresh.* ]]; then
     /bin/rm -rf -- "$WORK_DIR"
   fi
 }
@@ -76,7 +81,7 @@ on_exit() {
 
 trap 'on_exit $?' EXIT
 
-print "Refreshing Zurich Scooters on $DEVICE_NAME…"
+print "Refreshing Swiss Scooters on $DEVICE_NAME…"
 print "Keep the iPhone unlocked and connected by USB or reachable over Wi-Fi."
 print
 notify "Refresh started. Keep the iPhone unlocked and nearby."
@@ -111,7 +116,7 @@ xcodebuild \
   -quiet \
   build 2>&1 | tee "$BUILD_LOG"
 
-APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphoneos/ZurichScooters.app"
+APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphoneos/SwissScooters.app"
 if [[ ! -d "$APP_PATH" ]]; then
   print -u2 "The build succeeded but the app bundle was not found at $APP_PATH"
   exit 1
@@ -150,7 +155,7 @@ LAUNCH_OUTPUT="$(xcrun devicectl device process launch --device "$DEVICE_NAME" "
   elif [[ "$LAUNCH_OUTPUT" == *"device was not, or could not be, unlocked"* ]]; then
     print
     print "The app is installed. Unlock the iPhone and open it normally."
-    LAUNCH_NOTE="Unlock the iPhone and open Zurich Scooters."
+    LAUNCH_NOTE="Unlock the iPhone and open Swiss Scooters."
   else
     print -u2 "The app was installed but could not be launched automatically."
     exit 1

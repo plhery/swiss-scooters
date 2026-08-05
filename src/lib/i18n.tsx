@@ -57,6 +57,7 @@ const en = {
   'search.noResults': 'No Swiss addresses found',
   'search.error': 'Address search is unavailable',
   'search.results': 'Address suggestions',
+  'links.privacy': 'Privacy',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -116,6 +117,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'search.noResults': 'Keine Schweizer Adressen gefunden',
     'search.error': 'Die Adresssuche ist nicht verfügbar',
     'search.results': 'Adressvorschläge',
+    'links.privacy': 'Datenschutz',
   },
   fr: {
     'controls.locate': 'Aller à ma position',
@@ -169,6 +171,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'search.noResults': 'Aucune adresse suisse trouvée',
     'search.error': "La recherche d’adresse est indisponible",
     'search.results': 'Suggestions d’adresses',
+    'links.privacy': 'Confidentialité',
   },
   it: {
     'controls.locate': 'Vai alla mia posizione',
@@ -222,6 +225,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'search.noResults': 'Nessun indirizzo svizzero trovato',
     'search.error': 'La ricerca indirizzo non è disponibile',
     'search.results': 'Suggerimenti di indirizzi',
+    'links.privacy': 'Privacy',
   },
 };
 

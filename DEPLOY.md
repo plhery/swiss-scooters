@@ -1,71 +1,92 @@
 # Cloudflare deployment
 
-Scooters Switzerland is deployed as a full-stack Next.js application on Cloudflare
-Workers using the OpenNext adapter. The homepage and browser assets are static;
-`/api/geocode` and `/api/scooters` run as Worker route handlers.
+Swiss Scooters is a full-stack Next.js application deployed to Cloudflare
+Workers through OpenNext.
 
-**Production:** <https://zurich-scooter.plhery.com>
+- Canonical production host: <https://swiss-scooters.plhery.com>
+- Legacy compatibility host: <https://zurich-scooter.plhery.com>
 
-## Prerequisites
+The legacy host redirects browser pages to the canonical host while continuing
+to serve `/api/*` for older native-app installations.
 
-- Node.js and npm
-- A Cloudflare account on the Workers Free plan or higher
+## Requirements
+
+- Node.js 26+
+- npm
+- A Cloudflare account
 - Wrangler authenticated with `npx wrangler login`
 
-The application does not require secret API keys, a database, or persistent
-storage. It identifies itself to the national GBFS 2.3 service with
-`zurich-scooter@plhery.com`. Set the optional, non-secret
-`SHAREDMOBILITY_AUTH_EMAIL` environment variable to use a different contact.
-Provider discovery, coverage metadata, spatial probes, and live status feeds
-are coalesced and cached in each warm Worker instance. For the expected small
-audience this avoids the operational overhead of persistent storage or a
-separate ingestion service.
+No secret API key, database, or persistent storage is required. The optional
+`SHAREDMOBILITY_AUTH_EMAIL` setting is a public contact identifier, not a
+credential. Do not put actual credentials in Wrangler `vars`; use encrypted
+Worker secrets if future features require them.
 
 ## Validate locally
 
 ```bash
 npm ci
-npm audit
+npm audit --audit-level=moderate
 npm run lint
 npm test
+npm run cf-typegen
 npm run build
+npm run test:e2e
 npm run preview
 ```
 
-The preview command builds the OpenNext bundle and serves it through the local
-Cloudflare Workers runtime.
+## Deploy
 
-## Continuous deployment
+```bash
+npm run deploy
+```
 
-Cloudflare Workers Builds is connected to `plhery/zurich-scooter` with `main` as
-the production branch. Every push to `main` runs:
+OpenNext builds `.open-next/worker.js`; `worker.ts` applies the legacy-host
+redirect and delegates all other requests to that generated Worker. Wrangler
+uploads the bundle and static assets, creates the `swiss-scooters.plhery.com`
+custom domain, and keeps the legacy hostname attached to the same Worker.
+
+Production rate limiting is configured in `wrangler.jsonc`. The app fails closed
+when a binding is missing or unavailable in production. Persisted invocation
+logs are disabled because scooter and geocode URLs can contain precise
+coordinates or address text; structured application error logs remain enabled.
+
+## Cloudflare Workers Builds
+
+The private GitHub repository can remain connected to Cloudflare Workers Builds.
+Use `main` as the production branch with:
 
 ```bash
 npx opennextjs-cloudflare build
 npx wrangler deploy
 ```
 
-Builds for non-production branches are enabled and upload preview versions with
-`npx wrangler versions upload`.
+Use `npx wrangler versions upload` for non-production branch previews. After a
+GitHub repository or Worker rename, verify the build connection in Cloudflare;
+the repository is identified by GitHub internally, but the target Worker name
+must be `swiss-scooters`.
 
-## Manual deployment
+## Public launch checklist
 
-```bash
-npm run deploy
-```
+1. Confirm the new hostname renders without Cloudflare Access authentication.
+2. Confirm the legacy homepage returns a `308` to the canonical hostname.
+3. Confirm legacy `/api/scooters` and `/api/geocode` requests still work.
+4. Verify valid scooter and address queries, bounds validation, `429` responses,
+   and upstream outage behavior.
+5. Test a fresh PWA install and confirm old `zurich-scooter-*` caches disappear.
+6. Test the native iOS app against the canonical endpoint.
+7. Check only structured, non-location-bearing application errors are persisted.
+8. Monitor latency, `429`, `5xx`, upstream failures, and Worker usage.
+9. Verify the final security headers at the edge. Cloudflare zone-level HSTS
+   settings override the application header; change them only after confirming
+   every affected `plhery.com` hostname supports HTTPS.
 
-Wrangler uses `wrangler.jsonc` and uploads the static assets plus the generated
-`.open-next/worker.js` bundle. The generated `.open-next`, `.wrangler`, and
-Cloudflare type files are intentionally ignored by Git.
+Cloudflare Access should not protect the canonical hostname. Remove or narrow
+any wildcard Access application only after the checks above pass. The GitHub
+repository can remain private until the separate open-source publication gate.
 
-## Verify
+## Rollback
 
-After deployment, confirm:
-
-1. `/` renders the map and scooter controls.
-2. `/api/geocode?q=Zurich%20HB` returns a JSON array.
-3. `/api/scooters?lat=47.3769&lng=8.5417&south=47.36&west=8.52&north=47.39&east=8.57`
-   returns a JSON object with `vehicles`, `providers`, and source-health `meta`.
-4. An oversized bounding box returns `400`, and repeated excess API requests
-   return `429` with `Retry-After`.
-5. The Cloudflare Worker logs contain no runtime errors.
+Cloudflare retains Worker versions. Roll back the deployment through the
+Cloudflare dashboard or Wrangler, then point both custom domains at the last
+known-good version. Do not remove the legacy hostname until installed native
+clients have had a reasonable migration window.

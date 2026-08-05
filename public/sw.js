@@ -1,6 +1,7 @@
-const CACHE_PREFIX = "zurich-scooter";
-const APP_CACHE = `${CACHE_PREFIX}-app-v3`;
-const ASSET_CACHE = `${CACHE_PREFIX}-assets-v3`;
+const CACHE_PREFIX = "swiss-scooters";
+const LEGACY_CACHE_PREFIXES = ["zurich-scooter"];
+const APP_CACHE = `${CACHE_PREFIX}-app-v4`;
+const ASSET_CACHE = `${CACHE_PREFIX}-assets-v4`;
 const APP_SHELL_URL = new URL("/", self.location.origin).toString();
 const UPDATE_MARKER_URL = new URL(
   "/__pwa-update-pending__",
@@ -53,9 +54,11 @@ self.addEventListener("activate", (event) => {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(
-            (name) => name.startsWith(`${CACHE_PREFIX}-`) && !activeCaches.has(name)
-          )
+          .filter((name) => (
+            (name.startsWith(`${CACHE_PREFIX}-`) ||
+              LEGACY_CACHE_PREFIXES.some((prefix) => name.startsWith(`${prefix}-`))) &&
+            !activeCaches.has(name)
+          ))
           .map((name) => caches.delete(name))
       );
 
@@ -78,7 +81,11 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
-  if (request.mode === "navigate" && url.origin === self.location.origin) {
+  if (
+    request.mode === "navigate" &&
+    url.origin === self.location.origin &&
+    url.pathname === "/"
+  ) {
     const refresh = refreshAppShell(request, event.preloadResponse);
     event.waitUntil(refresh.then(() => undefined));
     event.respondWith(serveAppShell(refresh));

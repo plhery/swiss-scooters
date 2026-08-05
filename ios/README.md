@@ -1,12 +1,12 @@
-# Scooters for iPhone
+# Swiss Scooters for iPhone
 
-A native SwiftUI and MapKit version of Scooters Switzerland, designed for an
+A native SwiftUI and MapKit version of Swiss Scooters, designed for an
 iPhone 17 Pro running iOS 26 or newer.
 
 ## Run it on your iPhone
 
-1. Install Xcode 26 or newer and open `ZurichScooters.xcodeproj`.
-2. Select the **ZurichScooters** target, open **Signing & Capabilities**, and
+1. Install Xcode 26 or newer and open `SwissScooters.xcodeproj`.
+2. Select the **SwissScooters** target, open **Signing & Capabilities**, and
    choose your Personal Team. Change the bundle identifier if Xcode asks for a
    unique one.
 3. Connect the iPhone, enable Developer Mode if prompted, select it as the run
@@ -19,7 +19,7 @@ The free Personal Team provisioning profile expires after seven days. With the
 iPhone unlocked and connected by USB or reachable over Wi-Fi, run:
 
 ```sh
-./scripts/refresh-ios-app.sh
+SWISS_SCOOTERS_DEVICE_NAME="My iPhone" ./scripts/refresh-ios-app.sh
 ```
 
 On macOS, this command can also be wrapped in a Shortcut for a one-click
@@ -27,8 +27,8 @@ refresh. It renews the profile, installs over the existing app to preserve its
 data, and launches it.
 
 No API keys or third-party packages are required. The app reads live scooter
-data from the existing production API at
-`https://zurich-scooter.plhery.com/api/scooters`.
+data from the production API at
+`https://swiss-scooters.plhery.com/api/scooters`.
 
 ## Native features
 
