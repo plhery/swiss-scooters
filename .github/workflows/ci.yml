@@ -40,7 +40,7 @@ jobs:
       - name: Run iOS tests
         run: >-
           xcodebuild test
-          -project ios/ZurichScooters/ZurichScooters.xcodeproj
+          -project ios/ZurichScooters.xcodeproj
           -scheme ZurichScooters
           -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest'
           -derivedDataPath "$RUNNER_TEMP/ZurichScootersDerivedData"
