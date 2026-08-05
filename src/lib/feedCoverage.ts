@@ -130,5 +130,3 @@ export function coverageForRegionNames(names: string[]): RegionCoverage {
 export function coverageIntersects(bounds: MapBounds[], query: MapBounds): boolean {
   return bounds.some(coverage => boundsIntersect(coverage, query));
 }
-
-export const HOPP_COVERAGE = AREA_BOUNDS.zurich;

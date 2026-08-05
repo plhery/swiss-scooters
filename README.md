@@ -1,160 +1,87 @@
-# 🛴 Scooters on the Map — Switzerland
+<p align="center">
+  <img src="public/icon.svg" width="92" alt="Swiss Scooters logo">
+</p>
 
-A mobile-friendly PWA showing shared e-scooters across Switzerland in the current map viewport.
+<h1 align="center">Swiss Scooters</h1>
 
-**Live:** [zurich-scooter.plhery.com](https://zurich-scooter.plhery.com)
-— deployed on Cloudflare Workers via OpenNext
+<p align="center">
+  A friendly map for finding shared e-scooters across Switzerland.<br>
+  No account, no ads, no tracking.
+</p>
 
-## Providers
+<p align="center">
+  <a href="https://github.com/plhery/swiss-scooters/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/plhery/swiss-scooters/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/Cloudflare-Workers-f38020?style=flat-square&logo=cloudflare" alt="Cloudflare Workers">
+</p>
 
-| Provider | Color | Feed |
-|----------|-------|------|
-| Bolt | 🟢 Green | Swiss national GBFS 2.3 |
-| Bird | ⚫ Black | Swiss national GBFS 2.3 |
-| Dott | 🟠 Orange | Swiss national GBFS 2.3 |
-| Lime | 🟢 Lime | Swiss national GBFS 2.3 |
-| Voi | 🩷 Pink | Swiss national GBFS 2.3 |
-| PubliBike / Velospot | 🟣 Purple | Swiss national GBFS 2.3 |
-| Hopp | 🩵 Cyan | Direct GBFS v2 fallback |
+<p align="center">
+  <a href="https://swiss-scooters.plhery.com"><strong>Open the live map →</strong></a>
+</p>
 
-## Features
+<p align="center">
+  <img src="docs/swiss-scooters-map.png" width="390" alt="Swiss Scooters showing fictional demo scooters around Zürich on a phone">
+</p>
 
-- **Interactive map** with Leaflet + OpenStreetMap / CARTO tiles (light, dark, OSM)
-- **Viewport-wide discovery** — pan or zoom anywhere and see every scooter in that map area
-- **Rich GBFS 2.3 data** — nearby provider feeds preserve battery, range and rental links
-- **Coverage-aware fetching** — only systems whose declared city or region intersects the viewport are loaded
-- **Strict vehicle filtering** — excludes bikes, reserved vehicles and disabled vehicles
-- **Resilient feed aggregation** — stale-on-error caching, source-health metadata, and explicit outage responses
-- **Protected APIs** — bounded map queries, validation, response caps, and edge rate limits
-- **Accurate provider chips** — counts always reflect the scooters currently visible on the map
-- **Instant local filters** — provider and battery changes do not trigger network requests
-- **PWA** — cached app shell for fast/offline launches, automatic refresh after deployments
-- **Live location tracking** — moves the user marker continuously and recenters on request
-- **iPhone-first UI** — draggable glass bottom sheet, floating map buttons, safe-area support
+<p align="center"><sub>The screenshot uses a fictional little scooter fleet—not anyone's live location.</sub></p>
 
-## Tech Stack
+Swiss Scooters brings the national shared-mobility feed, Swiss address search,
+provider and battery filters, and light/dark maps into one installable web app.
+It speaks German, French, Italian, and English. There is also a native SwiftUI
+app for iPhone.
 
-- Next.js 16 (App Router)
-- TypeScript (strict)
-- Tailwind CSS v4
-- react-leaflet + Leaflet
-- Cloudflare Workers + OpenNext
-- All GBFS feeds are free — no secret API keys needed
+## Run it locally
 
-## Mobility data
-
-The backend uses the Swiss Federal Office of Energy's
-[Shared Mobility dataset](https://data.opentransportdata.swiss/dataset/sharedmobility)
-for national discovery and provider-specific GBFS 2.3 feeds. Hopp remains a
-direct feed because it is not currently included in the national dataset.
-
-The backend reads each system's GBFS discovery document instead of assuming
-endpoint paths, rejects systems without individual electric-scooter data, and
-uses provider regions plus conservative city envelopes before downloading live
-vehicle status. Systems without trustworthy geographic metadata are checked
-through sharedmobility.ch's spatial `identify` API. This avoids downloading all
-Swiss provider feeds for a small map viewport while retaining battery, range,
-and rental-link data from GBFS.
-
-GBFS 2.3 requests identify this application with an email address, as required
-by sharedmobility.ch. The default is `zurich-scooter@plhery.com`; override it
-with the non-secret `SHAREDMOBILITY_AUTH_EMAIL` environment variable if needed.
-
-## Getting Started
+You need Node.js 26+ and npm.
 
 ```bash
-npm install
+git clone https://github.com/plhery/swiss-scooters.git
+cd swiss-scooters
+npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [localhost:3000](http://localhost:3000). That is it—there are no required
+environment variables, API keys, databases, or accounts.
 
-## Native iPhone app
-
-The repository also contains a native iOS 26 app built with SwiftUI, MapKit,
-Core Location, and system Liquid Glass controls. It reuses this deployment's
-live scooter API and has no third-party dependencies or API keys.
-
-Open [`ios/ZurichScooters.xcodeproj`](ios/ZurichScooters.xcodeproj) in Xcode 26
-or newer, select a Personal Team under Signing & Capabilities, then run it on
-your iPhone. See [`ios/README.md`](ios/README.md) for the short device setup and
-native feature list.
-
-## Deployment
-
-The app deploys to Cloudflare Workers, with static assets served at the edge and
-the Next.js route handlers running in the Workers runtime.
-
-Cloudflare Workers Builds is connected to this GitHub repository. Every push to
-`main` builds and deploys production automatically; other branches produce
-preview versions.
+To run the checks:
 
 ```bash
-npm ci
-npm run preview
+npm run lint
+npm test
+npm run test:e2e
+npm run build
+```
+
+## Deploy your own
+
+The included configuration targets Cloudflare Workers through OpenNext. Give
+your fork a Worker name and hostname in `wrangler.jsonc`, then:
+
+```bash
+npx wrangler login
 npm run deploy
 ```
 
-No environment variables or secrets are required; the contact email used for
-GBFS identification can be overridden. See [DEPLOY.md](DEPLOY.md) for the
-deployment and verification checklist.
+See [DEPLOY.md](DEPLOY.md) for rate limits, previews, production checks, and
+rollback notes.
 
-## API
+## iPhone app
 
-### `GET /api/scooters`
+Open `ios/SwissScooters.xcodeproj` in Xcode 26+, choose a development team, and
+run the `SwissScooters` scheme. More details are in [ios/README.md](ios/README.md).
 
-Returns scooters inside a geographic bounding box, sorted by distance from the supplied origin.
+## Data, privacy, and contributing
 
-Query params:
-- `lat`, `lng` — origin coordinates (default: Zurich center)
-- `south`, `west`, `north`, `east` — map bounds
-- `minBattery` — minimum battery % (default: 0)
-- `provider` — comma-separated filter (e.g., `bolt,lime`)
+Scooter locations come from the
+[Open data platform mobility Switzerland](https://data.opentransportdata.swiss/en/dataset/sharedmobility),
+address search comes from swisstopo, and map tiles come from OpenStreetMap or
+CARTO. The app stores no account or location history.
 
-Oversized bounds are rejected, and responses are capped at 5,000 vehicles.
-The response includes source freshness and partial-outage metadata:
+- [Data sources and attribution](DATA_SOURCES.md)
+- [Privacy](PRIVACY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
-```text
-{
-  vehicles: Vehicle[],
-  providers: Record<string, number>,
-  meta: { partial, stale, failedSources, sources, generatedAt, truncated, totalVehicles }
-}
-```
-
-If every relevant upstream feed is unavailable and no stale value remains, the
-endpoint returns `503` instead of an empty success response.
-
-### `GET /api/geocode`
-
-Geocodes an address via Nominatim, restricted to Switzerland.
-
-Query params:
-- `q` — address to search
-
-Response: `Array<{ lat, lng, display_name }>`
-
-## Architecture
-
-```
-src/
-├── app/
-│   ├── api/
-│   │   ├── geocode/route.ts   # Nominatim proxy
-│   │   └── scooters/route.ts  # Scooter API
-│   ├── globals.css            # Tailwind + custom controls CSS
-│   ├── layout.tsx             # Root layout, PWA meta
-│   └── page.tsx               # Main page, state management
-├── components/
-│   ├── BottomSheet.tsx        # Draggable bottom sheet with counts & filters
-│   ├── MapControls.tsx        # Floating locate / refresh buttons
-│   ├── MapComponent.tsx       # Leaflet map (client-only)
-│   └── MapWrapper.tsx         # Dynamic import wrapper (no SSR)
-└── lib/
-    ├── geo.ts                 # Haversine distance and viewport bounds helpers
-    ├── feedCoverage.ts        # Provider-region and city coverage routing
-    ├── scooterFeeds.ts        # Resilient national + direct GBFS aggregation
-    ├── scooterQuery.ts        # API validation and request bounds
-    ├── upstreamJsonCache.ts   # Fresh/stale feed cache and request coalescing
-    └── types.ts               # Vehicle types, provider config
-```
+Swiss Scooters is open source under the [MIT License](LICENSE). Come build with us.

@@ -6,7 +6,7 @@ import {
 import { rateLimitAllows } from '@/lib/rateLimit';
 import { MAX_SCOOTER_RESULTS, parseScooterQuery } from '@/lib/scooterQuery';
 
-const MOBILITY_SOURCE = 'Swiss Federal Office of Energy sharedmobility.ch; Hopp';
+const MOBILITY_SOURCE = 'Open data platform mobility Switzerland (opentransportdata.swiss)';
 
 export async function GET(request: NextRequest) {
   if (!await rateLimitAllows(request, 'SCOOTER_API_RATE_LIMITER')) {

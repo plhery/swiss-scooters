@@ -89,4 +89,18 @@ describe('BottomSheet', () => {
     expect(screen.queryByRole('button', { name: 'Expand controls' })).not.toBeInTheDocument();
     expect(document.querySelector('#scooter-controls-body')).not.toHaveAttribute('inert');
   });
+
+  it('links to the privacy notice and named public data sources', () => {
+    renderSheet();
+
+    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: 'Mobility data' })).toHaveAttribute(
+      'href',
+      'https://opentransportdata.swiss/en/cookbook/shared-mobility/'
+    );
+    expect(screen.getByRole('link', { name: 'Address data © swisstopo' })).toHaveAttribute(
+      'href',
+      'https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api'
+    );
+  });
 });

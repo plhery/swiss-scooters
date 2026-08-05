@@ -3,13 +3,37 @@ import { rateLimitAllows } from '@/lib/rateLimit';
 
 const MAX_QUERY_LENGTH = 160;
 const GEOCODE_TIMEOUT_MS = 10_000;
-const DEFAULT_CONTACT_EMAIL = 'zurich-scooter@plhery.com';
+const GEOADMIN_SEARCH_URL = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
 const SUPPORTED_LANGUAGES = new Set(['de', 'fr', 'it', 'en']);
 
-interface NominatimResult {
-  lat?: string;
-  lon?: string;
-  display_name?: string;
+interface GeoAdminResult {
+  attrs?: {
+    lat?: number;
+    lon?: number;
+    x?: number;
+    y?: number;
+    label?: string;
+  };
+}
+
+interface GeoAdminResponse {
+  results?: GeoAdminResult[];
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+};
+
+function plainTextLabel(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, '')
+    .replace(/^(?:haltestellen|address|gazetteer)_\s*/i, '')
+    .replace(/&(amp|lt|gt|quot|#39);/g, entity => HTML_ENTITIES[entity] ?? entity)
+    .trim();
 }
 
 function errorResponse(message: string, status: number, retryAfter?: string) {
@@ -38,14 +62,13 @@ export async function GET(request: NextRequest) {
   const requestedLanguage = request.nextUrl.searchParams.get('lang')?.toLowerCase() ?? 'en';
   const language = SUPPORTED_LANGUAGES.has(requestedLanguage) ? requestedLanguage : 'en';
 
-  const contactEmail = process.env.SHAREDMOBILITY_AUTH_EMAIL ?? DEFAULT_CONTACT_EMAIL;
-  const url = new URL('https://nominatim.openstreetmap.org/search');
+  const url = new URL(GEOADMIN_SEARCH_URL);
   url.search = new URLSearchParams({
-    q: query,
-    format: 'jsonv2',
+    searchText: query,
+    type: 'locations',
     limit: '5',
-    countrycodes: 'ch',
-    email: contactEmail,
+    sr: '4326',
+    lang: language,
   }).toString();
 
   try {
@@ -53,7 +76,7 @@ export async function GET(request: NextRequest) {
       headers: {
         Accept: 'application/json',
         'Accept-Language': `${language}-CH,${language};q=0.9,en;q=0.6`,
-        'User-Agent': `scooters-web/2.0 (zurich-scooter.plhery.com; ${contactEmail})`,
+        'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)',
       },
       signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),
     });
@@ -65,20 +88,24 @@ export async function GET(request: NextRequest) {
       return errorResponse('Address search is temporarily unavailable.', 502, '30');
     }
 
-    const raw = await response.json();
-    if (!Array.isArray(raw)) {
+    const raw = await response.json() as GeoAdminResponse;
+    if (!Array.isArray(raw.results)) {
       return errorResponse('Address search returned an invalid response.', 502);
     }
 
-    const results = (raw as NominatimResult[]).flatMap(result => {
-      const lat = Number(result.lat);
-      const lng = Number(result.lon);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng) || !result.display_name) return [];
-      return [{ lat, lng, display_name: result.display_name }];
+    const results = raw.results.flatMap(result => {
+      const lat = Number(result.attrs?.lat ?? result.attrs?.y);
+      const lng = Number(result.attrs?.lon ?? result.attrs?.x);
+      const displayName = result.attrs?.label ? plainTextLabel(result.attrs.label) : '';
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || !displayName) return [];
+      return [{ lat, lng, display_name: displayName }];
     });
 
     return NextResponse.json(results, {
-      headers: { 'Cache-Control': 'public, max-age=86400, s-maxage=86400' },
+      headers: {
+        'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+        'X-Geocoding-Data-Source': 'swisstopo geo.admin.ch',
+      },
     });
   } catch (error) {
     const timedOut = error instanceof DOMException && error.name === 'TimeoutError';

@@ -100,15 +100,15 @@ describe('fetchScooters source health', () => {
     });
 
     expect(result.vehicles).toEqual([]);
-    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped' });
+    expect(result.meta.sources).toEqual({ national: 'skipped' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns available national data and marks a Hopp outage as partial', async () => {
+  it('returns available national data as fresh', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const response = nationalResponse(String(input));
       if (response) return response;
-      throw new Error('Hopp unavailable');
+      throw new Error(`Unexpected URL: ${String(input)}`);
     }));
 
     const result = await fetchScooters(query);
@@ -120,10 +120,10 @@ describe('fetchScooters source health', () => {
       range_m: 12_000,
     });
     expect(result.meta).toEqual({
-      partial: true,
+      partial: false,
       stale: false,
-      failedSources: ['hopp'],
-      sources: { national: 'fresh', hopp: 'failed' },
+      failedSources: [],
+      sources: { national: 'fresh' },
     });
   });
 
@@ -134,11 +134,11 @@ describe('fetchScooters source health', () => {
 
     await expect(fetchScooters(query)).rejects.toMatchObject({
       name: 'ScooterFeedsUnavailableError',
-      failedSources: ['national', 'hopp'],
+      failedSources: ['national'],
     } satisfies Partial<ScooterFeedsUnavailableError>);
   });
 
-  it('skips Hopp entirely when another provider is explicitly requested', async () => {
+  it('loads only the national source when a provider is explicitly requested', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const response = nationalResponse(String(input));
       if (response) return response;
@@ -148,15 +148,14 @@ describe('fetchScooters source health', () => {
 
     const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
 
-    expect(result.meta.sources.hopp).toBe('skipped');
+    expect(result.meta.sources.national).toBe('fresh');
     expect(result.meta.partial).toBe(false);
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('hopp.bike'))).toBe(false);
   });
 
   it('loads supported systems from the authenticated national registry', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({
-        Authorization: 'zurich-scooter@plhery.com',
+        Authorization: 'swiss-scooters@plhery.com',
       });
       const url = String(input);
       const response = nationalResponse(url);
@@ -264,25 +263,6 @@ describe('fetchScooters source health', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('skips Hopp before discovery when the viewport is outside Zurich', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      throw new Error(`Unexpected URL: ${String(input)}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await fetchScooters({
-      ...query,
-      lat: 47.56,
-      lng: 7.59,
-      bounds: { south: 47.54, west: 7.56, north: 47.59, east: 7.63 },
-      providers: new Set(['hopp']),
-    });
-
-    expect(result.vehicles).toEqual([]);
-    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped' });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it('uses declared Voi regions to skip its national vehicle feed', async () => {
     const bernQuery: FeedQuery = {
       ...query,
@@ -349,7 +329,7 @@ describe('fetchScooters source health', () => {
     const result = await fetchScooters(bernQuery);
 
     expect(result.vehicles).toHaveLength(1);
-    expect(result.meta.sources.hopp).toBe('skipped');
+    expect(result.meta.sources.national).toBe('fresh');
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/system_regions'))).toBe(true);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/free_bike_status'))).toBe(true);
   });

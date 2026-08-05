@@ -1,7 +1,6 @@
 import {
   coverageForRegionNames,
   coverageIntersects,
-  HOPP_COVERAGE,
   knownSystemCoverage,
 } from '@/lib/feedCoverage';
 import { boundsContainPoint, haversineM } from '@/lib/geo';
@@ -10,14 +9,13 @@ import { upstreamJsonCache, type CachedJson } from '@/lib/upstreamJsonCache';
 
 const NATIONAL_V23_REGISTRY_URL = 'https://sharedmobility.ch/v2/gbfs';
 const SPATIAL_IDENTIFY_URL = 'https://api.sharedmobility.ch/v1/sharedmobility/identify';
-const HOPP_DISCOVERY_URL = 'https://api.hopp.bike/gbfs/ch-zurich/gbfs.json';
 
 const STATUS_REVALIDATE_SECONDS = 30;
 const METADATA_REVALIDATE_SECONDS = 3600;
 const STATUS_STALE_IF_ERROR_SECONDS = 300;
 const METADATA_STALE_IF_ERROR_SECONDS = 86400;
 const FETCH_TIMEOUT_MS = 15_000;
-const DEFAULT_AUTH_EMAIL = 'zurich-scooter@plhery.com';
+const DEFAULT_AUTH_EMAIL = 'swiss-scooters@plhery.com';
 
 type AvailabilityFlag = boolean | 0 | 1;
 
@@ -27,8 +25,6 @@ interface RawVehicle {
   lng?: number;
   current_fuel_percent?: number;
   current_range_meters?: number;
-  hopp_battery_level?: number;
-  hopp_deeplink?: string;
   bike_id?: string;
   vehicle_id?: string;
   vehicle_type_id?: string;
@@ -96,7 +92,7 @@ type SpatialResponse = SpatialFeature[] | {
   geoJsonSearchInformations?: SpatialFeature[];
 };
 
-type ProviderKey = 'bolt' | 'bird' | 'dott' | 'lime' | 'voi' | 'hopp' | 'publibike';
+type ProviderKey = 'bolt' | 'bird' | 'dott' | 'lime' | 'voi' | 'publibike';
 
 export interface FeedQuery {
   lat: number;
@@ -115,7 +111,6 @@ export interface ScooterFetchMetadata {
   failedSources: string[];
   sources: {
     national: FeedSourceStatus;
-    hopp: FeedSourceStatus;
   };
 }
 
@@ -151,7 +146,7 @@ function sharedMobilityHeaders(): Record<string, string> {
   return {
     Accept: 'application/json',
     Authorization: process.env.SHAREDMOBILITY_AUTH_EMAIL ?? DEFAULT_AUTH_EMAIL,
-    'User-Agent': 'scooters-web/2.0 (zurich-scooter.plhery.com)',
+    'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)',
   };
 }
 
@@ -161,7 +156,7 @@ async function fetchJson<T>(
 ): Promise<CachedJson<T>> {
   const headers = options.authenticated
     ? sharedMobilityHeaders()
-    : { Accept: 'application/json', 'User-Agent': 'scooters-web/2.0 (zurich-scooter.plhery.com)' };
+    : { Accept: 'application/json', 'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)' };
 
   return upstreamJsonCache.fetch<T>(url, {
     headers,
@@ -196,15 +191,10 @@ function normalizeProvider(systemId: string): ProviderKey | null {
   if (id.startsWith('lime')) return 'lime';
   if (id === 'voiscooters.com' || id.startsWith('voi')) return 'voi';
   if (id === 'velospot' || id.startsWith('publibike')) return 'publibike';
-  if (id.startsWith('hopp')) return 'hopp';
   return null;
 }
 
 function batteryPercent(vehicle: RawVehicle): number | null {
-  if (vehicle.hopp_battery_level != null && Number.isFinite(vehicle.hopp_battery_level)) {
-    return Math.max(0, Math.min(100, Math.round(vehicle.hopp_battery_level)));
-  }
-
   if (vehicle.current_fuel_percent == null || !Number.isFinite(vehicle.current_fuel_percent)) {
     return null;
   }
@@ -241,7 +231,7 @@ function toVehicle(
     battery: batteryPercent(raw),
     range_m: range != null && Number.isFinite(Number(range)) ? Math.round(Number(range)) : null,
     vehicle_id: vehicleId(systemId, raw),
-    deep_link: raw.hopp_deeplink || rentalUris.ios || rentalUris.android || null,
+    deep_link: rentalUris.ios || rentalUris.android || null,
     distance_m: Math.round(haversineM(query.lat, query.lng, lat, lng) * 10) / 10,
   };
 }
@@ -286,7 +276,7 @@ function registrySystem(systemId: string, systemUrl: string): NationalSystem | n
     if (!url.pathname.endsWith('/gbfs')) return null;
 
     const provider = normalizeProvider(systemId);
-    if (!provider || provider === 'hopp') return null;
+    if (!provider) return null;
 
     const discoveryUrl = url.toString();
     url.pathname = url.pathname.slice(0, -'/gbfs'.length);
@@ -535,46 +525,6 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> 
   };
 }
 
-async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
-  if (query.providers && !query.providers.has('hopp')) {
-    return { vehicles: [], stale: false, skipped: true };
-  }
-
-  if (!coverageIntersects([HOPP_COVERAGE], query.bounds)) {
-    return { vehicles: [], stale: false, skipped: true };
-  }
-
-  const discovery = await fetchJson<DiscoveryFeed>(HOPP_DISCOVERY_URL, {
-    revalidate: METADATA_REVALIDATE_SECONDS,
-  });
-  const entries = discoveryFeedEntries(discovery.data);
-  const hoppBaseUrl = 'https://api.hopp.bike/gbfs/ch-zurich';
-  const statusUrl = discoveredFeedUrl(entries, 'free_bike_status', hoppBaseUrl);
-  const typesUrl = discoveredFeedUrl(entries, 'vehicle_types', hoppBaseUrl);
-  if (!statusUrl || !typesUrl) {
-    throw new Error('Hopp GBFS discovery contains no supported scooter feeds');
-  }
-
-  const [status, types] = await Promise.all([
-    fetchJson<StatusFeed>(statusUrl, { revalidate: STATUS_REVALIDATE_SECONDS }),
-    fetchJson<VehicleTypesFeed>(typesUrl, { revalidate: METADATA_REVALIDATE_SECONDS }),
-  ]);
-  const typesById = typeMap(types.data);
-  if (!hasElectricScooter(typesById)) {
-    return { vehicles: [], stale: discovery.stale || types.stale, skipped: true };
-  }
-
-  return {
-    vehicles: filterVehicles('hopp', rawVehicles(status.data), typesById, query),
-    stale: discovery.stale || status.stale || types.stale,
-  };
-}
-
-function nationalSourceIsRelevant(query: FeedQuery): boolean {
-  if (!query.providers) return true;
-  return [...query.providers].some(provider => provider !== 'hopp');
-}
-
 function sourceStatus(result: PromiseSettledResult<SourceVehicles>): FeedSourceStatus {
   if (result.status === 'rejected') return 'failed';
   if (result.value.skipped) return 'skipped';
@@ -599,41 +549,18 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
         partial: false,
         stale: false,
         failedSources: [],
-        sources: { national: 'skipped', hopp: 'skipped' },
+        sources: { national: 'skipped' },
       },
     };
   }
 
-  const [nationalResult, hoppResult] = await Promise.allSettled([
-    nationalSourceIsRelevant(query)
-      ? fetchNationalVehicles(query)
-      : Promise.resolve({ vehicles: [], stale: false, skipped: true }),
-    fetchHoppVehicles(query),
-  ]);
-
-  const sourceResults = [
-    ['national', nationalResult],
-    ['hopp', hoppResult],
-  ] as const;
-  const failedSources: string[] = [];
-  for (const [source, result] of sourceResults) {
-    if (result.status === 'rejected') {
-      logSourceFailure(source, result.reason);
-      failedSources.push(source);
-    }
+  const [nationalResult] = await Promise.allSettled([fetchNationalVehicles(query)]);
+  if (nationalResult.status === 'rejected') {
+    logSourceFailure('national', nationalResult.reason);
+    throw new ScooterFeedsUnavailableError(['national']);
   }
 
-  const attemptedSourceCount = sourceResults.filter(([, result]) => (
-    result.status === 'rejected' || !result.value.skipped
-  )).length;
-  if (attemptedSourceCount > 0 && failedSources.length === attemptedSourceCount) {
-    throw new ScooterFeedsUnavailableError(failedSources);
-  }
-
-  const vehicles = [
-    ...(nationalResult.status === 'fulfilled' ? nationalResult.value.vehicles : []),
-    ...(hoppResult.status === 'fulfilled' ? hoppResult.value.vehicles : []),
-  ];
+  const vehicles = nationalResult.value.vehicles;
 
   const unique = new Map<string, Vehicle>();
   for (const vehicle of vehicles) {
@@ -652,15 +579,14 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
 
   const sources = {
     national: sourceStatus(nationalResult),
-    hopp: sourceStatus(hoppResult),
   };
 
   return {
     vehicles: filtered,
     meta: {
-      partial: failedSources.length > 0,
-      stale: sources.national === 'stale' || sources.hopp === 'stale',
-      failedSources,
+      partial: false,
+      stale: sources.national === 'stale',
+      failedSources: [],
       sources,
     },
   };

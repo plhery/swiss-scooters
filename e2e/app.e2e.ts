@@ -38,7 +38,7 @@ const scooterResponse = {
     partial: false,
     stale: false,
     failedSources: [],
-    sources: { national: 'fresh', hopp: 'fresh' },
+    sources: { national: 'fresh' },
     generatedAt: '2026-08-05T12:00:00.000Z',
     truncated: false,
     totalVehicles: 3,
@@ -138,4 +138,11 @@ test('primary controls have no WCAG A/AA accessibility violations', async ({ pag
     .analyze();
 
   expect(results.violations).toEqual([]);
+});
+
+test('publishes a standalone privacy notice', async ({ page }) => {
+  await page.goto('/privacy');
+
+  await expect(page.getByRole('heading', { name: 'Privacy' })).toBeVisible();
+  await expect(page.getByText(/has no user accounts/)).toBeVisible();
 });

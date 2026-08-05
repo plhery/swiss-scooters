@@ -15,8 +15,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scooters Switzerland",
+  metadataBase: new URL("https://swiss-scooters.plhery.com"),
+  title: "Swiss Scooters",
   description: "Find nearby shared e-scooters across Switzerland",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Swiss Scooters",
+    title: "Swiss Scooters",
+    description: "Find nearby shared e-scooters across Switzerland",
+    locale: "en_CH",
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "Swiss Scooters" }],
+  },
+  twitter: {
+    card: "summary",
+    title: "Swiss Scooters",
+    description: "Find nearby shared e-scooters across Switzerland",
+    images: ["/icon-512.png"],
+  },
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -28,7 +45,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Scooters",
+    title: "Swiss Scooters",
   },
 };
 
