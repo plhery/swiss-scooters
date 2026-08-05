@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useLayoutEffect, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS } from '@/lib/types';
 
@@ -17,6 +17,22 @@ interface BottomSheetProps {
   onProviderSelect: (p: string) => void;
   onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
   onExpandedChange: (expanded: boolean) => void;
+}
+
+const DESKTOP_PANEL_QUERY = '(min-width: 900px)';
+
+function subscribeToDesktopPanel(change: () => void) {
+  const query = window.matchMedia(DESKTOP_PANEL_QUERY);
+  query.addEventListener('change', change);
+  return () => query.removeEventListener('change', change);
+}
+
+function useDesktopPanel() {
+  return useSyncExternalStore(
+    subscribeToDesktopPanel,
+    () => window.matchMedia(DESKTOP_PANEL_QUERY).matches,
+    () => false
+  );
 }
 
 function SliderRow({
@@ -68,6 +84,8 @@ export default function BottomSheet({
 }: BottomSheetProps) {
   const [expanded, setExpanded] = useState(false);
   const [peekH, setPeekH] = useState(160);
+  const desktopPanel = useDesktopPanel();
+  const controlsVisible = desktopPanel || expanded;
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
@@ -99,6 +117,7 @@ export default function BottomSheet({
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    if (desktopPanel) return;
     const sheet = sheetRef.current;
     if (!sheet) return;
     const max = Math.max(sheet.offsetHeight - peekH, 0);
@@ -116,6 +135,7 @@ export default function BottomSheet({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    if (desktopPanel) return;
     const d = dragRef.current;
     const sheet = sheetRef.current;
     if (!d || !sheet) return;
@@ -131,6 +151,7 @@ export default function BottomSheet({
   };
 
   const handlePointerEnd = (e: React.PointerEvent) => {
+    if (desktopPanel) return;
     const d = dragRef.current;
     const sheet = sheetRef.current;
     if (!d || !sheet) return;
@@ -161,7 +182,7 @@ export default function BottomSheet({
   return (
     <div
       ref={sheetRef}
-      className={`sheet glass ${expanded ? 'sheet-expanded' : ''}`}
+      className={`sheet glass ${controlsVisible ? 'sheet-expanded' : ''} ${desktopPanel ? 'sheet-desktop' : ''}`}
       style={{ '--peek-h': `${peekH}px` } as React.CSSProperties}
       role="region"
       aria-label="Scooter search controls"
@@ -173,12 +194,12 @@ export default function BottomSheet({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerEnd}
           onPointerCancel={handlePointerEnd}
-          role="button"
-          tabIndex={0}
-          aria-expanded={expanded}
-          aria-controls="scooter-controls-body"
-          aria-label={expanded ? 'Collapse controls' : 'Expand controls'}
-          onKeyDown={e => {
+          role={desktopPanel ? undefined : 'button'}
+          tabIndex={desktopPanel ? undefined : 0}
+          aria-expanded={desktopPanel ? undefined : expanded}
+          aria-controls={desktopPanel ? undefined : 'scooter-controls-body'}
+          aria-label={desktopPanel ? undefined : expanded ? 'Collapse controls' : 'Expand controls'}
+          onKeyDown={desktopPanel ? undefined : e => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               const next = !expanded;
@@ -243,7 +264,7 @@ export default function BottomSheet({
         </div>
       </div>
 
-      <div id="scooter-controls-body" className="sheet-body" inert={!expanded}>
+      <div id="scooter-controls-body" className="sheet-body" inert={!controlsVisible}>
         <div className="section">
           <div className="section-title">Filters</div>
           <SliderRow

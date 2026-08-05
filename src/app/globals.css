@@ -11,6 +11,7 @@
   --sab: env(safe-area-inset-bottom, 0px);
   --sat: env(safe-area-inset-top, 0px);
   --sheet-peek-h: 160px;
+  --desktop-panel-w: 380px;
 }
 
 html, body {
@@ -195,6 +196,77 @@ button {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding: 0 18px calc(24px + var(--sab));
+}
+
+@media (min-width: 900px) {
+  .app-shell > .leaflet-container {
+    width: calc(100% - var(--desktop-panel-w)) !important;
+  }
+
+  .app-shell::after {
+    right: var(--desktop-panel-w);
+  }
+
+  .sheet {
+    top: 0;
+    left: auto;
+    right: 0;
+    bottom: 0;
+    width: var(--desktop-panel-w);
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: -8px 0 36px rgba(24, 28, 34, 0.14), -0.5px 0 rgba(0, 0, 0, 0.08);
+    transform: none;
+    transition: none;
+    will-change: auto;
+  }
+
+  .sheet-peek {
+    padding-top: calc(var(--sat) + 18px);
+    padding-bottom: 8px;
+  }
+
+  .sheet-handle {
+    cursor: default;
+    touch-action: auto;
+    padding: 0 20px;
+  }
+
+  .grabber,
+  .sheet-chevron {
+    display: none;
+  }
+
+  .sheet-title-row {
+    padding-bottom: 14px;
+  }
+
+  .chips {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding: 2px 20px;
+  }
+
+  .sheet-body {
+    padding: 0 20px calc(24px + var(--sab));
+  }
+
+  .fab-stack {
+    right: calc(var(--desktop-panel-w) + 14px);
+    bottom: calc(14px + var(--sab));
+  }
+
+  .app-shell:has(.sheet-expanded) .fab-stack {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  .toast {
+    left: calc((100vw - var(--desktop-panel-w)) / 2);
+  }
 }
 
 .section {
