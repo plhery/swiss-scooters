@@ -62,11 +62,11 @@ private struct PartialScooterResponseError: LocalizedError {
 @MainActor
 @Observable
 final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
-    static let zurichCenter = GeoPoint(latitude: 47.3769, longitude: 8.5417)
+    static let switzerlandCenter = GeoPoint(latitude: 46.8182, longitude: 8.2275)
     static let initialRegion = MKCoordinateRegion(
-        center: zurichCenter.coordinate,
-        latitudinalMeters: 1_800,
-        longitudinalMeters: 1_800
+        center: switzerlandCenter.coordinate,
+        latitudinalMeters: 300_000,
+        longitudinalMeters: 500_000
     )
 
     private(set) var vehicles: [Scooter] = [] {
@@ -85,10 +85,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     private(set) var responseMetadata: ScooterResponseMetadata?
     var userLocation: GeoPoint?
     private(set) var locationAuthorizationIssue: LocationAuthorizationIssue?
-    var selectedProvider: ScooterProvider? {
+    var enabledProviders = Set(ScooterProvider.allCases) {
         didSet {
             rebuildMapScooters()
             rebuildVisibleCounts()
+            clearSelectionIfHidden()
         }
     }
     var selectedScooterID: String?
@@ -122,7 +123,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var focusToken = 0
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var hasCompleteResponse = false
-    @ObservationIgnored private var distanceOrigin = zurichCenter
+    @ObservationIgnored private var distanceOrigin = switzerlandCenter
     private(set) var mapScooters: [Scooter] = []
     private(set) var visibleScooterCount = 0
     private(set) var visibleProviderCounts: [ScooterProvider: Int] = [:]
@@ -164,6 +165,27 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     var visibleCount: Int { visibleScooterCount }
 
+    var allProvidersSelected: Bool {
+        enabledProviders == Set(ScooterProvider.allCases)
+    }
+
+    var hasActiveFilters: Bool {
+        minimumBattery > 0 || !allProvidersSelected
+    }
+
+    var nearbyScooters: [Scooter] {
+        let center = GeoPoint(
+            latitude: (viewport.south + viewport.north) / 2,
+            longitude: (viewport.west + viewport.east) / 2
+        )
+        let origin = userLocation ?? center
+        return mapScooters
+            .filter { viewport.contains(latitude: $0.latitude, longitude: $0.longitude) }
+            .sorted { $0.distance(from: origin) < $1.distance(from: origin) }
+            .prefix(5)
+            .map { $0 }
+    }
+
     var dataHealthMessage: String? {
         guard let responseMetadata else { return nil }
 
@@ -202,15 +224,20 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         guard !hasStarted else { return }
         hasStarted = true
 
-        if let cachedLocation = locationManager.location,
-           ScooterLocationPolicy.isAcceptable(
-               cachedLocation,
-               maximumAccuracy: ScooterLocationPolicy.preferredAccuracy
-           ) {
-            acceptLocation(cachedLocation)
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            if let cachedLocation = locationManager.location,
+               ScooterLocationPolicy.isAcceptable(
+                   cachedLocation,
+                   maximumAccuracy: ScooterLocationPolicy.preferredAccuracy
+               ) {
+                acceptLocation(cachedLocation)
+            } else {
+                requestLocationAccess()
+            }
+        default:
+            refresh()
         }
-
-        requestLocationAccess()
     }
 
     func becameActive() {
@@ -248,13 +275,20 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func showAllProviders() {
-        selectedProvider = nil
-        clearSelectionIfHidden()
+        enabledProviders = Set(ScooterProvider.allCases)
     }
 
-    func select(provider: ScooterProvider) {
-        selectedProvider = provider
-        clearSelectionIfHidden()
+    func toggle(provider: ScooterProvider) {
+        if enabledProviders.contains(provider) {
+            enabledProviders.remove(provider)
+        } else {
+            enabledProviders.insert(provider)
+        }
+    }
+
+    func resetFilters() {
+        minimumBattery = 0
+        enabledProviders = Set(ScooterProvider.allCases)
     }
 
     func setMinimumBattery(_ value: Double) {
@@ -280,6 +314,23 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         focusRequest = MapFocusRequest(point: destination.point, token: focusToken)
     }
 
+    func focusOnSwitzerland() {
+        selectedScooterID = nil
+        focusToken += 1
+        focusRequest = MapFocusRequest(
+            point: Self.switzerlandCenter,
+            token: focusToken,
+            latitudinalMeters: 300_000,
+            longitudinalMeters: 500_000
+        )
+    }
+
+    func focusOnScooter(_ scooter: Scooter) {
+        selectedScooterID = scooter.id
+        focusToken += 1
+        focusRequest = MapFocusRequest(point: GeoPoint(scooter.coordinate), token: focusToken)
+    }
+
     func clearAddressSearch() {
         searchedDestination = nil
     }
@@ -296,7 +347,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         mapScooters = ScooterFiltering.mapScooters(
             from: vehicles,
             minimumBattery: minimumBattery,
-            selectedProvider: selectedProvider
+            enabledProviders: enabledProviders
         )
     }
 
@@ -305,7 +356,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             for: vehicles,
             viewport: viewport,
             minimumBattery: minimumBattery,
-            selectedProvider: selectedProvider
+            enabledProviders: enabledProviders
         )
         visibleScooterCount = summary.count
         visibleProviderCounts = summary.providerCounts
@@ -316,8 +367,9 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         let remainsVisible = viewport.contains(
             latitude: selectedScooter.latitude,
             longitude: selectedScooter.longitude
-        ) && passesBatteryFilter(selectedScooter) &&
-            (selectedProvider == nil || selectedScooter.providerInfo == selectedProvider)
+        ) && passesBatteryFilter(selectedScooter) && (
+            allProvidersSelected || selectedScooter.providerInfo.map(enabledProviders.contains) == true
+        )
 
         if !remainsVisible {
             selectedScooterID = nil
@@ -328,7 +380,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         fetchTask?.cancel()
 
         let requestID = UUID()
-        let fetchOrigin = userLocation ?? Self.zurichCenter
+        let fetchOrigin = userLocation ?? Self.switzerlandCenter
         activeRequestID = requestID
         pendingQueryBounds = bounds
         fetchTask = Task { [weak self] in

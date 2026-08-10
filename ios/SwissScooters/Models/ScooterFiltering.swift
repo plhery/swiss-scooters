@@ -13,11 +13,12 @@ enum ScooterFiltering {
     static func mapScooters(
         from vehicles: [Scooter],
         minimumBattery: Double,
-        selectedProvider: ScooterProvider?
+        enabledProviders: Set<ScooterProvider>
     ) -> [Scooter] {
-        vehicles.filter { scooter in
+        let allProvidersEnabled = enabledProviders == Set(ScooterProvider.allCases)
+        return vehicles.filter { scooter in
             passesBattery(scooter, minimumBattery: minimumBattery) &&
-                (selectedProvider == nil || scooter.providerInfo == selectedProvider)
+                (allProvidersEnabled || scooter.providerInfo.map(enabledProviders.contains) == true)
         }
     }
 
@@ -25,12 +26,13 @@ enum ScooterFiltering {
         for vehicles: [Scooter],
         viewport: GeoBounds,
         minimumBattery: Double,
-        selectedProvider: ScooterProvider?
+        enabledProviders: Set<ScooterProvider>
     ) -> VisibleScooterSummary {
         var visibleCount = 0
         var providerCounts: [ScooterProvider: Int] = [:]
         providerCounts.reserveCapacity(ScooterProvider.allCases.count)
 
+        let allProvidersEnabled = enabledProviders == Set(ScooterProvider.allCases)
         for scooter in vehicles {
             guard viewport.contains(latitude: scooter.latitude, longitude: scooter.longitude),
                   passesBattery(scooter, minimumBattery: minimumBattery) else { continue }
@@ -38,7 +40,7 @@ enum ScooterFiltering {
             if let provider = scooter.providerInfo {
                 providerCounts[provider, default: 0] += 1
             }
-            if selectedProvider == nil || scooter.providerInfo == selectedProvider {
+            if allProvidersEnabled || scooter.providerInfo.map(enabledProviders.contains) == true {
                 visibleCount += 1
             }
         }

@@ -1,5 +1,24 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function zoomTo(page: Page, target: number) {
+  const map = page.locator('.leaflet-container');
+  let current = Number(await map.getAttribute('data-zoom'));
+  while (current !== target) {
+    const next = current + (current < target ? 1 : -1);
+    await page.locator('.map-zoom-controls').getByRole('button', {
+      name: current < target ? 'Zoom in' : 'Zoom out',
+      exact: true,
+    }).click();
+    await expect(map).toHaveAttribute('data-zoom', String(next));
+    current = next;
+  }
+}
+
+async function focusFixtureArea(page: Page) {
+  await page.locator('.cluster-marker').first().click();
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '10');
+}
 
 const scooterResponse = {
   vehicles: [
@@ -112,11 +131,13 @@ test('normalizes malformed URL settings without breaking the app', async ({ page
 
 test('does not invent a distance without location and offers walking directions', async ({ page }) => {
   await page.goto('/');
+  await focusFixtureArea(page);
+  await zoomTo(page, 16);
 
-  await page.locator('.scooter-marker-wrap').first().click();
+  await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
   await expect(page.locator('.scooter-popup')).toBeVisible();
   await expect(page.locator('.popup-dist')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Walk there' })).toHaveAttribute(
+  await expect(page.locator('.scooter-popup').getByRole('link', { name: 'Walk there' })).toHaveAttribute(
     'href',
     /travelmode=walking/
   );
@@ -150,6 +171,9 @@ test('installs the production service worker and reloads offline', async ({
 test('explains denied location access without blocking map browsing', async ({ page }) => {
   await page.goto('/');
 
+  await expect(page.getByText('Location access is off. You can still search or browse the map.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Use my location' }).click();
+
   await expect(page.getByRole('status').filter({
     hasText: 'Location access is off. You can still search or browse the map.',
   })).toBeVisible();
@@ -159,16 +183,32 @@ test('explains denied location access without blocking map browsing', async ({ p
 test('clusters at zoom 15 and separates scooters above it', async ({ page }) => {
   await page.goto('/');
   const map = page.locator('.leaflet-container');
-  await expect(map).toHaveAttribute('data-zoom', '17');
-  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await expect(map).toHaveAttribute('data-zoom', '8');
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Zoom out' }).click();
-  await expect(map).toHaveAttribute('data-zoom', '16');
-  await expect(page.locator('.scooter-marker')).toHaveCount(3);
-
-  await page.getByRole('button', { name: 'Zoom out' }).click();
+  await focusFixtureArea(page);
+  await zoomTo(page, 15);
   await expect(map).toHaveAttribute('data-zoom', '15');
   await expect(page.locator('.cluster-marker')).toHaveCount(1);
+
+  await zoomTo(page, 16);
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+});
+
+test('combines provider filters and resets them together', async ({ page }) => {
+  await page.goto('/');
+  await focusFixtureArea(page);
+  await zoomTo(page, 16);
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+
+  await page.getByRole('button', { name: /^Bolt, 1\./ }).click();
+  await page.getByRole('button', { name: /^Lime, 1\./ }).click();
+  await expect(page.locator('.scooter-marker')).toHaveCount(1);
+
+  const expandControls = page.getByRole('button', { name: 'Expand controls' });
+  if (await expandControls.count()) await expandControls.click();
+  await page.getByRole('button', { name: 'Reset filters' }).click();
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
 });
 
 test('keeps collapsed sheet controls out of interaction until expanded', async ({ page }) => {

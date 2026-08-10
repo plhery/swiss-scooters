@@ -12,11 +12,17 @@ export interface AddressResult {
 interface AddressSearchProps {
   onSelect: (result: AddressResult) => void;
   onClear: () => void;
+  compact?: boolean;
 }
 
 const SEARCH_DEBOUNCE_MS = 350;
 
-export default function AddressSearch({ onSelect, onClear }: AddressSearchProps) {
+function addressParts(displayName: string): { title: string; subtitle: string } {
+  const [title, ...rest] = displayName.split(',').map(part => part.trim()).filter(Boolean);
+  return { title: title || displayName, subtitle: rest.join(', ') };
+}
+
+export default function AddressSearch({ onSelect, onClear, compact = false }: AddressSearchProps) {
   const { locale, t } = useI18n();
   const listboxId = useId();
   const [query, setQuery] = useState('');
@@ -117,8 +123,8 @@ export default function AddressSearch({ onSelect, onClear }: AddressSearchProps)
   const expanded = results.length > 0;
 
   return (
-    <div className="section address-search">
-      <div className="section-title">{t('search.title')}</div>
+    <div className={`address-search ${compact ? 'address-search-compact' : 'section'}`}>
+      {!compact && <div className="section-title">{t('search.title')}</div>}
       <div className="field">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -164,20 +170,25 @@ export default function AddressSearch({ onSelect, onClear }: AddressSearchProps)
 
       {expanded && (
         <div id={listboxId} className="results" role="listbox" aria-label={t('search.results')}>
-          {results.map((result, index) => (
-            <button
-              type="button"
-              role="option"
-              id={`${listboxId}-${index}`}
-              key={`${result.lat}-${result.lng}-${result.display_name}`}
-              aria-selected={activeIndex === index}
-              onMouseDown={(event) => event.preventDefault()}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => selectResult(result)}
-            >
-              {result.display_name}
-            </button>
-          ))}
+          {results.map((result, index) => {
+            const parts = addressParts(result.display_name);
+            return (
+              <button
+                type="button"
+                role="option"
+                id={`${listboxId}-${index}`}
+                key={`${result.lat}-${result.lng}-${result.display_name}`}
+                aria-selected={activeIndex === index}
+                aria-label={result.display_name}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => selectResult(result)}
+              >
+                <span className="result-title">{parts.title}</span>
+                {parts.subtitle && <span className="result-subtitle">{parts.subtitle}</span>}
+              </button>
+            );
+          })}
         </div>
       )}
 

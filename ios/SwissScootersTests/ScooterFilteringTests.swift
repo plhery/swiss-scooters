@@ -19,7 +19,7 @@ final class ScooterFilteringTests: XCTestCase {
         let filtered = ScooterFiltering.mapScooters(
             from: scooters,
             minimumBattery: 50,
-            selectedProvider: .lime
+            enabledProviders: [.lime]
         )
 
         XCTAssertEqual(filtered.map(\.id), ["lime:lime-high"])
@@ -37,7 +37,7 @@ final class ScooterFilteringTests: XCTestCase {
             for: scooters,
             viewport: viewport,
             minimumBattery: 50,
-            selectedProvider: .lime
+            enabledProviders: [.lime]
         )
 
         XCTAssertEqual(summary.count, 1)
@@ -50,11 +50,27 @@ final class ScooterFilteringTests: XCTestCase {
             for: [scooter(id: "unknown", provider: "future-provider", battery: 70)],
             viewport: viewport,
             minimumBattery: 0,
-            selectedProvider: nil
+            enabledProviders: Set(ScooterProvider.allCases)
         )
 
         XCTAssertEqual(summary.count, 1)
         XCTAssertTrue(summary.providerCounts.isEmpty)
+    }
+
+    func testMultipleProvidersCanBeEnabledTogether() {
+        let scooters = [
+            scooter(id: "lime", provider: "lime", battery: 80),
+            scooter(id: "bird", provider: "bird", battery: 80),
+            scooter(id: "voi", provider: "voi", battery: 80)
+        ]
+
+        let filtered = ScooterFiltering.mapScooters(
+            from: scooters,
+            minimumBattery: 0,
+            enabledProviders: [.lime, .bird]
+        )
+
+        XCTAssertEqual(Set(filtered.map(\.provider)), Set(["lime", "bird"]))
     }
 
     func testClusteringStopsAfterZoomFifteen() {

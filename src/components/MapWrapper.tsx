@@ -11,6 +11,7 @@ interface MapWrapperProps {
   clusters: ScooterCluster[];
   clustered: boolean;
   origin: [number, number];
+  initialZoom: number;
   distanceOrigin: [number, number] | null;
   tileLayer: 'dark' | 'light' | 'osm';
   userLocation: [number, number] | null;
@@ -18,6 +19,10 @@ interface MapWrapperProps {
   focusVersion: number;
   destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
+  selectedVehicleKey: string | null;
+  zoomInVersion: number;
+  zoomOutVersion: number;
+  onVehicleSelect: (vehicle: Vehicle) => void;
 }
 
 export default function MapWrapper(props: MapWrapperProps) {

@@ -8,7 +8,9 @@ struct ScooterControlDock: View {
     @State private var collapsedContentHeight: CGFloat = 0
     @State private var fullContentHeight: CGFloat = 0
     @State private var batteryDraft: Double
+    @State private var settingsExpanded = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let onCollapsedHeightChange: (CGFloat) -> Void
     private let surfaceBottomPadding: CGFloat = 2
     private let shadowOverflow: CGFloat = 24
@@ -29,7 +31,13 @@ struct ScooterControlDock: View {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     draggableHeader
-                    providerPicker
+                    if let scooter = model.selectedScooter {
+                        selectedScooterActions(scooter)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
+                    } else {
+                        providerPicker
+                    }
                 }
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
@@ -40,15 +48,9 @@ struct ScooterControlDock: View {
                 }
 
                 VStack(spacing: 18) {
-                    addressSearch
-
-                    if let scooter = model.selectedScooter {
-                        selectedScooterActions(scooter)
-                    }
-
+                    nearbyScooters
                     batteryFilter
-                    mapStylePicker
-                    attribution
+                    settingsDisclosure
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 7)
@@ -75,7 +77,7 @@ struct ScooterControlDock: View {
         .frame(height: drawerViewportHeight, alignment: .top)
         .clipped()
         .opacity(drawerTravel == 0 ? 0 : 1)
-        .animation(.snappy(duration: 0.3), value: model.selectedScooterID)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.selectedScooterID)
     }
 
     private var draggableHeader: some View {
@@ -185,16 +187,25 @@ struct ScooterControlDock: View {
 
     private var countSummary: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(model.visibleCount, format: .number)
-                    .font(.system(size: 27, weight: .bold, design: .rounded))
-                    .contentTransition(.numericText())
-                Text(
-                    model.visibleCount == 1
-                        ? String(localized: "scooter")
-                        : String(localized: "scooters")
-                )
-                    .font(.headline)
+            if model.isLoading && model.lastUpdated == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Finding scooters…")
+                        .font(.headline)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(model.visibleCount, format: .number)
+                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
+                    Text(
+                        model.visibleCount == 1
+                            ? String(localized: "scooter")
+                            : String(localized: "scooters")
+                    )
+                        .font(.headline)
+                }
             }
 
             HStack(spacing: 6) {
@@ -202,7 +213,7 @@ struct ScooterControlDock: View {
                     ProgressView()
                         .controlSize(.mini)
                 }
-                Text(updateLabel)
+                Text(model.hasActiveFilters ? String(localized: "Filters active") + " · " + updateLabel : updateLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -267,7 +278,7 @@ struct ScooterControlDock: View {
     }
 
     private var allProvidersButton: some View {
-        let isSelected = model.selectedProvider == nil
+        let isSelected = model.allProvidersSelected
 
         return Button {
             model.showAllProviders()
@@ -303,11 +314,11 @@ struct ScooterControlDock: View {
     }
 
     private func providerButton(_ provider: ScooterProvider) -> some View {
-        let isSelected = model.selectedProvider == provider
-        let isDimmed = model.selectedProvider != nil && !isSelected
+        let isSelected = model.enabledProviders.contains(provider)
+        let isDimmed = !isSelected
 
         return Button {
-            model.select(provider: provider)
+            model.toggle(provider: provider)
         } label: {
             HStack(spacing: 6) {
                 Circle()
@@ -326,7 +337,7 @@ struct ScooterControlDock: View {
         .buttonStyle(.plain)
         .glassEffect(
             .regular
-                .tint(isSelected ? provider.color.opacity(0.28) : nil)
+                .tint(isSelected && !model.allProvidersSelected ? provider.color.opacity(0.28) : nil)
                 .interactive(),
             in: Capsule()
         )
@@ -343,6 +354,20 @@ struct ScooterControlDock: View {
 
     private func selectedScooterActions(_ scooter: Scooter) -> some View {
         VStack(spacing: 13) {
+            HStack {
+                Text(scooter.providerInfo?.name ?? scooter.provider.capitalized)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button {
+                    model.selectScooter(nil)
+                } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.glass)
+                .accessibilityLabel(String(localized: "Close scooter details"))
+            }
+
             HStack(spacing: 14) {
                 if let battery = scooter.battery {
                     metric(
@@ -389,14 +414,103 @@ struct ScooterControlDock: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private var addressSearch: some View {
-        SwissAddressSearch(
-            onSelect: { destination in
-                model.focusOnAddress(destination)
-                setExpanded(false)
-            },
-            onClear: model.clearAddressSearch
-        )
+    private var nearbyScooters: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Nearby scooters", systemImage: "figure.walk")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if model.hasActiveFilters {
+                    Button("Reset filters", action: model.resetFilters)
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                }
+            }
+
+            if model.visibleCount == 0 && !model.isLoading {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(
+                        model.hasActiveFilters
+                            ? String(localized: "No scooters match your filters")
+                            : String(localized: "No scooters in this area")
+                    )
+                        .font(.subheadline.weight(.semibold))
+                    Text("Move the map, zoom out, or search another place.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        if model.hasActiveFilters {
+                            Button("Reset filters", action: model.resetFilters)
+                                .buttonStyle(.glassProminent)
+                        }
+                        Button("Show Switzerland", action: model.focusOnSwitzerland)
+                            .buttonStyle(.glass)
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            } else {
+                VStack(spacing: 7) {
+                    ForEach(model.nearbyScooters) { scooter in
+                        Button {
+                            model.focusOnScooter(scooter)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Circle()
+                                    .fill(scooter.providerInfo?.color ?? .secondary)
+                                    .frame(width: 11, height: 11)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(scooter.providerInfo?.name ?? scooter.provider.capitalized)
+                                        .font(.subheadline.weight(.semibold))
+                                    HStack(spacing: 6) {
+                                        if let distance = model.formattedDistance(for: scooter) {
+                                            Text(distance)
+                                        }
+                                        if let battery = scooter.battery {
+                                            Label("\(battery)%", systemImage: batterySymbol(for: battery))
+                                        }
+                                        if let range = scooter.formattedRange {
+                                            Text(range)
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 52)
+                            .background(
+                                .quaternary.opacity(0.42),
+                                in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var settingsDisclosure: some View {
+        DisclosureGroup(isExpanded: $settingsExpanded) {
+            VStack(spacing: 18) {
+                mapStylePicker
+                attribution
+            }
+            .padding(.top, 14)
+        } label: {
+            Label("Settings and map", systemImage: "slider.horizontal.3")
+                .font(.subheadline.weight(.semibold))
+        }
+        .tint(.secondary)
     }
 
     private func metric(
@@ -462,6 +576,13 @@ struct ScooterControlDock: View {
                 .onDisappear {
                     model.setMinimumBattery(batteryDraft)
                 }
+
+            if batteryDraft > 0 {
+                Text("Scooters without battery data are hidden.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -521,13 +642,13 @@ struct ScooterControlDock: View {
     }
 
     private func setExpanded(_ expanded: Bool) {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.86, blendDuration: 0.12)) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86, blendDuration: 0.12)) {
             isExpanded = expanded
         }
     }
 
     private func finishDrag(expanded: Bool) {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.86, blendDuration: 0.12)) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86, blendDuration: 0.12)) {
             dragTranslation = 0
             isExpanded = expanded
         }
@@ -561,11 +682,13 @@ struct ScooterControlDock: View {
 
 struct FloatingMapControls: View {
     @Bindable var model: ScooterMapModel
+    let onLocationIntent: () -> Void
 
     var body: some View {
         GlassEffectContainer(spacing: 12) {
             VStack(spacing: 12) {
                 Button {
+                    onLocationIntent()
                     model.focusOnUser()
                 } label: {
                     Image(systemName: "location.fill")

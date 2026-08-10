@@ -13,13 +13,13 @@ import './map.css';
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type FormatNumber = (value: number, options?: Intl.NumberFormatOptions) => string;
 
-function createScooterIcon(provider: string): L.DivIcon {
+function createScooterIcon(provider: string, selected = false): L.DivIcon {
   const cfg = PROVIDERS[provider] ?? { color: '#999', initial: '?' };
   return L.divIcon({
     className: 'scooter-marker-wrap',
-    html: `<div class="scooter-marker" style="--marker-color:${cfg.color}"><span>${cfg.initial}</span></div>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
+    html: `<div class="scooter-marker${selected ? ' scooter-marker-selected' : ''}" style="--marker-color:${cfg.color}"><span>${cfg.initial}</span></div>`,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
     popupAnchor: [0, -18],
   });
 }
@@ -51,9 +51,9 @@ const TILE_URLS: Record<string, string> = {
   light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
 };
 
-const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>';
-const MOBILITY_ATTRIBUTION = 'Mobility data: <a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">opentransportdata.swiss</a>';
-const ADDRESS_ATTRIBUTION = 'Address data: <a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api">&copy; swisstopo</a>';
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>';
+const MOBILITY_ATTRIBUTION = '<a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">Mobility data</a>';
+const ADDRESS_ATTRIBUTION = '<a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api">&copy; swisstopo</a>';
 const TILE_ATTRIBUTIONS: Record<string, string> = {
   osm: `${OSM_ATTRIBUTION} · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`,
   dark: `${OSM_ATTRIBUTION} &copy; <a href="https://carto.com/attributions">CARTO</a> · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`,
@@ -258,6 +258,7 @@ interface MapComponentProps {
   clusters: ScooterCluster[];
   clustered: boolean;
   origin: [number, number];
+  initialZoom: number;
   distanceOrigin: [number, number] | null;
   tileLayer: 'dark' | 'light' | 'osm';
   userLocation: [number, number] | null;
@@ -265,6 +266,10 @@ interface MapComponentProps {
   focusVersion: number;
   destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
+  selectedVehicleKey: string | null;
+  zoomInVersion: number;
+  zoomOutVersion: number;
+  onVehicleSelect: (vehicle: Vehicle) => void;
 }
 
 export default function MapComponent({
@@ -272,6 +277,7 @@ export default function MapComponent({
   clusters,
   clustered,
   origin,
+  initialZoom,
   distanceOrigin,
   tileLayer,
   userLocation,
@@ -279,6 +285,10 @@ export default function MapComponent({
   focusVersion,
   destination,
   onViewportChange,
+  selectedVehicleKey,
+  zoomInVersion,
+  zoomOutVersion,
+  onVehicleSelect,
 }: MapComponentProps) {
   const { t, formatNumber } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -291,17 +301,29 @@ export default function MapComponent({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const initialOriginRef = useRef(origin);
   const onViewportChangeRef = useRef(onViewportChange);
+  const onVehicleSelectRef = useRef(onVehicleSelect);
   const [mapReady, setMapReady] = useState(false);
-  const [zoom, setZoom] = useState(17);
+  const [zoom, setZoom] = useState(initialZoom);
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
   }, [onViewportChange]);
 
+  useEffect(() => {
+    onVehicleSelectRef.current = onVehicleSelect;
+  }, [onVehicleSelect]);
+
   const iconMap = useMemo(() => {
     const icons: Record<string, L.DivIcon> = {};
     for (const provider of Object.keys(PROVIDERS)) {
       icons[provider] = createScooterIcon(provider);
+    }
+    return icons;
+  }, []);
+  const selectedIconMap = useMemo(() => {
+    const icons: Record<string, L.DivIcon> = {};
+    for (const provider of Object.keys(PROVIDERS)) {
+      icons[provider] = createScooterIcon(provider, true);
     }
     return icons;
   }, []);
@@ -328,7 +350,7 @@ export default function MapComponent({
 
     const map = L.map(container, {
       center: initialOriginRef.current,
-      zoom: 17,
+      zoom: initialZoom,
       zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
@@ -340,7 +362,7 @@ export default function MapComponent({
     scooterLayerRef.current = L.layerGroup().addTo(map);
     destinationLayerRef.current = L.layerGroup().addTo(map);
     userLayerRef.current = L.layerGroup().addTo(map);
-    L.control.attribution({ position: 'topright', prefix: false }).addTo(map);
+    L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
 
     const updateZoom = () => {
       const currentZoom = map.getZoom();
@@ -368,7 +390,7 @@ export default function MapComponent({
       tileLayerRef.current = null;
       delete container.dataset.zoom;
     };
-  }, [reportViewport]);
+  }, [initialZoom, reportViewport]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -393,12 +415,22 @@ export default function MapComponent({
     const map = mapRef.current;
     if (!mapReady || !map || !focusLocation || focusVersion === 0) return;
     map.stop();
-    map.flyTo(focusLocation, Math.max(map.getZoom(), 15), {
+    map.flyTo(focusLocation, Math.max(map.getZoom(), 16), {
       animate: true,
       duration: 0.5,
       easeLinearity: 0.25,
     });
   }, [focusLocation, focusVersion, mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || zoomInVersion === 0) return;
+    mapRef.current?.zoomIn(2);
+  }, [mapReady, zoomInVersion]);
+
+  useEffect(() => {
+    if (!mapReady || zoomOutVersion === 0) return;
+    mapRef.current?.zoomOut(2);
+  }, [mapReady, zoomOutVersion]);
 
   useEffect(() => {
     const layer = userLayerRef.current;
@@ -454,8 +486,11 @@ export default function MapComponent({
     const addVehicle = (vehicle: Vehicle) => {
       const distanceM = distanceFor(vehicle);
       const label = labelFor(vehicle, distanceM);
+      const key = vehicleMarkerKey(vehicle);
       const marker = L.marker([vehicle.lat, vehicle.lng], {
-        icon: iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider),
+        icon: key === selectedVehicleKey
+          ? selectedIconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider, true)
+          : iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider),
         riseOnHover: true,
         title: label,
       })
@@ -463,6 +498,7 @@ export default function MapComponent({
           className: 'scooter-popup',
           closeButton: false,
         })
+        .on('click', () => onVehicleSelectRef.current(vehicle))
         .addTo(layer);
       labelMarker(marker, label);
     };
@@ -488,8 +524,11 @@ export default function MapComponent({
         const existing = vehicleMarkersRef.current.get(key);
         if (!existing) {
           const cfg = PROVIDERS[vehicle.provider];
+          const selected = key === selectedVehicleKey;
           const marker = L.marker([vehicle.lat, vehicle.lng], {
-            icon: iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider),
+            icon: selected
+              ? selectedIconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider, true)
+              : iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider),
             riseOnHover: true,
             title: label,
           })
@@ -497,15 +536,18 @@ export default function MapComponent({
               className: 'scooter-popup',
               closeButton: false,
             })
+            .on('click', () => onVehicleSelectRef.current(vehicle))
             .addTo(layer);
-          if (cfg) marker.setIcon(iconMap[vehicle.provider]);
+          if (cfg) marker.setIcon(selected ? selectedIconMap[vehicle.provider] : iconMap[vehicle.provider]);
           labelMarker(marker, label);
           vehicleMarkersRef.current.set(key, marker);
           continue;
         }
 
         existing.setLatLng([vehicle.lat, vehicle.lng]);
-        existing.setIcon(iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider));
+        existing.setIcon(key === selectedVehicleKey
+          ? selectedIconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider, true)
+          : iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider));
         existing.setPopupContent(vehiclePopup(vehicle, distanceM, t, formatNumber));
         updateMarkerLabel(existing, label);
       }
@@ -540,6 +582,8 @@ export default function MapComponent({
     formatNumber,
     iconMap,
     mapReady,
+    selectedIconMap,
+    selectedVehicleKey,
     t,
     vehicles,
     zoom,

@@ -13,6 +13,7 @@ enum ScooterClusteringPolicy {
 struct ScooterMapView: UIViewRepresentable {
     let scooters: [Scooter]
     let mapStyle: AppleMapStyle
+    let showsUserLocation: Bool
     let focusRequest: MapFocusRequest?
     let destination: MapDestination?
     let selectedScooterID: String?
@@ -27,7 +28,7 @@ struct ScooterMapView: UIViewRepresentable {
         let mapView = MKMapView(frame: .zero)
         mapView.delegate = context.coordinator
         mapView.mapType = mapStyle.mapType
-        mapView.showsUserLocation = true
+        mapView.showsUserLocation = false
         mapView.showsCompass = false
         mapView.showsScale = false
         mapView.pointOfInterestFilter = .excludingAll
@@ -52,6 +53,9 @@ struct ScooterMapView: UIViewRepresentable {
         context.coordinator.parent = self
         if mapView.mapType != mapStyle.mapType {
             mapView.mapType = mapStyle.mapType
+        }
+        if mapView.showsUserLocation != showsUserLocation {
+            mapView.showsUserLocation = showsUserLocation
         }
         context.coordinator.updateClusteringMode(on: mapView)
         context.coordinator.reconcile(scooters, on: mapView)
@@ -127,10 +131,10 @@ struct ScooterMapView: UIViewRepresentable {
             lastFocusToken = request.token
             let region = MKCoordinateRegion(
                 center: request.point.coordinate,
-                latitudinalMeters: 850,
-                longitudinalMeters: 850
+                latitudinalMeters: request.latitudinalMeters,
+                longitudinalMeters: request.longitudinalMeters
             )
-            mapView.setRegion(region, animated: true)
+            mapView.setRegion(region, animated: !UIAccessibility.isReduceMotionEnabled)
         }
 
         func applyDestination(_ destination: MapDestination?, on mapView: MKMapView) {
@@ -301,12 +305,12 @@ final class ScooterAnnotationView: MKAnnotationView {
     }
 
     private func configureView() {
-        bounds = CGRect(x: 0, y: 0, width: 36, height: 36)
+        bounds = CGRect(x: 0, y: 0, width: 44, height: 44)
         centerOffset = CGPoint(x: 0, y: -3)
         setClusteringEnabled(false)
         canShowCallout = false
 
-        layer.cornerRadius = 18
+        layer.cornerRadius = 22
         layer.borderWidth = 3
         layer.borderColor = UIColor.white.withAlphaComponent(0.96).cgColor
         layer.shadowColor = UIColor.black.cgColor
@@ -355,8 +359,12 @@ final class ScooterAnnotationView: MKAnnotationView {
             self.transform = selected ? CGAffineTransform(scaleX: 1.18, y: 1.18) : .identity
             self.layer.shadowOpacity = selected ? 0.38 : 0.25
             self.layer.shadowRadius = selected ? 9 : 6
+            self.layer.borderWidth = selected ? 4 : 3
+            self.layer.borderColor = selected
+                ? UIColor.systemBlue.withAlphaComponent(0.95).cgColor
+                : UIColor.white.withAlphaComponent(0.96).cgColor
         }
-        if animated {
+        if animated && !UIAccessibility.isReduceMotionEnabled {
             UIView.animate(
                 withDuration: 0.25,
                 delay: 0,

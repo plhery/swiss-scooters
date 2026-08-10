@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
-import BottomSheet from '@/components/BottomSheet';
+import BottomSheet, { type NearbyVehicle } from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
-import type { AddressResult } from '@/components/AddressSearch';
+import AddressSearch, { type AddressResult } from '@/components/AddressSearch';
 import type { MapBounds, ScooterCluster, Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
@@ -21,9 +21,11 @@ import {
   boundsContainBounds,
   boundsContainPoint,
   expandBounds,
+  haversineM,
 } from '@/lib/geo';
 
-const ZURICH_CENTER: [number, number] = [47.3769, 8.5417];
+const SWITZERLAND_CENTER: [number, number] = [46.8182, 8.2275];
+const INITIAL_ZOOM = 8;
 const VIEWPORT_FETCH_PADDING = 0.25;
 const AUTO_REFRESH_INTERVAL_MS = 60_000;
 
@@ -76,7 +78,7 @@ function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
 
 export default function Home() {
   const { t, formatNumber } = useI18n();
-  const [initialCenter, setInitialCenter] = useState<[number, number]>(ZURICH_CENTER);
+  const [initialCenter, setInitialCenter] = useState<[number, number]>(SWITZERLAND_CENTER);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [minBattery, setMinBattery] = useState(0);
   const [tileLayer, setTileLayer] = useState<'dark' | 'light' | 'osm'>('light');
@@ -100,8 +102,11 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [responseMeta, setResponseMeta] = useState<ScooterResponse['meta'] | null>(null);
   const [controlsExpanded, setControlsExpanded] = useState(false);
+  const [showLocationIntro, setShowLocationIntro] = useState(true);
+  const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
+  const [zoomInVersion, setZoomInVersion] = useState(0);
+  const [zoomOutVersion, setZoomOutVersion] = useState(0);
   const initializedRef = useRef(false);
-  const hasFocusedInitialLocationRef = useRef(false);
   const mapQueryRef = useRef<ScooterMapQuery | null>(null);
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestSequenceRef = useRef(0);
@@ -120,33 +125,11 @@ export default function Home() {
     if (params.tileLayer) setTileLayer(params.tileLayer);
 
     // Preserve old shared links without persisting their coordinates again.
-    if (params.origin) setInitialCenter(params.origin);
-  }, []);
-
-  // Track the phone continuously for the blue marker and local distances.
-  useEffect(() => {
-    if (!('geolocation' in navigator)) return;
-
-    setLocating(true);
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-        setUserLocation(coords);
-        if (!hasFocusedInitialLocationRef.current) {
-          hasFocusedInitialLocationRef.current = true;
-          setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
-        }
-        setLocating(false);
-        setLocationDenied(false);
-      },
-      (positionError) => {
-        setLocating(false);
-        setLocationDenied(positionError.code === positionError.PERMISSION_DENIED);
-      },
-      { timeout: 20000, enableHighAccuracy: true, maximumAge: 5000 }
-    );
-
-    return () => navigator.geolocation.clearWatch(watchId);
+    if (params.origin) {
+      setInitialCenter(params.origin);
+      setShowLocationIntro(false);
+      setFocusRequest(current => ({ location: params.origin, version: current.version + 1 }));
+    }
   }, []);
 
   // Sync state to URL + localStorage
@@ -252,8 +235,13 @@ export default function Home() {
 
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const handleProviderSelect = (p: string) => {
-    setEnabledProviders(new Set([p]));
+  const handleProviderToggle = (provider: string) => {
+    setEnabledProviders(current => {
+      const next = new Set(current);
+      if (next.has(provider)) next.delete(provider);
+      else next.add(provider);
+      return next;
+    });
   };
 
   const handleShowAllProviders = () => {
@@ -262,6 +250,8 @@ export default function Home() {
 
   const handleAddressSelect = (result: AddressResult) => {
     const location: [number, number] = [result.lat, result.lng];
+    setShowLocationIntro(false);
+    setSelectedVehicleKey(null);
     setSearchedAddress(result);
     setFocusRequest(current => ({ location, version: current.version + 1 }));
   };
@@ -285,6 +275,7 @@ export default function Home() {
   }, []);
 
   const handleLocateMe = useCallback(() => {
+    setShowLocationIntro(false);
     const focusOn = (coords: [number, number]) => {
       setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
     };
@@ -314,6 +305,22 @@ export default function Home() {
       { timeout: 10000, enableHighAccuracy: true, maximumAge: 10000 }
     );
   }, [userLocation]);
+
+  const resetFilters = useCallback(() => {
+    setMinBattery(0);
+    setEnabledProviders(new Set(Object.keys(PROVIDERS)));
+  }, []);
+
+  const selectVehicle = useCallback((vehicle: Vehicle) => {
+    const key = vehicle.vehicle_id
+      ? `${vehicle.provider}:${vehicle.vehicle_id}`
+      : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`;
+    setSelectedVehicleKey(key);
+    setFocusRequest(current => ({
+      location: [vehicle.lat, vehicle.lng],
+      version: current.version + 1,
+    }));
+  }, []);
 
   // The response covers a padded area; only markers inside the exact viewport
   // are rendered and counted. Provider counts intentionally ignore the active
@@ -380,6 +387,44 @@ export default function Home() {
     [formatNumber, representedVehicleCount, responseMeta, t]
   );
 
+  const nearbyVehicles = useMemo<NearbyVehicle[]>(() => {
+    if (viewportData.visibleVehicles.length === 0) return [];
+    const reference = userLocation ?? (viewportBounds
+      ? [
+          (viewportBounds.south + viewportBounds.north) / 2,
+          (viewportBounds.west + viewportBounds.east) / 2,
+        ] as [number, number]
+      : SWITZERLAND_CENTER);
+    return viewportData.visibleVehicles
+      .map(vehicle => ({
+        vehicle,
+        distanceM: userLocation
+          ? haversineM(userLocation[0], userLocation[1], vehicle.lat, vehicle.lng)
+          : null,
+        sortDistance: haversineM(reference[0], reference[1], vehicle.lat, vehicle.lng),
+      }))
+      .sort((a, b) => a.sortDistance - b.sortDistance)
+      .slice(0, 5)
+      .map(({ vehicle, distanceM }) => ({ vehicle, distanceM }));
+  }, [userLocation, viewportBounds, viewportData.visibleVehicles]);
+
+  const selectedVehicle = useMemo<NearbyVehicle | null>(() => {
+    if (!selectedVehicleKey) return null;
+    const vehicle = viewportData.visibleVehicles.find(candidate => {
+      const key = candidate.vehicle_id
+        ? `${candidate.provider}:${candidate.vehicle_id}`
+        : `${candidate.provider}:${candidate.lat}:${candidate.lng}`;
+      return key === selectedVehicleKey;
+    });
+    if (!vehicle) return null;
+    return {
+      vehicle,
+      distanceM: userLocation
+        ? haversineM(userLocation[0], userLocation[1], vehicle.lat, vehicle.lng)
+        : null,
+    };
+  }, [selectedVehicleKey, userLocation, viewportData.visibleVehicles]);
+
   return (
     <div className="app-shell" data-map-theme={tileLayer}>
       <MapWrapper
@@ -387,6 +432,7 @@ export default function Home() {
         clusters={viewportData.visibleClusters}
         clustered={responseMeta?.mode === 'clusters'}
         origin={initialCenter}
+        initialZoom={INITIAL_ZOOM}
         distanceOrigin={userLocation}
         tileLayer={tileLayer}
         userLocation={userLocation}
@@ -394,7 +440,36 @@ export default function Home() {
         focusVersion={focusRequest.version}
         destination={searchedAddress}
         onViewportChange={handleViewportChange}
+        selectedVehicleKey={selectedVehicleKey}
+        zoomInVersion={zoomInVersion}
+        zoomOutVersion={zoomOutVersion}
+        onVehicleSelect={vehicle => setSelectedVehicleKey(
+          vehicle.vehicle_id
+            ? `${vehicle.provider}:${vehicle.vehicle_id}`
+            : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`
+        )}
       />
+
+      <div className="search-float">
+        <AddressSearch
+          compact
+          onSelect={handleAddressSelect}
+          onClear={() => setSearchedAddress(null)}
+        />
+      </div>
+
+      {showLocationIntro && !userLocation && !searchedAddress && (
+        <div className="location-intro glass" role="dialog" aria-labelledby="location-intro-title">
+          <div>
+            <strong id="location-intro-title">{t('intro.title')}</strong>
+            <span>{t('intro.body')}</span>
+          </div>
+          <div className="location-intro-actions">
+            <button className="intro-primary" onClick={handleLocateMe}>{t('intro.useLocation')}</button>
+            <button onClick={() => setShowLocationIntro(false)}>{t('intro.browse')}</button>
+          </div>
+        </div>
+      )}
 
       {locating && (
         <div className="toast glass" role="status">
@@ -432,13 +507,19 @@ export default function Home() {
         lastUpdated={lastUpdated}
         dataHealthNotice={dataHealthNotice}
         tileLayer={tileLayer}
+        clustered={responseMeta?.mode === 'clusters'}
+        nearbyVehicles={nearbyVehicles}
+        selectedVehicle={selectedVehicle}
         onMinBatteryChange={setMinBattery}
-        onAddressSelect={handleAddressSelect}
-        onAddressClear={() => setSearchedAddress(null)}
         onShowAllProviders={handleShowAllProviders}
-        onProviderSelect={handleProviderSelect}
+        onProviderToggle={handleProviderToggle}
         onTileLayerChange={setTileLayer}
         onExpandedChange={setControlsExpanded}
+        onSelectVehicle={selectVehicle}
+        onClearSelection={() => setSelectedVehicleKey(null)}
+        onResetFilters={resetFilters}
+        onZoomIn={() => setZoomInVersion(version => version + 1)}
+        onZoomOut={() => setZoomOutVersion(version => version + 1)}
       />
     </div>
   );

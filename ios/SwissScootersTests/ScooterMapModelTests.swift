@@ -108,6 +108,29 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(model.mapScooters.isEmpty)
     }
 
+    func testProviderTogglesComposeAndResetTogether() async {
+        let scooters = [
+            scooter(id: "lime", provider: "lime"),
+            scooter(id: "bird", provider: "bird"),
+            scooter(id: "voi", provider: "voi")
+        ]
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: scooters)))
+        model.refresh()
+        let loadingFinished = await waitUntil { model.lastUpdated != nil }
+        XCTAssertTrue(loadingFinished)
+
+        model.toggle(provider: .voi)
+        model.toggle(provider: .bird)
+
+        XCTAssertEqual(model.mapScooters.map(\.provider), ["lime"])
+        XCTAssertTrue(model.hasActiveFilters)
+
+        model.resetFilters()
+
+        XCTAssertEqual(Set(model.mapScooters.map(\.provider)), Set(["lime", "bird", "voi"]))
+        XCTAssertFalse(model.hasActiveFilters)
+    }
+
     func testLocationPolicyRejectsStaleAndInaccurateSamplesAndChoosesBestFallback() {
         let now = Date()
         let preferred = CLLocation(

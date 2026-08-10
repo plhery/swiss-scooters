@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useRef, useLayoutEffect, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
-import { PROVIDERS } from '@/lib/types';
+import { PROVIDERS, type Vehicle } from '@/lib/types';
 import { SUPPORTED_LOCALES, useI18n, type AppLocale } from '@/lib/i18n';
-import AddressSearch, { type AddressResult } from '@/components/AddressSearch';
+
+export interface NearbyVehicle {
+  vehicle: Vehicle;
+  distanceM: number | null;
+}
 
 interface BottomSheetProps {
   minBattery: number;
@@ -15,13 +19,19 @@ interface BottomSheetProps {
   lastUpdated: Date | null;
   dataHealthNotice: string | null;
   tileLayer: 'dark' | 'light' | 'osm';
-  onMinBatteryChange: (b: number) => void;
-  onAddressSelect: (result: AddressResult) => void;
-  onAddressClear: () => void;
+  clustered: boolean;
+  nearbyVehicles: NearbyVehicle[];
+  selectedVehicle: NearbyVehicle | null;
+  onMinBatteryChange: (battery: number) => void;
   onShowAllProviders: () => void;
-  onProviderSelect: (p: string) => void;
-  onTileLayerChange: (t: 'dark' | 'light' | 'osm') => void;
+  onProviderToggle: (provider: string) => void;
+  onTileLayerChange: (tile: 'dark' | 'light' | 'osm') => void;
   onExpandedChange: (expanded: boolean) => void;
+  onSelectVehicle: (vehicle: Vehicle) => void;
+  onClearSelection: () => void;
+  onResetFilters: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
 }
 
 const DESKTOP_PANEL_QUERY = '(min-width: 900px)';
@@ -55,7 +65,7 @@ function SliderRow({
   min: number;
   max: number;
   step?: number;
-  onChange: (v: number) => void;
+  onChange: (value: number) => void;
 }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
@@ -71,7 +81,7 @@ function SliderRow({
         max={max}
         step={step ?? 1}
         value={value}
-        onChange={e => onChange(parseInt(e.target.value))}
+        onChange={event => onChange(parseInt(event.target.value))}
         style={{ '--fill': `${pct}%` } as React.CSSProperties}
         aria-label={`${label}: ${display}`}
       />
@@ -88,13 +98,19 @@ export default function BottomSheet({
   lastUpdated,
   dataHealthNotice,
   tileLayer,
+  clustered,
+  nearbyVehicles,
+  selectedVehicle,
   onMinBatteryChange,
-  onAddressSelect,
-  onAddressClear,
   onShowAllProviders,
-  onProviderSelect,
+  onProviderToggle,
   onTileLayerChange,
   onExpandedChange,
+  onSelectVehicle,
+  onClearSelection,
+  onResetFilters,
+  onZoomIn,
+  onZoomOut,
 }: BottomSheetProps) {
   const { locale, setLocale, t, formatNumber } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -102,13 +118,12 @@ export default function BottomSheet({
   const desktopPanel = useDesktopPanel();
   const controlsVisible = desktopPanel || expanded;
   const providerKeys = Object.keys(PROVIDERS);
-  const allProvidersSelected =
-    enabledProviders.size === providerKeys.length &&
-    providerKeys.every((provider) => enabledProviders.has(provider));
+  const allProvidersSelected = providerKeys.every(provider => enabledProviders.has(provider));
   const allProviderCount = providerKeys.reduce(
     (count, provider) => count + (providerCounts[provider] ?? 0),
     0
   );
+  const hasActiveFilters = minBattery > 0 || !allProvidersSelected;
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
@@ -123,71 +138,72 @@ export default function BottomSheet({
   } | null>(null);
 
   useLayoutEffect(() => {
-    const el = peekRef.current;
-    if (!el) return;
+    const element = peekRef.current;
+    if (!element) return;
     const update = () => {
-      const height = el.offsetHeight;
+      const height = element.offsetHeight;
       setPeekH(height);
       document.documentElement.style.setProperty('--sheet-peek-h', `${height}px`);
     };
     update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
     return () => {
-      ro.disconnect();
+      observer.disconnect();
       document.documentElement.style.removeProperty('--sheet-peek-h');
     };
   }, []);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerDown = (event: React.PointerEvent) => {
     if (desktopPanel) return;
     const sheet = sheetRef.current;
     if (!sheet) return;
     const max = Math.max(sheet.offsetHeight - peekH, 0);
     dragRef.current = {
-      startY: e.clientY,
+      startY: event.clientY,
       base: expanded ? 0 : max,
       max,
       moved: false,
-      lastY: e.clientY,
+      lastY: event.clientY,
       lastT: performance.now(),
       vel: 0,
     };
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    (event.currentTarget as Element).setPointerCapture(event.pointerId);
     sheet.style.transition = 'none';
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
+  const handlePointerMove = (event: React.PointerEvent) => {
     if (desktopPanel) return;
-    const d = dragRef.current;
+    const drag = dragRef.current;
     const sheet = sheetRef.current;
-    if (!d || !sheet) return;
-    const delta = e.clientY - d.startY;
-    if (Math.abs(delta) > 4) d.moved = true;
+    if (!drag || !sheet) return;
+    const delta = event.clientY - drag.startY;
+    if (Math.abs(delta) > 4) drag.moved = true;
     const now = performance.now();
-    const dt = now - d.lastT;
-    if (dt > 0) d.vel = (e.clientY - d.lastY) / dt;
-    d.lastY = e.clientY;
-    d.lastT = now;
-    const off = Math.min(Math.max(d.base + delta, 0), d.max);
-    sheet.style.transform = `translate3d(0, ${off}px, 0)`;
+    const elapsed = now - drag.lastT;
+    if (elapsed > 0) drag.vel = (event.clientY - drag.lastY) / elapsed;
+    drag.lastY = event.clientY;
+    drag.lastT = now;
+    const offset = Math.min(Math.max(drag.base + delta, 0), drag.max);
+    sheet.style.transform = `translate3d(0, ${offset}px, 0)`;
   };
 
-  const handlePointerEnd = (e: React.PointerEvent) => {
+  const handlePointerEnd = (event: React.PointerEvent) => {
     if (desktopPanel) return;
-    const d = dragRef.current;
+    const drag = dragRef.current;
     const sheet = sheetRef.current;
-    if (!d || !sheet) return;
+    if (!drag || !sheet) return;
     dragRef.current = null;
 
-    let next: boolean;
-    if (!d.moved) {
-      next = !expanded; // tap toggles
-    } else {
-      const off = Math.min(Math.max(d.base + (e.clientY - d.startY), 0), d.max);
-      // Flick beats position
-      next = Math.abs(d.vel) > 0.4 ? d.vel < 0 : off < d.max / 2;
-    }
+    const offset = Math.min(
+      Math.max(drag.base + (event.clientY - drag.startY), 0),
+      drag.max
+    );
+    const next = !drag.moved
+      ? !expanded
+      : Math.abs(drag.vel) > 0.4
+        ? drag.vel < 0
+        : offset < drag.max / 2;
     flushSync(() => {
       setExpanded(next);
       onExpandedChange(next);
@@ -200,9 +216,87 @@ export default function BottomSheet({
     ? t('sheet.updating')
     : lastUpdated
       ? t('sheet.updated', {
-          time: lastUpdated.toLocaleTimeString(`${locale}-CH`, { hour: '2-digit', minute: '2-digit' }),
+          time: lastUpdated.toLocaleTimeString(`${locale}-CH`, {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
         })
       : t('sheet.onMap');
+
+  const formatDistance = (meters: number | null) => {
+    if (meters === null) return null;
+    return meters < 1000
+      ? t('distance.meters', { count: formatNumber(Math.round(meters)) })
+      : t('distance.kilometers', {
+          count: formatNumber(meters / 1000, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          }),
+        });
+  };
+
+  const vehicleDetails = (nearby: NearbyVehicle, compact = false) => {
+    const { vehicle, distanceM } = nearby;
+    const provider = PROVIDERS[vehicle.provider];
+    const destination = `${vehicle.lat},${vehicle.lng}`;
+    const range = vehicle.range_m === null ? null : formatDistance(vehicle.range_m);
+    const distance = formatDistance(distanceM);
+    return (
+      <div className={`vehicle-card ${compact ? 'vehicle-card-selected' : ''}`}>
+        <div className="vehicle-card-head">
+          <span
+            className="vehicle-provider-dot"
+            style={{ background: provider?.color ?? '#8e8e93' }}
+            aria-hidden="true"
+          />
+          <div className="vehicle-card-copy">
+            <strong>{provider?.name ?? vehicle.provider}</strong>
+            <span>
+              {[distance, vehicle.battery === null ? null : `${formatNumber(vehicle.battery)}%`, range]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </div>
+          {compact && (
+            <button
+              type="button"
+              className="vehicle-card-close"
+              onClick={onClearSelection}
+              aria-label={t('marker.close')}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {compact ? (
+          <div className="vehicle-actions">
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=walking`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t('marker.walkThere')}
+            </a>
+            {vehicle.deep_link && (
+              <a
+                className="vehicle-action-primary"
+                style={{ background: provider?.color ?? 'var(--blue)' }}
+                href={vehicle.deep_link}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t('marker.openIn', { name: provider?.name ?? t('marker.app') })}
+              </a>
+            )}
+          </div>
+        ) : (
+          <button type="button" className="vehicle-card-hit" onClick={() => onSelectVehicle(vehicle)}>
+            <span className="sr-only">{provider?.name ?? vehicle.provider}</span>
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -224,9 +318,9 @@ export default function BottomSheet({
           aria-expanded={desktopPanel ? undefined : expanded}
           aria-controls={desktopPanel ? undefined : 'scooter-controls-body'}
           aria-label={desktopPanel ? undefined : expanded ? t('sheet.collapse') : t('sheet.expand')}
-          onKeyDown={desktopPanel ? undefined : e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
+          onKeyDown={desktopPanel ? undefined : event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
               const next = !expanded;
               setExpanded(next);
               onExpandedChange(next);
@@ -236,15 +330,19 @@ export default function BottomSheet({
           <div className="grabber" aria-hidden="true" />
           <div className="sheet-title-row">
             <div>
-              <div className="sheet-count" aria-live="polite">
-                <span className="sheet-count-num">{formatNumber(totalCount)}</span>
-                {totalCount === 1 ? t('sheet.scooter') : t('sheet.scooters')}
-              </div>
+              {loading && lastUpdated === null ? (
+                <div className="sheet-count sheet-finding">
+                  <span className="mini-spinner" aria-hidden="true" />
+                  {t('sheet.finding')}
+                </div>
+              ) : (
+                <div className="sheet-count" aria-live="polite">
+                  <span className="sheet-count-num">{formatNumber(totalCount)}</span>
+                  {totalCount === 1 ? t('sheet.scooter') : t('sheet.scooters')}
+                </div>
+              )}
               <div className="sheet-sub">
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {loading && <span className="mini-spinner" aria-hidden="true" />}
-                  {updatedLabel}
-                </span>
+                {hasActiveFilters ? `${t('filters.active')} · ${updatedLabel}` : updatedLabel}
               </div>
               {dataHealthNotice && (
                 <div className="sheet-health" role="status">
@@ -261,51 +359,84 @@ export default function BottomSheet({
           </div>
         </div>
 
-        <div
-          className="chips"
-          role="group"
-          aria-label={t('providers.filter')}
-        >
-          <button
-            className={`chip ${allProvidersSelected ? '' : 'chip-off'}`}
-            style={allProvidersSelected ? { background: 'rgba(10, 132, 255, 0.12)' } : undefined}
-            onClick={onShowAllProviders}
-            aria-pressed={allProvidersSelected}
-            aria-label={t('providers.allLabel', { count: formatNumber(allProviderCount) })}
-            title={t('providers.showAll')}
-          >
-            <span className="chip-dot chip-dot-all" aria-hidden="true" />
-            {t('providers.all')}
-            <span className="chip-count">{formatNumber(allProviderCount)}</span>
-          </button>
-          {Object.entries(PROVIDERS).map(([key, cfg]) => {
-            const onlyProvider = enabledProviders.size === 1 && enabledProviders.has(key);
-            return (
-              <button
-                key={key}
-                className={`chip ${onlyProvider ? '' : 'chip-off'}`}
-                style={onlyProvider ? { background: `${cfg.color}1f` } : undefined}
-                onClick={() => onProviderSelect(key)}
-                aria-pressed={onlyProvider}
-                aria-label={t('providers.showOnlyLabel', {
-                  name: cfg.name,
-                  count: formatNumber(providerCounts[key] ?? 0),
-                })}
-                title={t('providers.showOnly', { name: cfg.name })}
-              >
-                <span className="chip-dot" style={{ background: cfg.color }} aria-hidden="true" />
-                {cfg.name}
-                <span className="chip-count">{formatNumber(providerCounts[key] ?? 0)}</span>
-              </button>
-            );
-          })}
-        </div>
+        {selectedVehicle ? (
+          <div className="selected-vehicle-wrap">{vehicleDetails(selectedVehicle, true)}</div>
+        ) : (
+          <div className="chips" role="group" aria-label={t('providers.filter')}>
+            <button
+              className={`chip ${allProvidersSelected ? '' : 'chip-off'}`}
+              style={allProvidersSelected ? { background: 'rgba(10, 132, 255, 0.12)' } : undefined}
+              onClick={onShowAllProviders}
+              aria-pressed={allProvidersSelected}
+              aria-label={t('providers.allLabel', { count: formatNumber(allProviderCount) })}
+              title={t('providers.showAll')}
+            >
+              <span className="chip-dot chip-dot-all" aria-hidden="true" />
+              {t('providers.all')}
+              <span className="chip-count">{formatNumber(allProviderCount)}</span>
+            </button>
+            {Object.entries(PROVIDERS).map(([key, provider]) => {
+              const selected = enabledProviders.has(key);
+              return (
+                <button
+                  key={key}
+                  className={`chip ${selected ? '' : 'chip-off'}`}
+                  style={selected && !allProvidersSelected ? { background: `${provider.color}1f` } : undefined}
+                  onClick={() => onProviderToggle(key)}
+                  aria-pressed={selected}
+                  aria-label={t('providers.toggleLabel', {
+                    name: provider.name,
+                    count: formatNumber(providerCounts[key] ?? 0),
+                    state: t(selected ? 'providers.selected' : 'providers.notSelected'),
+                  })}
+                >
+                  <span className="chip-dot" style={{ background: provider.color }} aria-hidden="true" />
+                  {provider.name}
+                  <span className="chip-count">{formatNumber(providerCounts[key] ?? 0)}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div id="scooter-controls-body" className="sheet-body" inert={!controlsVisible}>
-        <AddressSearch onSelect={onAddressSelect} onClear={onAddressClear} />
+        <section className="section nearby-section" aria-labelledby="nearby-title">
+          <div className="section-heading">
+            <div id="nearby-title" className="section-title">{t('sheet.nearby')}</div>
+            {hasActiveFilters && (
+              <button type="button" className="reset-link" onClick={onResetFilters}>
+                {t('filters.reset')}
+              </button>
+            )}
+          </div>
 
-        <div className="section">
+          {clustered && nearbyVehicles.length === 0 && totalCount > 0 ? (
+            <div className="empty-state">
+              <strong>{t('sheet.zoomForDetails')}</strong>
+              <button type="button" onClick={onZoomIn}>{t('controls.zoomIn')}</button>
+            </div>
+          ) : totalCount === 0 && !loading ? (
+            <div className="empty-state">
+              <strong>{t(hasActiveFilters ? 'sheet.emptyFiltered' : 'sheet.empty')}</strong>
+              <span>{t('sheet.emptyHelp')}</span>
+              <div className="empty-actions">
+                {hasActiveFilters && <button type="button" onClick={onResetFilters}>{t('filters.reset')}</button>}
+                <button type="button" onClick={onZoomOut}>{t('controls.zoomOut')}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="vehicle-list">
+              {nearbyVehicles.map(nearby => (
+                <div key={`${nearby.vehicle.provider}:${nearby.vehicle.vehicle_id ?? `${nearby.vehicle.lat}:${nearby.vehicle.lng}`}`}>
+                  {vehicleDetails(nearby)}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="section">
           <div className="section-title">{t('filters.title')}</div>
           <SliderRow
             label={t('filters.minBattery')}
@@ -316,51 +447,57 @@ export default function BottomSheet({
             step={5}
             onChange={onMinBatteryChange}
           />
-        </div>
+          {minBattery > 0 && <p className="filter-help">{t('filters.unknownBattery')}</p>}
+        </section>
 
-        <div className="section">
-          <div className="section-title">{t('map.style')}</div>
-          <div className="seg" role="group" aria-label={t('map.style')}>
-            {(['light', 'dark', 'osm'] as const).map(style => (
-              <button
-                key={style}
-                onClick={() => onTileLayerChange(style)}
-                aria-pressed={tileLayer === style}
-              >
-                {style === 'light' ? t('map.light') : style === 'dark' ? t('map.dark') : t('map.osm')}
-              </button>
-            ))}
+        <details className="settings-disclosure section">
+          <summary>{t('settings.title')}</summary>
+          <div className="settings-body">
+            <div>
+              <div className="section-title">{t('map.style')}</div>
+              <div className="seg" role="group" aria-label={t('map.style')}>
+                {(['light', 'dark', 'osm'] as const).map(style => (
+                  <button
+                    key={style}
+                    onClick={() => onTileLayerChange(style)}
+                    aria-pressed={tileLayer === style}
+                  >
+                    {style === 'light' ? t('map.light') : style === 'dark' ? t('map.dark') : t('map.osm')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="section-title">{t('language.title')}</div>
+              <div className="seg" role="group" aria-label={t('language.title')}>
+                {SUPPORTED_LOCALES.map(language => (
+                  <button
+                    key={language}
+                    onClick={() => setLocale(language)}
+                    aria-pressed={locale === language}
+                    lang={`${language}-CH`}
+                    title={LOCALE_LABELS[language]}
+                  >
+                    {language.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="sheet-footer">
+              <a href="/privacy">{t('links.privacy')}</a>
+              <span aria-hidden="true">·</span>
+              <a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/" target="_blank" rel="noreferrer">
+                Mobility data
+              </a>
+              <span aria-hidden="true">·</span>
+              <a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api" target="_blank" rel="noreferrer">
+                Address data © swisstopo
+              </a>
+            </div>
           </div>
-        </div>
-
-        <div className="section">
-          <div className="section-title">{t('language.title')}</div>
-          <div className="seg" role="group" aria-label={t('language.title')}>
-            {SUPPORTED_LOCALES.map((language) => (
-              <button
-                key={language}
-                onClick={() => setLocale(language)}
-                aria-pressed={locale === language}
-                lang={`${language}-CH`}
-                title={LOCALE_LABELS[language]}
-              >
-                {language.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="sheet-footer">
-          <a href="/privacy">{t('links.privacy')}</a>
-          <span aria-hidden="true">·</span>
-          <a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/" target="_blank" rel="noreferrer">
-            Mobility data
-          </a>
-          <span aria-hidden="true">·</span>
-          <a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api" target="_blank" rel="noreferrer">
-            Address data © swisstopo
-          </a>
-        </div>
+        </details>
       </div>
     </div>
   );

@@ -18,13 +18,19 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>
     lastUpdated: null,
     dataHealthNotice: null,
     tileLayer: 'light',
+    clustered: false,
+    nearbyVehicles: [],
+    selectedVehicle: null,
     onMinBatteryChange: vi.fn(),
-    onAddressSelect: vi.fn(),
-    onAddressClear: vi.fn(),
     onShowAllProviders: vi.fn(),
-    onProviderSelect: vi.fn(),
+    onProviderToggle: vi.fn(),
     onTileLayerChange: vi.fn(),
     onExpandedChange: vi.fn(),
+    onSelectVehicle: vi.fn(),
+    onClearSelection: vi.fn(),
+    onResetFilters: vi.fn(),
+    onZoomIn: vi.fn(),
+    onZoomOut: vi.fn(),
     ...overrides,
   };
 
@@ -70,16 +76,16 @@ describe('BottomSheet', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Some providers unavailable');
   });
 
-  it('uses an explicit All option rather than hidden provider toggling', () => {
+  it('supports explicit All and individual provider toggles', () => {
     const onShowAllProviders = vi.fn();
-    const onProviderSelect = vi.fn();
-    renderSheet({ onShowAllProviders, onProviderSelect });
+    const onProviderToggle = vi.fn();
+    renderSheet({ onShowAllProviders, onProviderToggle });
 
     fireEvent.click(screen.getByRole('button', { name: /^All providers/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Bolt,/ }));
 
     expect(onShowAllProviders).toHaveBeenCalledOnce();
-    expect(onProviderSelect).toHaveBeenCalledWith('bolt');
+    expect(onProviderToggle).toHaveBeenCalledWith('bolt');
   });
 
   it('leaves the body active and removes drawer semantics on wide screens', () => {

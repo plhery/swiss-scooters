@@ -5,7 +5,9 @@ struct ScooterMapScreen: View {
     @State private var model = ScooterMapModel()
     @State private var controlsExpanded = false
     @State private var collapsedDockHeight: CGFloat = 145
+    @State private var showLocationIntro = true
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -13,6 +15,7 @@ struct ScooterMapScreen: View {
                 ScooterMapView(
                     scooters: model.mapScooters,
                     mapStyle: model.mapStyle,
+                    showsUserLocation: model.userLocation != nil,
                     focusRequest: model.focusRequest,
                     destination: model.searchedDestination,
                     selectedScooterID: model.selectedScooterID,
@@ -21,13 +24,16 @@ struct ScooterMapScreen: View {
                 )
                 .ignoresSafeArea()
 
-                statusOverlay(safeAreaTop: proxy.safeAreaInsets.top)
+                topOverlay(safeAreaTop: proxy.safeAreaInsets.top)
 
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
-                        FloatingMapControls(model: model)
+                        FloatingMapControls(
+                            model: model,
+                            onLocationIntent: { showLocationIntro = false }
+                        )
                     }
                     .padding(.trailing, 12)
                     .padding(
@@ -38,7 +44,20 @@ struct ScooterMapScreen: View {
                 .opacity(controlsExpanded ? 0 : 1)
                 .scaleEffect(controlsExpanded ? 0.92 : 1, anchor: .bottomTrailing)
                 .allowsHitTesting(!controlsExpanded)
-                .animation(.snappy(duration: 0.3), value: controlsExpanded)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: controlsExpanded)
+
+                if showLocationIntro && model.userLocation == nil && model.searchedDestination == nil {
+                    VStack {
+                        Spacer()
+                        locationIntroCard
+                            .padding(.horizontal, 16)
+                            .padding(
+                                .bottom,
+                                collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 16
+                            )
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
 
                 ScooterControlDock(
                     model: model,
@@ -70,8 +89,20 @@ struct ScooterMapScreen: View {
     }
 
     @ViewBuilder
-    private func statusOverlay(safeAreaTop: CGFloat) -> some View {
-        VStack {
+    private func topOverlay(safeAreaTop: CGFloat) -> some View {
+        VStack(spacing: 8) {
+            SwissAddressSearch(
+                compact: true,
+                onSelect: { destination in
+                    showLocationIntro = false
+                    model.focusOnAddress(destination)
+                },
+                onClear: model.clearAddressSearch
+            )
+            .padding(10)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+
             if let errorMessage = model.errorMessage {
                 MapStatusBanner(
                     message: errorMessage,
@@ -108,11 +139,43 @@ struct ScooterMapScreen: View {
             Spacer()
         }
         .padding(.top, max(safeAreaTop + 6, 12))
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
         .frame(maxWidth: .infinity)
-        .animation(.snappy(duration: 0.3), value: model.errorMessage)
-        .animation(.snappy(duration: 0.3), value: model.locationAuthorizationIssue)
-        .animation(.snappy(duration: 0.3), value: model.isLocating)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.errorMessage)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.locationAuthorizationIssue)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.isLocating)
+    }
+
+    private var locationIntroCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Find a scooter nearby")
+                    .font(.headline)
+                Text("Use your location for nearby distances, or search any Swiss address.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button("Use my location") {
+                    showLocationIntro = false
+                    model.focusOnUser()
+                }
+                .buttonStyle(.glassProminent)
+
+                Button("Browse Switzerland") {
+                    showLocationIntro = false
+                    model.focusOnSwitzerland()
+                }
+                .buttonStyle(.glass)
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(16)
+        .frame(maxWidth: 390, alignment: .leading)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .black.opacity(0.14), radius: 16, y: 7)
     }
 
     private func openLocationSettings() {
@@ -122,11 +185,6 @@ struct ScooterMapScreen: View {
 
     private func handleSelection(_ id: String?) {
         model.selectScooter(id)
-        if id != nil {
-            withAnimation(.snappy(duration: 0.4, extraBounce: 0.06)) {
-                controlsExpanded = true
-            }
-        }
     }
 }
 

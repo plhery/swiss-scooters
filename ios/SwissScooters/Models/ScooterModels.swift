@@ -258,6 +258,20 @@ struct GeoBounds: Equatable, Sendable {
 struct MapFocusRequest: Equatable, Sendable {
     let point: GeoPoint
     let token: Int
+    let latitudinalMeters: CLLocationDistance
+    let longitudinalMeters: CLLocationDistance
+
+    init(
+        point: GeoPoint,
+        token: Int,
+        latitudinalMeters: CLLocationDistance = 850,
+        longitudinalMeters: CLLocationDistance = 850
+    ) {
+        self.point = point
+        self.token = token
+        self.latitudinalMeters = latitudinalMeters
+        self.longitudinalMeters = longitudinalMeters
+    }
 }
 
 struct MapDestination: Equatable, Sendable {

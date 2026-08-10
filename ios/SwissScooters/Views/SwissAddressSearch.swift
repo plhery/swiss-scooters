@@ -7,13 +7,26 @@ struct SwissAddressSearch: View {
     @FocusState private var fieldIsFocused: Bool
     let onSelect: (MapDestination) -> Void
     let onClear: () -> Void
+    let compact: Bool
+
+    init(
+        compact: Bool = false,
+        onSelect: @escaping (MapDestination) -> Void,
+        onClear: @escaping () -> Void
+    ) {
+        self.compact = compact
+        self.onSelect = onSelect
+        self.onClear = onClear
+    }
 
     var body: some View {
         @Bindable var searchModel = searchModel
 
-        VStack(alignment: .leading, spacing: 9) {
-            Label("Address search", systemImage: "magnifyingglass")
-                .font(.subheadline.weight(.medium))
+        VStack(alignment: .leading, spacing: compact ? 6 : 9) {
+            if !compact {
+                Label("Address search", systemImage: "magnifyingglass")
+                    .font(.subheadline.weight(.medium))
+            }
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -99,12 +112,14 @@ struct SwissAddressSearch: View {
                     .padding(.horizontal, 2)
             }
 
-            Link(
-                "Address data © swisstopo",
-                destination: URL(string: "https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api")!
-            )
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            if !compact {
+                Link(
+                    "Address data © swisstopo",
+                    destination: URL(string: "https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api")!
+                )
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
         }
         .onChange(of: searchModel.query) { _, _ in
             onClear()
