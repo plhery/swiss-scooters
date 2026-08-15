@@ -5,6 +5,7 @@ export default defineConfig({
   testMatch: '**/*.e2e.ts',
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
+  workers: process.env.CI ? 1 : undefined,
   retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {

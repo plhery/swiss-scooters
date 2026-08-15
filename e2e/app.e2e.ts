@@ -219,8 +219,7 @@ test('keeps collapsed sheet controls out of interaction until expanded', async (
   const handle = page.getByRole('button', { name: 'Expand controls' });
   await expect(sheetBody).toHaveAttribute('inert', '');
 
-  await handle.focus();
-  await page.keyboard.press('Enter');
+  await handle.press('Enter');
   await expect(sheetBody).not.toHaveAttribute('inert', '');
   await expect(page.getByRole('combobox')).toBeVisible();
 });
