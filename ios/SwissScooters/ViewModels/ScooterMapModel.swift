@@ -173,19 +173,6 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         minimumBattery > 0 || !allProvidersSelected
     }
 
-    var nearbyScooters: [Scooter] {
-        let center = GeoPoint(
-            latitude: (viewport.south + viewport.north) / 2,
-            longitude: (viewport.west + viewport.east) / 2
-        )
-        let origin = userLocation ?? center
-        return mapScooters
-            .filter { viewport.contains(latitude: $0.latitude, longitude: $0.longitude) }
-            .sorted { $0.distance(from: origin) < $1.distance(from: origin) }
-            .prefix(5)
-            .map { $0 }
-    }
-
     var dataHealthMessage: String? {
         guard let responseMetadata else { return nil }
 

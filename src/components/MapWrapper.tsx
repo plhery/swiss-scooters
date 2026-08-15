@@ -20,8 +20,6 @@ interface MapWrapperProps {
   destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
   selectedVehicleKey: string | null;
-  zoomInVersion: number;
-  zoomOutVersion: number;
   onVehicleSelect: (vehicle: Vehicle) => void;
 }
 

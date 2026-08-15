@@ -18,19 +18,16 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>
     lastUpdated: null,
     dataHealthNotice: null,
     tileLayer: 'light',
-    clustered: false,
-    nearbyVehicles: [],
     selectedVehicle: null,
     onMinBatteryChange: vi.fn(),
+    onAddressSelect: vi.fn(),
+    onAddressClear: vi.fn(),
     onShowAllProviders: vi.fn(),
     onProviderToggle: vi.fn(),
     onTileLayerChange: vi.fn(),
     onExpandedChange: vi.fn(),
-    onSelectVehicle: vi.fn(),
     onClearSelection: vi.fn(),
     onResetFilters: vi.fn(),
-    onZoomIn: vi.fn(),
-    onZoomOut: vi.fn(),
     ...overrides,
   };
 
@@ -68,6 +65,15 @@ describe('BottomSheet', () => {
     expect(handle).toHaveFocus();
     expect(body).not.toHaveAttribute('inert');
     expect(onExpandedChange).toHaveBeenCalledWith(true);
+  });
+
+  it('keeps address search inside the bottom sheet and omits the nearby list', () => {
+    renderSheet();
+
+    const body = document.querySelector('#scooter-controls-body');
+    const search = screen.getByRole('combobox', { name: 'Search a Swiss address' });
+    expect(body).toContainElement(search);
+    expect(screen.queryByText('Nearby scooters')).not.toBeInTheDocument();
   });
 
   it('shows feed metadata as an accessible status', () => {

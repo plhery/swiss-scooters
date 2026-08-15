@@ -267,8 +267,6 @@ interface MapComponentProps {
   destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
   selectedVehicleKey: string | null;
-  zoomInVersion: number;
-  zoomOutVersion: number;
   onVehicleSelect: (vehicle: Vehicle) => void;
 }
 
@@ -286,8 +284,6 @@ export default function MapComponent({
   destination,
   onViewportChange,
   selectedVehicleKey,
-  zoomInVersion,
-  zoomOutVersion,
   onVehicleSelect,
 }: MapComponentProps) {
   const { t, formatNumber } = useI18n();
@@ -421,16 +417,6 @@ export default function MapComponent({
       easeLinearity: 0.25,
     });
   }, [focusLocation, focusVersion, mapReady]);
-
-  useEffect(() => {
-    if (!mapReady || zoomInVersion === 0) return;
-    mapRef.current?.zoomIn(2);
-  }, [mapReady, zoomInVersion]);
-
-  useEffect(() => {
-    if (!mapReady || zoomOutVersion === 0) return;
-    mapRef.current?.zoomOut(2);
-  }, [mapReady, zoomOutVersion]);
 
   useEffect(() => {
     const layer = userLayerRef.current;

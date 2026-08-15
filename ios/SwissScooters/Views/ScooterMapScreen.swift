@@ -24,7 +24,7 @@ struct ScooterMapScreen: View {
                 )
                 .ignoresSafeArea()
 
-                topOverlay(safeAreaTop: proxy.safeAreaInsets.top)
+                statusOverlay(safeAreaTop: proxy.safeAreaInsets.top)
 
                 VStack {
                     Spacer()
@@ -89,20 +89,8 @@ struct ScooterMapScreen: View {
     }
 
     @ViewBuilder
-    private func topOverlay(safeAreaTop: CGFloat) -> some View {
-        VStack(spacing: 8) {
-            SwissAddressSearch(
-                compact: true,
-                onSelect: { destination in
-                    showLocationIntro = false
-                    model.focusOnAddress(destination)
-                },
-                onClear: model.clearAddressSearch
-            )
-            .padding(10)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-
+    private func statusOverlay(safeAreaTop: CGFloat) -> some View {
+        VStack {
             if let errorMessage = model.errorMessage {
                 MapStatusBanner(
                     message: errorMessage,
@@ -139,7 +127,7 @@ struct ScooterMapScreen: View {
             Spacer()
         }
         .padding(.top, max(safeAreaTop + 6, 12))
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 20)
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.errorMessage)
         .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.locationAuthorizationIssue)

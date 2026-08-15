@@ -275,28 +275,6 @@ button {
   border: 0;
 }
 
-/* ---------- Persistent discovery ---------- */
-.search-float {
-  position: fixed;
-  z-index: 1050;
-  top: calc(var(--sat) + 12px);
-  left: 68px;
-  right: 16px;
-  max-width: 480px;
-  margin: 0 auto;
-}
-
-.search-float .field {
-  background: var(--glass-bg);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  box-shadow: 0 4px 20px rgba(24, 28, 34, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
-}
-
-.search-float .results {
-  max-height: min(42dvh, 320px);
-}
-
 .location-intro {
   position: fixed;
   z-index: 940;
@@ -332,8 +310,7 @@ button {
   margin-top: 13px;
 }
 
-.location-intro-actions button,
-.empty-state button {
+.location-intro-actions button {
   min-height: 38px;
   padding: 8px 12px;
   border: none;
@@ -345,8 +322,7 @@ button {
   font-weight: 650;
 }
 
-.location-intro-actions .intro-primary,
-.empty-state .empty-primary {
+.location-intro-actions .intro-primary {
   background: var(--blue);
   color: #fff;
 }
@@ -462,10 +438,6 @@ body:has(.legal-page) {
 
   .toast {
     left: calc((100vw - var(--desktop-panel-w)) / 2);
-  }
-
-  .search-float {
-    right: calc(var(--desktop-panel-w) + 20px);
   }
 
   .location-intro {
@@ -738,11 +710,6 @@ body:has(.legal-page) {
   padding: 1px 18px 10px;
 }
 
-.vehicle-list {
-  display: grid;
-  gap: 8px;
-}
-
 .vehicle-card {
   position: relative;
   padding: 12px;
@@ -804,21 +771,6 @@ body:has(.legal-page) {
   line-height: 1;
 }
 
-.vehicle-card-hit {
-  position: absolute;
-  inset: 0;
-  border: none;
-  background: transparent;
-}
-
-.vehicle-card:has(.vehicle-card-hit):hover {
-  background: var(--fill-tertiary);
-}
-
-.vehicle-card:has(.vehicle-card-hit):focus-within {
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.22);
-}
-
 .vehicle-actions {
   display: flex;
   gap: 8px;
@@ -839,32 +791,6 @@ body:has(.legal-page) {
 
 .vehicle-actions a.vehicle-action-primary {
   color: #fff;
-}
-
-.empty-state {
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--fill-quaternary);
-}
-
-.empty-state strong {
-  font-size: 14px;
-}
-
-.empty-state > span {
-  color: var(--ink-2);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.empty-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
 }
 
 .settings-disclosure {

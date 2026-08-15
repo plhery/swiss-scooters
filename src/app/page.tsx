@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
-import BottomSheet, { type NearbyVehicle } from '@/components/BottomSheet';
+import BottomSheet, { type SelectedVehicle } from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
-import AddressSearch, { type AddressResult } from '@/components/AddressSearch';
+import type { AddressResult } from '@/components/AddressSearch';
 import type { MapBounds, ScooterCluster, Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
@@ -104,8 +104,6 @@ export default function Home() {
   const [controlsExpanded, setControlsExpanded] = useState(false);
   const [showLocationIntro, setShowLocationIntro] = useState(true);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
-  const [zoomInVersion, setZoomInVersion] = useState(0);
-  const [zoomOutVersion, setZoomOutVersion] = useState(0);
   const initializedRef = useRef(false);
   const mapQueryRef = useRef<ScooterMapQuery | null>(null);
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
@@ -311,17 +309,6 @@ export default function Home() {
     setEnabledProviders(new Set(Object.keys(PROVIDERS)));
   }, []);
 
-  const selectVehicle = useCallback((vehicle: Vehicle) => {
-    const key = vehicle.vehicle_id
-      ? `${vehicle.provider}:${vehicle.vehicle_id}`
-      : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`;
-    setSelectedVehicleKey(key);
-    setFocusRequest(current => ({
-      location: [vehicle.lat, vehicle.lng],
-      version: current.version + 1,
-    }));
-  }, []);
-
   // The response covers a padded area; only markers inside the exact viewport
   // are rendered and counted. Provider counts intentionally ignore the active
   // provider selection so every pill shows how many are available on screen.
@@ -387,28 +374,7 @@ export default function Home() {
     [formatNumber, representedVehicleCount, responseMeta, t]
   );
 
-  const nearbyVehicles = useMemo<NearbyVehicle[]>(() => {
-    if (viewportData.visibleVehicles.length === 0) return [];
-    const reference = userLocation ?? (viewportBounds
-      ? [
-          (viewportBounds.south + viewportBounds.north) / 2,
-          (viewportBounds.west + viewportBounds.east) / 2,
-        ] as [number, number]
-      : SWITZERLAND_CENTER);
-    return viewportData.visibleVehicles
-      .map(vehicle => ({
-        vehicle,
-        distanceM: userLocation
-          ? haversineM(userLocation[0], userLocation[1], vehicle.lat, vehicle.lng)
-          : null,
-        sortDistance: haversineM(reference[0], reference[1], vehicle.lat, vehicle.lng),
-      }))
-      .sort((a, b) => a.sortDistance - b.sortDistance)
-      .slice(0, 5)
-      .map(({ vehicle, distanceM }) => ({ vehicle, distanceM }));
-  }, [userLocation, viewportBounds, viewportData.visibleVehicles]);
-
-  const selectedVehicle = useMemo<NearbyVehicle | null>(() => {
+  const selectedVehicle = useMemo<SelectedVehicle | null>(() => {
     if (!selectedVehicleKey) return null;
     const vehicle = viewportData.visibleVehicles.find(candidate => {
       const key = candidate.vehicle_id
@@ -441,22 +407,12 @@ export default function Home() {
         destination={searchedAddress}
         onViewportChange={handleViewportChange}
         selectedVehicleKey={selectedVehicleKey}
-        zoomInVersion={zoomInVersion}
-        zoomOutVersion={zoomOutVersion}
         onVehicleSelect={vehicle => setSelectedVehicleKey(
           vehicle.vehicle_id
             ? `${vehicle.provider}:${vehicle.vehicle_id}`
             : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`
         )}
       />
-
-      <div className="search-float">
-        <AddressSearch
-          compact
-          onSelect={handleAddressSelect}
-          onClear={() => setSearchedAddress(null)}
-        />
-      </div>
 
       {showLocationIntro && !userLocation && !searchedAddress && (
         <div className="location-intro glass" role="dialog" aria-labelledby="location-intro-title">
@@ -507,19 +463,16 @@ export default function Home() {
         lastUpdated={lastUpdated}
         dataHealthNotice={dataHealthNotice}
         tileLayer={tileLayer}
-        clustered={responseMeta?.mode === 'clusters'}
-        nearbyVehicles={nearbyVehicles}
         selectedVehicle={selectedVehicle}
         onMinBatteryChange={setMinBattery}
+        onAddressSelect={handleAddressSelect}
+        onAddressClear={() => setSearchedAddress(null)}
         onShowAllProviders={handleShowAllProviders}
         onProviderToggle={handleProviderToggle}
         onTileLayerChange={setTileLayer}
         onExpandedChange={setControlsExpanded}
-        onSelectVehicle={selectVehicle}
         onClearSelection={() => setSelectedVehicleKey(null)}
         onResetFilters={resetFilters}
-        onZoomIn={() => setZoomInVersion(version => version + 1)}
-        onZoomOut={() => setZoomOutVersion(version => version + 1)}
       />
     </div>
   );

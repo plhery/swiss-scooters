@@ -8,7 +8,6 @@ struct ScooterControlDock: View {
     @State private var collapsedContentHeight: CGFloat = 0
     @State private var fullContentHeight: CGFloat = 0
     @State private var batteryDraft: Double
-    @State private var settingsExpanded = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let onCollapsedHeightChange: (CGFloat) -> Void
@@ -48,9 +47,10 @@ struct ScooterControlDock: View {
                 }
 
                 VStack(spacing: 18) {
-                    nearbyScooters
+                    addressSearch
                     batteryFilter
-                    settingsDisclosure
+                    mapStylePicker
+                    attribution
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 7)
@@ -414,103 +414,14 @@ struct ScooterControlDock: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private var nearbyScooters: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Nearby scooters", systemImage: "figure.walk")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if model.hasActiveFilters {
-                    Button("Reset filters", action: model.resetFilters)
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.blue)
-                }
-            }
-
-            if model.visibleCount == 0 && !model.isLoading {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(
-                        model.hasActiveFilters
-                            ? String(localized: "No scooters match your filters")
-                            : String(localized: "No scooters in this area")
-                    )
-                        .font(.subheadline.weight(.semibold))
-                    Text("Move the map, zoom out, or search another place.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        if model.hasActiveFilters {
-                            Button("Reset filters", action: model.resetFilters)
-                                .buttonStyle(.glassProminent)
-                        }
-                        Button("Show Switzerland", action: model.focusOnSwitzerland)
-                            .buttonStyle(.glass)
-                    }
-                    .font(.caption.weight(.semibold))
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            } else {
-                VStack(spacing: 7) {
-                    ForEach(model.nearbyScooters) { scooter in
-                        Button {
-                            model.focusOnScooter(scooter)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Circle()
-                                    .fill(scooter.providerInfo?.color ?? .secondary)
-                                    .frame(width: 11, height: 11)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(scooter.providerInfo?.name ?? scooter.provider.capitalized)
-                                        .font(.subheadline.weight(.semibold))
-                                    HStack(spacing: 6) {
-                                        if let distance = model.formattedDistance(for: scooter) {
-                                            Text(distance)
-                                        }
-                                        if let battery = scooter.battery {
-                                            Label("\(battery)%", systemImage: batterySymbol(for: battery))
-                                        }
-                                        if let range = scooter.formattedRange {
-                                            Text(range)
-                                        }
-                                    }
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .contentShape(Rectangle())
-                            .padding(.horizontal, 12)
-                            .frame(minHeight: 52)
-                            .background(
-                                .quaternary.opacity(0.42),
-                                in: RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-
-    private var settingsDisclosure: some View {
-        DisclosureGroup(isExpanded: $settingsExpanded) {
-            VStack(spacing: 18) {
-                mapStylePicker
-                attribution
-            }
-            .padding(.top, 14)
-        } label: {
-            Label("Settings and map", systemImage: "slider.horizontal.3")
-                .font(.subheadline.weight(.semibold))
-        }
-        .tint(.secondary)
+    private var addressSearch: some View {
+        SwissAddressSearch(
+            onSelect: { destination in
+                model.focusOnAddress(destination)
+                setExpanded(false)
+            },
+            onClear: model.clearAddressSearch
+        )
     }
 
     private func metric(
@@ -543,6 +454,10 @@ struct ScooterControlDock: View {
                 Label("Minimum battery", systemImage: "battery.50percent")
                     .font(.subheadline.weight(.medium))
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if model.hasActiveFilters {
+                    resetFiltersButton
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 batteryValue
                     .frame(maxWidth: .infinity, alignment: .trailing)
             } else {
@@ -550,6 +465,9 @@ struct ScooterControlDock: View {
                     Label("Minimum battery", systemImage: "battery.50percent")
                         .font(.subheadline.weight(.medium))
                     Spacer()
+                    if model.hasActiveFilters {
+                        resetFiltersButton
+                    }
                     batteryValue
                 }
             }
@@ -584,6 +502,13 @@ struct ScooterControlDock: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private var resetFiltersButton: some View {
+        Button("Reset filters", action: model.resetFilters)
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.plain)
+            .foregroundStyle(.blue)
     }
 
     private var batteryValue: some View {

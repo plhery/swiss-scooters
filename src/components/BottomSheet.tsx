@@ -4,8 +4,9 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS, type Vehicle } from '@/lib/types';
 import { SUPPORTED_LOCALES, useI18n, type AppLocale } from '@/lib/i18n';
+import AddressSearch, { type AddressResult } from '@/components/AddressSearch';
 
-export interface NearbyVehicle {
+export interface SelectedVehicle {
   vehicle: Vehicle;
   distanceM: number | null;
 }
@@ -19,19 +20,16 @@ interface BottomSheetProps {
   lastUpdated: Date | null;
   dataHealthNotice: string | null;
   tileLayer: 'dark' | 'light' | 'osm';
-  clustered: boolean;
-  nearbyVehicles: NearbyVehicle[];
-  selectedVehicle: NearbyVehicle | null;
+  selectedVehicle: SelectedVehicle | null;
   onMinBatteryChange: (battery: number) => void;
+  onAddressSelect: (result: AddressResult) => void;
+  onAddressClear: () => void;
   onShowAllProviders: () => void;
   onProviderToggle: (provider: string) => void;
   onTileLayerChange: (tile: 'dark' | 'light' | 'osm') => void;
   onExpandedChange: (expanded: boolean) => void;
-  onSelectVehicle: (vehicle: Vehicle) => void;
   onClearSelection: () => void;
   onResetFilters: () => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
 }
 
 const DESKTOP_PANEL_QUERY = '(min-width: 900px)';
@@ -98,19 +96,16 @@ export default function BottomSheet({
   lastUpdated,
   dataHealthNotice,
   tileLayer,
-  clustered,
-  nearbyVehicles,
   selectedVehicle,
   onMinBatteryChange,
+  onAddressSelect,
+  onAddressClear,
   onShowAllProviders,
   onProviderToggle,
   onTileLayerChange,
   onExpandedChange,
-  onSelectVehicle,
   onClearSelection,
   onResetFilters,
-  onZoomIn,
-  onZoomOut,
 }: BottomSheetProps) {
   const { locale, setLocale, t, formatNumber } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -235,14 +230,13 @@ export default function BottomSheet({
         });
   };
 
-  const vehicleDetails = (nearby: NearbyVehicle, compact = false) => {
-    const { vehicle, distanceM } = nearby;
+  const selectedVehicleDetails = ({ vehicle, distanceM }: SelectedVehicle) => {
     const provider = PROVIDERS[vehicle.provider];
     const destination = `${vehicle.lat},${vehicle.lng}`;
     const range = vehicle.range_m === null ? null : formatDistance(vehicle.range_m);
     const distance = formatDistance(distanceM);
     return (
-      <div className={`vehicle-card ${compact ? 'vehicle-card-selected' : ''}`}>
+      <div className="vehicle-card vehicle-card-selected">
         <div className="vehicle-card-head">
           <span
             className="vehicle-provider-dot"
@@ -257,43 +251,35 @@ export default function BottomSheet({
                 .join(' · ')}
             </span>
           </div>
-          {compact && (
-            <button
-              type="button"
-              className="vehicle-card-close"
-              onClick={onClearSelection}
-              aria-label={t('marker.close')}
-            >
-              ×
-            </button>
-          )}
+          <button
+            type="button"
+            className="vehicle-card-close"
+            onClick={onClearSelection}
+            aria-label={t('marker.close')}
+          >
+            ×
+          </button>
         </div>
-        {compact ? (
-          <div className="vehicle-actions">
+        <div className="vehicle-actions">
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=walking`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('marker.walkThere')}
+          </a>
+          {vehicle.deep_link && (
             <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=walking`}
+              className="vehicle-action-primary"
+              style={{ background: provider?.color ?? 'var(--blue)' }}
+              href={vehicle.deep_link}
               target="_blank"
               rel="noreferrer"
             >
-              {t('marker.walkThere')}
+              {t('marker.openIn', { name: provider?.name ?? t('marker.app') })}
             </a>
-            {vehicle.deep_link && (
-              <a
-                className="vehicle-action-primary"
-                style={{ background: provider?.color ?? 'var(--blue)' }}
-                href={vehicle.deep_link}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t('marker.openIn', { name: provider?.name ?? t('marker.app') })}
-              </a>
-            )}
-          </div>
-        ) : (
-          <button type="button" className="vehicle-card-hit" onClick={() => onSelectVehicle(vehicle)}>
-            <span className="sr-only">{provider?.name ?? vehicle.provider}</span>
-          </button>
-        )}
+          )}
+        </div>
       </div>
     );
   };
@@ -360,7 +346,7 @@ export default function BottomSheet({
         </div>
 
         {selectedVehicle ? (
-          <div className="selected-vehicle-wrap">{vehicleDetails(selectedVehicle, true)}</div>
+          <div className="selected-vehicle-wrap">{selectedVehicleDetails(selectedVehicle)}</div>
         ) : (
           <div className="chips" role="group" aria-label={t('providers.filter')}>
             <button
@@ -401,43 +387,17 @@ export default function BottomSheet({
       </div>
 
       <div id="scooter-controls-body" className="sheet-body" inert={!controlsVisible}>
-        <section className="section nearby-section" aria-labelledby="nearby-title">
+        <AddressSearch onSelect={onAddressSelect} onClear={onAddressClear} />
+
+        <section className="section">
           <div className="section-heading">
-            <div id="nearby-title" className="section-title">{t('sheet.nearby')}</div>
+            <div className="section-title">{t('filters.title')}</div>
             {hasActiveFilters && (
               <button type="button" className="reset-link" onClick={onResetFilters}>
                 {t('filters.reset')}
               </button>
             )}
           </div>
-
-          {clustered && nearbyVehicles.length === 0 && totalCount > 0 ? (
-            <div className="empty-state">
-              <strong>{t('sheet.zoomForDetails')}</strong>
-              <button type="button" onClick={onZoomIn}>{t('controls.zoomIn')}</button>
-            </div>
-          ) : totalCount === 0 && !loading ? (
-            <div className="empty-state">
-              <strong>{t(hasActiveFilters ? 'sheet.emptyFiltered' : 'sheet.empty')}</strong>
-              <span>{t('sheet.emptyHelp')}</span>
-              <div className="empty-actions">
-                {hasActiveFilters && <button type="button" onClick={onResetFilters}>{t('filters.reset')}</button>}
-                <button type="button" onClick={onZoomOut}>{t('controls.zoomOut')}</button>
-              </div>
-            </div>
-          ) : (
-            <div className="vehicle-list">
-              {nearbyVehicles.map(nearby => (
-                <div key={`${nearby.vehicle.provider}:${nearby.vehicle.vehicle_id ?? `${nearby.vehicle.lat}:${nearby.vehicle.lng}`}`}>
-                  {vehicleDetails(nearby)}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="section">
-          <div className="section-title">{t('filters.title')}</div>
           <SliderRow
             label={t('filters.minBattery')}
             value={minBattery}
