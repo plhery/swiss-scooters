@@ -3,6 +3,7 @@ import {
   coverageIntersects,
   HOPP_COVERAGE,
   knownSystemCoverage,
+  PUBLIBIKE_FREE_FLOATING_COVERAGE,
 } from '@/lib/feedCoverage';
 import { boundsContainPoint, haversineM } from '@/lib/geo';
 import type { MapBounds, Vehicle } from '@/lib/types';
@@ -13,8 +14,17 @@ import {
 } from '@/generated/providers';
 
 const NATIONAL_V23_REGISTRY_URL = 'https://sharedmobility.ch/v2/gbfs';
+const TEMPORARY_NATIONAL_V23_REGISTRY_URL = 'https://api.sharedmobility.ch/v2/gbfs';
+const TEMPORARY_NATIONAL_FEED_HOST = 'gbfs.prod.sharedmobility.ch';
+// sharedmobility.ch's certificate expired on 2026-08-15. Cloudflare Workers
+// cannot disable TLS verification per request, so use the operator's certified
+// API/GBFS aliases for 72 hours and automatically return to the primary host.
+const TEMPORARY_TLS_WORKAROUND_END_MS = Date.parse('2026-08-18T13:21:30Z');
 const SPATIAL_IDENTIFY_URL = 'https://api.sharedmobility.ch/v1/sharedmobility/identify';
 const HOPP_DISCOVERY_URL = 'https://api.hopp.bike/gbfs/ch-zurich/gbfs.json';
+const PUBLIBIKE_FREE_FLOATING_URL =
+  'https://velospot.info/customer/public/api/pbvsng/freeFloating';
+const PUBLIBIKE_ESCOOTER_TYPE = 5;
 
 const STATUS_REVALIDATE_SECONDS = 30;
 const METADATA_REVALIDATE_SECONDS = 3600;
@@ -40,6 +50,13 @@ interface RawVehicle {
   is_reserved?: AvailabilityFlag;
   is_disabled?: AvailabilityFlag;
   rental_uris?: { ios?: string; android?: string };
+}
+
+interface PubliBikeFreeFloatingVehicle {
+  id?: string;
+  latitude?: number;
+  longitude?: number;
+  type?: number;
 }
 
 interface VehicleType {
@@ -118,6 +135,7 @@ export interface ScooterFetchMetadata {
   sources: {
     national: FeedSourceStatus;
     hopp: FeedSourceStatus;
+    publibike: FeedSourceStatus;
   };
 }
 
@@ -274,10 +292,23 @@ function typeMap(feed: VehicleTypesFeed): Map<string, VehicleType> {
   return new Map((feed.data?.vehicle_types ?? []).map(type => [type.vehicle_type_id, type]));
 }
 
-function registrySystem(systemId: string, systemUrl: string): NationalSystem | null {
+function nationalRegistry(): { url: string; feedHost: string } {
+  return Date.now() < TEMPORARY_TLS_WORKAROUND_END_MS
+    ? {
+        url: TEMPORARY_NATIONAL_V23_REGISTRY_URL,
+        feedHost: TEMPORARY_NATIONAL_FEED_HOST,
+      }
+    : { url: NATIONAL_V23_REGISTRY_URL, feedHost: 'sharedmobility.ch' };
+}
+
+function registrySystem(
+  systemId: string,
+  systemUrl: string,
+  trustedFeedHost: string
+): NationalSystem | null {
   try {
     const url = new URL(systemUrl);
-    if (url.protocol !== 'https:' || url.hostname !== 'sharedmobility.ch') return null;
+    if (url.protocol !== 'https:' || url.hostname !== trustedFeedHost) return null;
     if (!url.pathname.endsWith('/gbfs')) return null;
 
     const provider = providerKeyForSystemId(systemId);
@@ -478,14 +509,15 @@ async function fetchSystemVehicles(
 }
 
 async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> {
-  const registry = await fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
+  const national = nationalRegistry();
+  const registry = await fetchJson<RegistryFeed>(national.url, {
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
 
   const systems =
     (registry.data.systems ?? [])
-      .map(system => registrySystem(system.id, system.url))
+      .map(system => registrySystem(system.id, system.url, national.feedHost))
       .filter((system): system is NationalSystem => (
         system !== null &&
         (!query.providers || query.providers.has(system.provider))
@@ -566,6 +598,55 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
   };
 }
 
+async function fetchPubliBikeFreeFloatingVehicles(
+  query: FeedQuery
+): Promise<SourceVehicles> {
+  if (query.providers && !query.providers.has('publibike')) {
+    return { vehicles: [], stale: false, skipped: true };
+  }
+
+  if (!coverageIntersects([PUBLIBIKE_FREE_FLOATING_COVERAGE], query.bounds)) {
+    return { vehicles: [], stale: false, skipped: true };
+  }
+
+  const result = await fetchJson<unknown>(PUBLIBIKE_FREE_FLOATING_URL, {
+    revalidate: STATUS_REVALIDATE_SECONDS,
+  });
+  if (!Array.isArray(result.data)) {
+    throw new Error('PubliBike free-floating response is not an array');
+  }
+
+  const vehicles: Vehicle[] = [];
+  for (const raw of result.data as PubliBikeFreeFloatingVehicle[]) {
+    const lat = raw.latitude;
+    const lng = raw.longitude;
+    if (
+      raw.type !== PUBLIBIKE_ESCOOTER_TYPE ||
+      typeof raw.id !== 'string' || raw.id.length === 0 ||
+      lat == null || lng == null ||
+      !Number.isFinite(lat) || !Number.isFinite(lng) ||
+      !boundsContainPoint(PUBLIBIKE_FREE_FLOATING_COVERAGE, lat, lng) ||
+      !boundsContainPoint(query.bounds, lat, lng)
+    ) continue;
+
+    const distance = query.origin
+      ? Math.round(haversineM(query.origin[0], query.origin[1], lat, lng) * 10) / 10
+      : null;
+    vehicles.push({
+      provider: 'publibike',
+      lat,
+      lng,
+      battery: null,
+      range_m: null,
+      vehicle_id: `publibike-freefloating:${raw.id}`,
+      deep_link: null,
+      distance_m: distance,
+    });
+  }
+
+  return { vehicles, stale: result.stale };
+}
+
 function nationalSourceIsRelevant(query: FeedQuery): boolean {
   if (!query.providers) return true;
   return [...query.providers].some(provider => provider !== 'hopp');
@@ -609,21 +690,23 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
         partial: false,
         stale: false,
         failedSources: [],
-        sources: { national: 'skipped', hopp: 'skipped' },
+        sources: { national: 'skipped', hopp: 'skipped', publibike: 'skipped' },
       },
     };
   }
 
-  const [nationalResult, hoppResult] = await Promise.allSettled([
+  const [nationalResult, hoppResult, publibikeResult] = await Promise.allSettled([
     nationalSourceIsRelevant(query)
       ? fetchNationalVehicles(query)
       : Promise.resolve<SourceVehicles>({ vehicles: [], stale: false, skipped: true }),
     fetchHoppVehicles(query),
+    fetchPubliBikeFreeFloatingVehicles(query),
   ]);
 
   const sourceResults = [
     ['national', nationalResult],
     ['hopp', hoppResult],
+    ['publibike', publibikeResult],
   ] as const;
   const failedSources: string[] = [];
   for (const [source, result] of sourceResults) {
@@ -647,6 +730,7 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
   const vehicles = [
     ...(nationalResult.status === 'fulfilled' ? nationalResult.value.vehicles : []),
     ...(hoppResult.status === 'fulfilled' ? hoppResult.value.vehicles : []),
+    ...(publibikeResult.status === 'fulfilled' ? publibikeResult.value.vehicles : []),
   ];
 
   const unique = new Map<string, Vehicle>();
@@ -667,12 +751,13 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
   const sources = {
     national: sourceStatus(nationalResult),
     hopp: sourceStatus(hoppResult),
+    publibike: sourceStatus(publibikeResult),
   };
   return {
     vehicles: filtered,
     meta: {
       partial: failedSources.length > 0,
-      stale: sources.national === 'stale' || sources.hopp === 'stale',
+      stale: Object.values(sources).includes('stale'),
       failedSources,
       sources,
     },

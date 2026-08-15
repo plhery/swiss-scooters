@@ -132,3 +132,4 @@ export function coverageIntersects(bounds: MapBounds[], query: MapBounds): boole
 }
 
 export const HOPP_COVERAGE = AREA_BOUNDS.zurich;
+export const PUBLIBIKE_FREE_FLOATING_COVERAGE = AREA_BOUNDS.zurich;

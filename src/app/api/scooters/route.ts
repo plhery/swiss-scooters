@@ -8,7 +8,8 @@ import { MAX_SCOOTER_RESULTS, parseScooterQuery } from '@/lib/scooterQuery';
 import { clusterVehicles, shouldClusterAtZoom } from '@/lib/clustering';
 import type { ScooterResponse } from '@/lib/types';
 
-const MOBILITY_SOURCE = 'Open data platform mobility Switzerland; Hopp GBFS';
+const MOBILITY_SOURCE =
+  'Open data platform mobility Switzerland; Hopp GBFS; PubliBike Velospot public app feed';
 
 export async function GET(request: NextRequest) {
   if (!await rateLimitAllows(request, 'SCOOTER_API_RATE_LIMITER')) {

@@ -12,6 +12,8 @@ const query: FeedQuery = {
   minBattery: 0,
 };
 
+const AFTER_TEMPORARY_TLS_WORKAROUND = Date.parse('2026-08-18T13:21:30Z');
+
 function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status: 200,
@@ -76,6 +78,42 @@ function nationalResponse(url: string): Response | null {
   return null;
 }
 
+function temporaryNationalResponse(url: string): Response | null {
+  if (url === 'https://api.sharedmobility.ch/v2/gbfs') {
+    return jsonResponse({
+      systems: [{
+        id: 'lime_zurich',
+        url: 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/gbfs',
+      }],
+    });
+  }
+  if (url === 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/gbfs') {
+    return jsonResponse({
+      data: {
+        en: {
+          feeds: [
+            {
+              name: 'free_bike_status',
+              url: 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status',
+            },
+            {
+              name: 'vehicle_types',
+              url: 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types',
+            },
+          ],
+        },
+      },
+    });
+  }
+  if (url === 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status') {
+    return nationalResponse('https://sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status');
+  }
+  if (url === 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types') {
+    return nationalResponse('https://sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types');
+  }
+  return null;
+}
+
 function hoppResponse(url: string): Response | null {
   if (url === 'https://api.hopp.bike/gbfs/ch-zurich/gbfs.json') {
     return jsonResponse({
@@ -123,8 +161,24 @@ function hoppResponse(url: string): Response | null {
   return null;
 }
 
+function publibikeResponse(url: string): Response | null {
+  if (url !== 'https://velospot.info/customer/public/api/pbvsng/freeFloating') {
+    return null;
+  }
+
+  return jsonResponse([
+    {
+      id: 'publibike-zurich-1',
+      latitude: 47.3772,
+      longitude: 8.5422,
+      type: 5,
+    },
+  ]);
+}
+
 beforeEach(() => {
   upstreamJsonCache.clear();
+  vi.spyOn(Date, 'now').mockReturnValue(AFTER_TEMPORARY_TLS_WORKAROUND);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
@@ -135,6 +189,29 @@ afterEach(() => {
 });
 
 describe('fetchScooters source health', () => {
+  it('uses the certified national API aliases during the 72-hour TLS workaround', async () => {
+    vi.mocked(Date.now).mockReturnValue(Date.parse('2026-08-15T13:21:30Z'));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const response = temporaryNationalResponse(String(input));
+      if (response) return response;
+      throw new Error(`Unexpected URL: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+
+    expect(result.vehicles).toEqual([
+      expect.objectContaining({ provider: 'lime', battery: 75 }),
+    ]);
+    expect(result.meta.sources.national).toBe('fresh');
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      'https://api.sharedmobility.ch/v2/gbfs',
+      'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/gbfs',
+      'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types',
+      'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status',
+    ]);
+  });
+
   it('does no upstream work for a viewport outside Switzerland', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -146,20 +223,26 @@ describe('fetchScooters source health', () => {
     });
 
     expect(result.vehicles).toEqual([]);
-    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped' });
+    expect(result.meta.sources).toEqual({
+      national: 'skipped',
+      hopp: 'skipped',
+      publibike: 'skipped',
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns available national and Hopp data as fresh', async () => {
+  it('returns all available source data as fresh', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const response = nationalResponse(String(input)) ?? hoppResponse(String(input));
+      const response = nationalResponse(String(input)) ??
+        hoppResponse(String(input)) ??
+        publibikeResponse(String(input));
       if (response) return response;
       throw new Error(`Unexpected URL: ${String(input)}`);
     }));
 
     const result = await fetchScooters(query);
 
-    expect(result.vehicles).toHaveLength(2);
+    expect(result.vehicles).toHaveLength(3);
     expect(result.vehicles).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'lime', battery: 75, range_m: 12_000 }),
       expect.objectContaining({
@@ -167,12 +250,62 @@ describe('fetchScooters source health', () => {
         battery: 68,
         deep_link: 'https://app.hopp.bike/launch/hopp-1?direct',
       }),
+      expect.objectContaining({
+        provider: 'publibike',
+        battery: null,
+        vehicle_id: 'publibike-freefloating:publibike-zurich-1',
+      }),
     ]));
     expect(result.meta).toEqual({
       partial: false,
       stale: false,
       failedSources: [],
-      sources: { national: 'fresh', hopp: 'fresh' },
+      sources: { national: 'fresh', hopp: 'fresh', publibike: 'fresh' },
+    });
+  });
+
+  it('loads only valid Zürich scooters from the PubliBike app feed', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://sharedmobility.ch/v2/gbfs') {
+        return jsonResponse({
+          systems: [{
+            id: 'velospot',
+            url: 'https://sharedmobility.ch/v2/gbfs/velospot/gbfs',
+          }],
+        });
+      }
+      if (url === 'https://velospot.info/customer/public/api/pbvsng/freeFloating') {
+        expect(init?.headers).not.toHaveProperty('Authorization');
+        return jsonResponse([
+          { id: 'zurich-1', latitude: 47.3772, longitude: 8.5422, type: 5 },
+          { id: 'bike-1', latitude: 47.3773, longitude: 8.5423, type: 2 },
+          { id: 'other-view', latitude: 47.45, longitude: 8.65, type: 5 },
+          { id: 'biel-1', latitude: 47.1441, longitude: 7.267379, type: 5 },
+          { latitude: 47.3774, longitude: 8.5424, type: 5 },
+        ]);
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchScooters({ ...query, providers: new Set(['publibike']) });
+
+    expect(result.vehicles).toEqual([{
+      provider: 'publibike',
+      lat: 47.3772,
+      lng: 8.5422,
+      battery: null,
+      range_m: null,
+      vehicle_id: 'publibike-freefloating:zurich-1',
+      deep_link: null,
+      distance_m: expect.any(Number),
+    }]);
+    expect(result.meta).toEqual({
+      partial: false,
+      stale: false,
+      failedSources: [],
+      sources: { national: 'skipped', hopp: 'skipped', publibike: 'fresh' },
     });
   });
 
@@ -189,7 +322,11 @@ describe('fetchScooters source health', () => {
     expect(result.vehicles).toEqual([
       expect.objectContaining({ provider: 'hopp', battery: 68 }),
     ]);
-    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'fresh' });
+    expect(result.meta.sources).toEqual({
+      national: 'skipped',
+      hopp: 'fresh',
+      publibike: 'skipped',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('sharedmobility.ch'))).toBe(false);
   });
@@ -197,7 +334,7 @@ describe('fetchScooters source health', () => {
   it('marks a Hopp outage as partial when national data is available', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      const response = nationalResponse(url);
+      const response = nationalResponse(url) ?? publibikeResponse(url);
       if (response) return response;
       if (url.includes('hopp.bike')) throw new Error('Hopp unavailable');
       throw new Error(`Unexpected URL: ${url}`);
@@ -205,11 +342,11 @@ describe('fetchScooters source health', () => {
 
     const result = await fetchScooters(query);
 
-    expect(result.vehicles).toHaveLength(1);
+    expect(result.vehicles).toHaveLength(2);
     expect(result.meta).toMatchObject({
       partial: true,
       failedSources: ['hopp'],
-      sources: { national: 'fresh', hopp: 'failed' },
+      sources: { national: 'fresh', hopp: 'failed', publibike: 'fresh' },
     });
   });
 
@@ -262,7 +399,7 @@ describe('fetchScooters source health', () => {
       partial: true,
       stale: false,
       failedSources: ['national:dott_zurich'],
-      sources: { national: 'partial', hopp: 'skipped' },
+      sources: { national: 'partial', hopp: 'skipped', publibike: 'skipped' },
     });
   });
 
@@ -273,7 +410,7 @@ describe('fetchScooters source health', () => {
 
     await expect(fetchScooters(query)).rejects.toMatchObject({
       name: 'ScooterFeedsUnavailableError',
-      failedSources: ['national', 'hopp'],
+      failedSources: ['national', 'hopp', 'publibike'],
     } satisfies Partial<ScooterFeedsUnavailableError>);
   });
 
@@ -304,7 +441,11 @@ describe('fetchScooters source health', () => {
     });
 
     expect(result.vehicles).toEqual([]);
-    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped' });
+    expect(result.meta.sources).toEqual({
+      national: 'skipped',
+      hopp: 'skipped',
+      publibike: 'skipped',
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

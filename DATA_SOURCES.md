@@ -15,6 +15,16 @@ requests only systems relevant to the visible area, filters for available
 electric standing scooters, and keeps short-lived stale values for upstream
 resilience.
 
+Zürich's free-floating PubliBike / Velospot e-scooters are currently absent
+from that national GBFS dataset. For Zürich only, the app supplements it with
+the unauthenticated [`pbvsng/freeFloating` endpoint](https://velospot.info/customer/public/api/pbvsng/freeFloating)
+used by the official PubliBike Velospot app. The endpoint returns an opaque
+vehicle ID and location, but no battery level, range, or rental link. PubliBike
+does not publish a redistribution license for this endpoint; its [API
+documentation](https://api.publibike.ch/v1/static/api.html) directs license
+questions to PubliBike. The response advertises a 500-request limit without
+documenting the time window, so the app caches it for 30 seconds.
+
 Provider names remain trademarks of their respective owners. Their appearance
 does not imply endorsement.
 
