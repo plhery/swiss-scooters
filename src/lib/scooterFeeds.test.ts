@@ -12,8 +12,6 @@ const query: FeedQuery = {
   minBattery: 0,
 };
 
-const AFTER_TEMPORARY_TLS_WORKAROUND = Date.parse('2026-08-18T13:21:30Z');
-
 function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status: 200,
@@ -74,42 +72,6 @@ function nationalResponse(url: string): Response | null {
         }],
       },
     });
-  }
-  return null;
-}
-
-function temporaryNationalResponse(url: string): Response | null {
-  if (url === 'https://api.sharedmobility.ch/v2/gbfs') {
-    return jsonResponse({
-      systems: [{
-        id: 'lime_zurich',
-        url: 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/gbfs',
-      }],
-    });
-  }
-  if (url === 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/gbfs') {
-    return jsonResponse({
-      data: {
-        en: {
-          feeds: [
-            {
-              name: 'free_bike_status',
-              url: 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status',
-            },
-            {
-              name: 'vehicle_types',
-              url: 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types',
-            },
-          ],
-        },
-      },
-    });
-  }
-  if (url === 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status') {
-    return nationalResponse('https://sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status');
-  }
-  if (url === 'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types') {
-    return nationalResponse('https://sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types');
   }
   return null;
 }
@@ -178,7 +140,6 @@ function publibikeResponse(url: string): Response | null {
 
 beforeEach(() => {
   upstreamJsonCache.clear();
-  vi.spyOn(Date, 'now').mockReturnValue(AFTER_TEMPORARY_TLS_WORKAROUND);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
@@ -189,29 +150,6 @@ afterEach(() => {
 });
 
 describe('fetchScooters source health', () => {
-  it('uses the certified national API aliases during the 72-hour TLS workaround', async () => {
-    vi.mocked(Date.now).mockReturnValue(Date.parse('2026-08-15T13:21:30Z'));
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const response = temporaryNationalResponse(String(input));
-      if (response) return response;
-      throw new Error(`Unexpected URL: ${String(input)}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
-
-    expect(result.vehicles).toEqual([
-      expect.objectContaining({ provider: 'lime', battery: 75 }),
-    ]);
-    expect(result.meta.sources.national).toBe('fresh');
-    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
-      'https://api.sharedmobility.ch/v2/gbfs',
-      'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/gbfs',
-      'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types',
-      'https://gbfs.prod.sharedmobility.ch/v2/gbfs/lime_zurich/free_bike_status',
-    ]);
-  });
-
   it('does no upstream work for a viewport outside Switzerland', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

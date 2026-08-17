@@ -14,12 +14,6 @@ import {
 } from '@/generated/providers';
 
 const NATIONAL_V23_REGISTRY_URL = 'https://sharedmobility.ch/v2/gbfs';
-const TEMPORARY_NATIONAL_V23_REGISTRY_URL = 'https://api.sharedmobility.ch/v2/gbfs';
-const TEMPORARY_NATIONAL_FEED_HOST = 'gbfs.prod.sharedmobility.ch';
-// sharedmobility.ch's certificate expired on 2026-08-15. Cloudflare Workers
-// cannot disable TLS verification per request, so use the operator's certified
-// API/GBFS aliases for 72 hours and automatically return to the primary host.
-const TEMPORARY_TLS_WORKAROUND_END_MS = Date.parse('2026-08-18T13:21:30Z');
 const SPATIAL_IDENTIFY_URL = 'https://api.sharedmobility.ch/v1/sharedmobility/identify';
 const HOPP_DISCOVERY_URL = 'https://api.hopp.bike/gbfs/ch-zurich/gbfs.json';
 const PUBLIBIKE_FREE_FLOATING_URL =
@@ -292,23 +286,10 @@ function typeMap(feed: VehicleTypesFeed): Map<string, VehicleType> {
   return new Map((feed.data?.vehicle_types ?? []).map(type => [type.vehicle_type_id, type]));
 }
 
-function nationalRegistry(): { url: string; feedHost: string } {
-  return Date.now() < TEMPORARY_TLS_WORKAROUND_END_MS
-    ? {
-        url: TEMPORARY_NATIONAL_V23_REGISTRY_URL,
-        feedHost: TEMPORARY_NATIONAL_FEED_HOST,
-      }
-    : { url: NATIONAL_V23_REGISTRY_URL, feedHost: 'sharedmobility.ch' };
-}
-
-function registrySystem(
-  systemId: string,
-  systemUrl: string,
-  trustedFeedHost: string
-): NationalSystem | null {
+function registrySystem(systemId: string, systemUrl: string): NationalSystem | null {
   try {
     const url = new URL(systemUrl);
-    if (url.protocol !== 'https:' || url.hostname !== trustedFeedHost) return null;
+    if (url.protocol !== 'https:' || url.hostname !== 'sharedmobility.ch') return null;
     if (!url.pathname.endsWith('/gbfs')) return null;
 
     const provider = providerKeyForSystemId(systemId);
@@ -509,15 +490,14 @@ async function fetchSystemVehicles(
 }
 
 async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> {
-  const national = nationalRegistry();
-  const registry = await fetchJson<RegistryFeed>(national.url, {
+  const registry = await fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
 
   const systems =
     (registry.data.systems ?? [])
-      .map(system => registrySystem(system.id, system.url, national.feedHost))
+      .map(system => registrySystem(system.id, system.url))
       .filter((system): system is NationalSystem => (
         system !== null &&
         (!query.providers || query.providers.has(system.provider))
