@@ -156,12 +156,13 @@ final class AddressSearchAPITests: XCTestCase {
         let request = await session.lastRequest
         let components = URLComponents(url: try XCTUnwrap(request?.url), resolvingAgainstBaseURL: false)
         XCTAssertEqual(components?.path, "/api/geocode")
-        XCTAssertEqual(
-            Dictionary(uniqueKeysWithValues: components?.queryItems?.compactMap { item in
-                item.value.map { (item.name, $0) }
-            } ?? []),
-            ["q": "Ankerstrasse 114", "lang": "de"]
-        )
+        XCTAssertNil(components?.query)
+        XCTAssertEqual(request?.httpMethod, "POST")
+        XCTAssertEqual(request?.cachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertEqual(request?.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(request?.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(json, ["q": "Ankerstrasse 114", "lang": "de"])
     }
 }
 

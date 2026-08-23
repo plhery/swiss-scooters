@@ -13,7 +13,7 @@ export default function PrivacyPage() {
       <article className="legal-content">
         <Link className="legal-back" href="/">← Back to Swiss Scooters</Link>
         <h1>Privacy</h1>
-        <p>Last updated: 5 August 2026</p>
+        <p>Last updated: 23 August 2026</p>
 
         <h2>Overview</h2>
         <p>
@@ -36,8 +36,9 @@ export default function PrivacyPage() {
         <h2>Address search</h2>
         <p>
           Address search text is sent through the Swiss Scooters API to the Swiss federal
-          geo.admin.ch service operated by swisstopo. Search responses may be cached to reduce
-          repeated upstream requests.
+          geo.admin.ch service operated by swisstopo. The current app sends search text in the
+          request body, and instructs browsers and intermediary caches not to store the request
+          or response.
         </p>
 
         <h2>Mobility data</h2>

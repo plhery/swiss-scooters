@@ -6,6 +6,22 @@ const DEFAULT_ERROR_RETRY_SECONDS = 15;
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
+class UpstreamHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`GBFS request failed with HTTP ${status}`);
+    this.name = 'UpstreamHttpError';
+  }
+}
+
+function safeUpstreamTarget(value: string): { host: string; path: string } {
+  try {
+    const url = new URL(value);
+    return { host: url.host, path: url.pathname };
+  } catch {
+    return { host: 'invalid-url', path: '/' };
+  }
+}
+
 interface CacheEntry {
   freshUntil: number;
   staleUntil: number;
@@ -91,7 +107,7 @@ export class UpstreamJsonCache {
         signal: AbortSignal.timeout(options.timeoutMs),
       });
       if (!response.ok) {
-        throw new Error(`GBFS request failed with HTTP ${response.status}`);
+        throw new UpstreamHttpError(response.status);
       }
 
       const data = await response.json() as T;
@@ -106,8 +122,13 @@ export class UpstreamJsonCache {
       const failedAt = this.now();
       if (entry.hasValue && entry.staleUntil > failedAt) {
         entry.retryAfter = failedAt + this.errorRetryMs;
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(JSON.stringify({ event: 'upstream_stale_fallback', url, message }));
+        console.warn(JSON.stringify({
+          event: 'upstream_stale_fallback',
+          ...safeUpstreamTarget(url),
+          ...(error instanceof UpstreamHttpError
+            ? { httpStatus: error.status }
+            : { errorType: error instanceof Error ? error.name : 'UnknownError' }),
+        }));
         return { data: entry.value as T, stale: true };
       }
 

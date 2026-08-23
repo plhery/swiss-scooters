@@ -32,6 +32,12 @@ describe('AddressSearch', () => {
     fireEvent.change(input, { target: { value: 'Zürich HB' } });
     await act(async () => vi.advanceTimersByTimeAsync(350));
 
+    expect(fetchMock).toHaveBeenCalledWith('/api/geocode', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ q: 'Zürich HB', lang: 'en' }),
+      cache: 'no-store',
+    }));
+
     expect(screen.getByRole('option', { name: 'Zürich HB, Switzerland' })).toBeVisible();
     fireEvent.keyDown(input, { key: 'Enter' });
 

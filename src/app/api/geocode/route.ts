@@ -20,6 +20,11 @@ interface GeoAdminResponse {
   results?: GeoAdminResult[];
 }
 
+interface GeocodeInput {
+  query: string;
+  requestedLanguage: string;
+}
+
 const HTML_ENTITIES: Record<string, string> = {
   '&amp;': '&',
   '&lt;': '<',
@@ -49,17 +54,17 @@ function errorResponse(message: string, status: number, retryAfter?: string) {
   );
 }
 
-export async function GET(request: NextRequest) {
+async function geocode(request: NextRequest, input: GeocodeInput) {
   if (!await rateLimitAllows(request, 'GEOCODE_API_RATE_LIMITER')) {
     return errorResponse('Too many address searches. Please try again shortly.', 429, '60');
   }
 
-  const query = request.nextUrl.searchParams.get('q')?.trim() ?? '';
+  const query = input.query.trim();
   if (query.length < 2 || query.length > MAX_QUERY_LENGTH) {
     return errorResponse('Address search must contain between 2 and 160 characters.', 400);
   }
 
-  const requestedLanguage = request.nextUrl.searchParams.get('lang')?.toLowerCase() ?? 'en';
+  const requestedLanguage = input.requestedLanguage.toLowerCase();
   const language = SUPPORTED_LANGUAGES.has(requestedLanguage) ? requestedLanguage : 'en';
 
   const url = new URL(GEOADMIN_SEARCH_URL);
@@ -103,7 +108,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(results, {
       headers: {
-        'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+        'Cache-Control': 'private, no-store',
         'X-Geocoding-Data-Source': 'swisstopo geo.admin.ch',
       },
     });
@@ -115,4 +120,30 @@ export async function GET(request: NextRequest) {
       '30'
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return geocode(request, {
+    query: request.nextUrl.searchParams.get('q') ?? '',
+    requestedLanguage: request.nextUrl.searchParams.get('lang') ?? 'en',
+  });
+}
+
+export async function POST(request: NextRequest) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse('Address search request must be valid JSON.', 400);
+  }
+
+  if (!body || typeof body !== 'object') {
+    return errorResponse('Address search request must be a JSON object.', 400);
+  }
+
+  const { q, lang } = body as { q?: unknown; lang?: unknown };
+  return geocode(request, {
+    query: typeof q === 'string' ? q : '',
+    requestedLanguage: typeof lang === 'string' ? lang : 'en',
+  });
 }

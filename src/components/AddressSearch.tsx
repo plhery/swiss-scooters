@@ -53,10 +53,13 @@ export default function AddressSearch({ onSelect, onClear, compact = false }: Ad
     setFailed(false);
 
     try {
-      const response = await fetch(
-        `/api/geocode?q=${encodeURIComponent(value)}&lang=${locale}`,
-        { signal: controller.signal }
-      );
+      const response = await fetch('/api/geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: value, lang: locale }),
+        cache: 'no-store',
+        signal: controller.signal,
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextResults = await response.json() as AddressResult[];
       setResults(nextResults);

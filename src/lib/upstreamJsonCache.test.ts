@@ -7,6 +7,7 @@ const options: UpstreamJsonOptions = {
   staleIfErrorSeconds: 300,
   timeoutMs: 1_000,
 };
+const sensitiveUrl = 'https://example.com/feed?Geometry=8.5417%2C47.3769&q=Zurich+HB';
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -50,29 +51,38 @@ describe('UpstreamJsonCache', () => {
     });
     const cache = new UpstreamJsonCache({ fetcher, now: () => now });
 
-    await expect(cache.fetch('https://example.com/feed', options)).resolves.toEqual({
+    await expect(cache.fetch(sensitiveUrl, options)).resolves.toEqual({
       data: { version: 1 },
       stale: false,
     });
 
     now = 31_000;
     failing = true;
-    await expect(cache.fetch('https://example.com/feed', options)).resolves.toEqual({
+    await expect(cache.fetch(sensitiveUrl, options)).resolves.toEqual({
       data: { version: 1 },
       stale: true,
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(warning).toHaveBeenCalledOnce();
+    const logged = String(warning.mock.calls[0][0]);
+    expect(JSON.parse(logged)).toEqual({
+      event: 'upstream_stale_fallback',
+      host: 'example.com',
+      path: '/feed',
+      errorType: 'Error',
+    });
+    expect(logged).not.toContain('Geometry');
+    expect(logged).not.toContain('Zurich');
 
     now = 32_000;
-    await expect(cache.fetch('https://example.com/feed', options)).resolves.toEqual({
+    await expect(cache.fetch(sensitiveUrl, options)).resolves.toEqual({
       data: { version: 1 },
       stale: true,
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
 
     now = 331_000;
-    await expect(cache.fetch('https://example.com/feed', options)).rejects.toThrow(
+    await expect(cache.fetch(sensitiveUrl, options)).rejects.toThrow(
       'upstream unavailable'
     );
   });

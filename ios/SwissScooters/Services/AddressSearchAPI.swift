@@ -29,6 +29,11 @@ extension URLSession: AddressSearchNetworkSession {
 }
 
 actor AddressSearchAPI: AddressSearchAPIClient {
+    private struct SearchRequest: Encodable {
+        let q: String
+        let lang: String
+    }
+
     private let baseURL: URL
     private let session: any AddressSearchNetworkSession
 
@@ -41,23 +46,13 @@ actor AddressSearchAPI: AddressSearchAPIClient {
     }
 
     func search(query: String, language: String) async throws -> [AddressSearchResult] {
-        var components = URLComponents(
-            url: baseURL.appending(path: "api/geocode"),
-            resolvingAgainstBaseURL: false
-        )!
-        components.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "lang", value: language)
-        ]
-
-        guard let url = components.url else {
-            throw AddressSearchAPIError.invalidResponse
-        }
-
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: baseURL.appending(path: "api/geocode"))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(SearchRequest(q: query, lang: language))
         request.timeoutInterval = 12
-        request.cachePolicy = .returnCacheDataElseLoad
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let (data, response) = try await session.addressData(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
