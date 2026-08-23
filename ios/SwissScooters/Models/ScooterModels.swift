@@ -173,6 +173,8 @@ struct ScooterCluster: Identifiable, Hashable, Sendable {
 
 enum ScooterClusteringPolicy {
     static let maximumClusterZoom = 15
+    static let denseLocalClusterMinimumCount = 150
+    static let maximumDenseLocalClusterZoom = 16.5
 
     static func shouldCluster(at zoomLevel: Double) -> Bool {
         zoomLevel <= Double(maximumClusterZoom)
@@ -182,9 +184,15 @@ enum ScooterClusteringPolicy {
         apiZoom <= maximumClusterZoom
     }
 
+    static func shouldClusterLocally(at zoomLevel: Double, scooterCount: Int) -> Bool {
+        zoomLevel.isFinite &&
+            scooterCount >= denseLocalClusterMinimumCount &&
+            zoomLevel <= maximumDenseLocalClusterZoom
+    }
+
     static func apiZoom(for zoomLevel: Double) -> Int {
         guard zoomLevel.isFinite else { return 0 }
-        return min(22, max(0, Int(ceil(zoomLevel))))
+        return min(22, max(0, Int(floor(zoomLevel))))
     }
 
     static func representationsMatch(_ lhs: Int, _ rhs: Int) -> Bool {

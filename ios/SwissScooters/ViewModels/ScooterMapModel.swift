@@ -71,6 +71,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     private(set) var vehicles: [Scooter] = [] {
         didSet {
+            rebuildVehicleIndex()
             rebuildMapScooters()
             rebuildVisibleCounts()
         }
@@ -136,8 +137,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var hasCompleteResponse = false
     @ObservationIgnored private var distanceOrigin = switzerlandCenter
+    @ObservationIgnored private var vehiclesByID: [String: Scooter] = [:]
     private(set) var mapScooters: [Scooter] = []
+    private(set) var mapScootersRevision = 0
     private(set) var mapClusters: [ScooterCluster] = []
+    private(set) var mapClustersRevision = 0
     private(set) var visibleScooterCount = 0
     private(set) var visibleProviderCounts: [ScooterProvider: Int] = [:]
 
@@ -173,7 +177,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     var selectedScooter: Scooter? {
         guard let selectedScooterID else { return nil }
-        return vehicles.first { $0.id == selectedScooterID }
+        return vehiclesByID[selectedScooterID]
     }
 
     var visibleCount: Int { visibleScooterCount }
@@ -360,10 +364,19 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             minimumBattery: minimumBattery,
             enabledProviders: enabledProviders
         )
+        mapScootersRevision &+= 1
     }
 
     private func rebuildMapClusters() {
         mapClusters = clusters.compactMap { $0.filtered(to: enabledProviders) }
+        mapClustersRevision &+= 1
+    }
+
+    private func rebuildVehicleIndex() {
+        vehiclesByID = Dictionary(
+            vehicles.map { ($0.id, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
     }
 
     private func rebuildVisibleCounts() {

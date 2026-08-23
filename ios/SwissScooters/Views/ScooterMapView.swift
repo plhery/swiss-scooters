@@ -4,7 +4,9 @@ import UIKit
 
 struct ScooterMapView: UIViewRepresentable {
     let scooters: [Scooter]
+    let scooterRevision: Int
     let clusters: [ScooterCluster]
+    let clusterRevision: Int
     let usesServerClusters: Bool
     let mapStyle: AppleMapStyle
     let showsUserLocation: Bool
@@ -43,6 +45,15 @@ struct ScooterMapView: UIViewRepresentable {
             MKMarkerAnnotationView.self,
             forAnnotationViewWithReuseIdentifier: SearchedAddressAnnotation.reuseIdentifier
         )
+        // MapKit can defer didSelect while resolving dense, overlapping annotations.
+        // Publish direct scooter taps immediately and keep the delegate as a fallback.
+        let scooterTapRecognizer = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleMapTap(_:))
+        )
+        scooterTapRecognizer.cancelsTouchesInView = false
+        scooterTapRecognizer.delegate = context.coordinator
+        mapView.addGestureRecognizer(scooterTapRecognizer)
         mapView.setRegion(ScooterMapModel.initialRegion, animated: false)
         return mapView
     }
@@ -56,21 +67,21 @@ struct ScooterMapView: UIViewRepresentable {
             mapView.showsUserLocation = showsUserLocation
         }
         context.coordinator.updateClusteringMode(on: mapView)
-        context.coordinator.reconcile(scooters, on: mapView)
-        context.coordinator.reconcile(clusters, on: mapView)
+        context.coordinator.reconcile(scooters, revision: scooterRevision, on: mapView)
+        context.coordinator.reconcile(clusters, revision: clusterRevision, on: mapView)
         context.coordinator.applyDestination(destination, on: mapView)
         context.coordinator.applySelection(selectedScooterID, on: mapView)
         context.coordinator.applyFocus(focusRequest, on: mapView)
     }
 
-    final class Coordinator: NSObject, MKMapViewDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var parent: ScooterMapView
         private var annotationsByID: [String: ScooterMapAnnotation] = [:]
         private var clusterAnnotationsByID: [String: ScooterServerClusterAnnotation] = [:]
         private var lastFocusToken: Int?
         private var appliedSelectionID: String?
-        private var reconciledScooters: [Scooter] = []
-        private var reconciledClusters: [ScooterCluster] = []
+        private var reconciledScooterRevision: Int?
+        private var reconciledClusterRevision: Int?
         private var clusteringEnabled: Bool?
         private var appliedDestination: MapDestination?
         private var destinationAnnotation: SearchedAddressAnnotation?
@@ -79,9 +90,9 @@ struct ScooterMapView: UIViewRepresentable {
             self.parent = parent
         }
 
-        func reconcile(_ scooters: [Scooter], on mapView: MKMapView) {
-            guard scooters != reconciledScooters else { return }
-            reconciledScooters = scooters
+        func reconcile(_ scooters: [Scooter], revision: Int, on mapView: MKMapView) {
+            guard revision != reconciledScooterRevision else { return }
+            reconciledScooterRevision = revision
 
             let incomingIDs = Set(scooters.map(\.id))
             let removedAnnotations = annotationsByID.compactMap { id, annotation in
@@ -114,9 +125,9 @@ struct ScooterMapView: UIViewRepresentable {
             }
         }
 
-        func reconcile(_ clusters: [ScooterCluster], on mapView: MKMapView) {
-            guard clusters != reconciledClusters else { return }
-            reconciledClusters = clusters
+        func reconcile(_ clusters: [ScooterCluster], revision: Int, on mapView: MKMapView) {
+            guard revision != reconciledClusterRevision else { return }
+            reconciledClusterRevision = revision
 
             let incomingIDs = Set(clusters.map(\.id))
             let removedAnnotations = clusterAnnotationsByID.compactMap { id, annotation in
@@ -190,9 +201,7 @@ struct ScooterMapView: UIViewRepresentable {
         func updateClusteringMode(on mapView: MKMapView) {
             guard mapView.bounds.width > 0, mapView.visibleMapRect.width > 0 else { return }
 
-            let shouldCluster = !parent.usesServerClusters && ScooterClusteringPolicy.shouldCluster(
-                at: Self.zoomLevel(on: mapView)
-            )
+            let shouldCluster = shouldUseLocalClustering(on: mapView)
             guard shouldCluster != clusteringEnabled else { return }
             clusteringEnabled = shouldCluster
 
@@ -258,17 +267,77 @@ struct ScooterMapView: UIViewRepresentable {
                 withIdentifier: ScooterAnnotationView.reuseIdentifier,
                 for: annotation
             ) as! ScooterAnnotationView
-            view.setClusteringEnabled(ScooterClusteringPolicy.shouldCluster(
-                at: Self.zoomLevel(on: mapView)
-            ))
+            view.setClusteringEnabled(shouldUseLocalClustering(on: mapView))
             view.refreshAppearance()
             return view
+        }
+
+        private func shouldUseLocalClustering(on mapView: MKMapView) -> Bool {
+            !parent.usesServerClusters && ScooterClusteringPolicy.shouldClusterLocally(
+                at: Self.zoomLevel(on: mapView),
+                scooterCount: parent.scooters.count
+            )
         }
 
         private static func zoomLevel(on mapView: MKMapView) -> Double {
             guard mapView.bounds.width > 0, mapView.visibleMapRect.width > 0 else { return 0 }
             let zoomScale = Double(mapView.bounds.width) / mapView.visibleMapRect.width
             return log2(zoomScale * MKMapSize.world.width / 256)
+        }
+
+        @objc func handleMapTap(_ gestureRecognizer: UITapGestureRecognizer) {
+            guard let mapView = gestureRecognizer.view as? MKMapView,
+                  let annotation = scooterAnnotation(
+                      at: gestureRecognizer.location(in: mapView),
+                      on: mapView
+                  ) else { return }
+
+            publishSelection(annotation)
+            mapView.selectAnnotation(
+                annotation,
+                animated: !UIAccessibility.isReduceMotionEnabled
+            )
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+
+        private func scooterAnnotation(
+            at point: CGPoint,
+            on mapView: MKMapView
+        ) -> ScooterMapAnnotation? {
+            var hitView: UIView? = mapView.hitTest(point, with: nil)
+            while let view = hitView, view !== mapView {
+                if let annotationView = view as? MKAnnotationView {
+                    return annotationView.annotation as? ScooterMapAnnotation
+                }
+                hitView = view.superview
+            }
+
+            return annotationsByID.values
+                .compactMap { annotation -> (ScooterMapAnnotation, CGFloat)? in
+                    guard let view = mapView.view(for: annotation),
+                          !view.isHidden,
+                          view.alpha > 0.01,
+                          view.window != nil else { return nil }
+                    let frame = view.convert(view.bounds, to: mapView).insetBy(dx: -4, dy: -4)
+                    guard frame.contains(point) else { return nil }
+                    let distance = hypot(frame.midX - point.x, frame.midY - point.y)
+                    return (annotation, distance)
+                }
+                .min(by: { $0.1 < $1.1 })?
+                .0
+        }
+
+        private func publishSelection(_ annotation: ScooterMapAnnotation) {
+            let scooterID = annotation.scooter.id
+            guard appliedSelectionID != scooterID else { return }
+            appliedSelectionID = scooterID
+            parent.onSelectionChange(scooterID)
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
@@ -295,8 +364,7 @@ struct ScooterMapView: UIViewRepresentable {
             }
 
             guard let annotation = view.annotation as? ScooterMapAnnotation else { return }
-            appliedSelectionID = annotation.scooter.id
-            parent.onSelectionChange(annotation.scooter.id)
+            publishSelection(annotation)
         }
 
         func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {

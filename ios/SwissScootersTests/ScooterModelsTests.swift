@@ -75,9 +75,10 @@ final class ScooterModelsTests: XCTestCase {
         XCTAssertNil(try makeScooter(rangeMeters: nil).formattedRange)
     }
 
-    func testMapZoomRoundsUpAtTheServerClusteringBoundary() {
+    func testMapZoomRoundsDownSoServerClustersCoverTheWholeZoomLevel() {
         XCTAssertEqual(ScooterClusteringPolicy.apiZoom(for: 15), 15)
-        XCTAssertEqual(ScooterClusteringPolicy.apiZoom(for: 15.01), 16)
+        XCTAssertEqual(ScooterClusteringPolicy.apiZoom(for: 15.99), 15)
+        XCTAssertEqual(ScooterClusteringPolicy.apiZoom(for: 16), 16)
         XCTAssertTrue(ScooterClusteringPolicy.representationsMatch(16, 18))
         XCTAssertFalse(ScooterClusteringPolicy.representationsMatch(14, 15))
     }

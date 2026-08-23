@@ -207,6 +207,31 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertFalse(model.hasActiveFilters)
     }
 
+    func testSelectionUsesLatestVehicleIndexAndMapRevisionOnlyChangesWithData() async throws {
+        let first = scooter(id: "first", provider: "lime")
+        let second = scooter(id: "second", provider: "voi")
+        let api = StubScooterAPI(response: ScooterResponse(vehicles: [first, second]))
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let loadingFinished = await waitUntil { model.lastUpdated != nil }
+        XCTAssertTrue(loadingFinished)
+        let loadedRevision = model.mapScootersRevision
+
+        model.selectScooter(second.id)
+
+        XCTAssertEqual(model.selectedScooter, second)
+        XCTAssertEqual(model.mapScootersRevision, loadedRevision)
+
+        await api.setResponse(ScooterResponse(vehicles: [first]))
+        model.refresh()
+        let refreshed = await waitUntil {
+            model.mapScootersRevision > loadedRevision && !model.isLoading
+        }
+        XCTAssertTrue(refreshed)
+        XCTAssertNil(model.selectedScooter)
+    }
+
     func testLocationPolicyRejectsStaleAndInaccurateSamplesAndChoosesBestFallback() {
         let now = Date()
         let preferred = CLLocation(

@@ -14,7 +14,9 @@ struct ScooterMapScreen: View {
             ZStack(alignment: .bottom) {
                 ScooterMapView(
                     scooters: model.mapScooters,
+                    scooterRevision: model.mapScootersRevision,
                     clusters: model.mapClusters,
+                    clusterRevision: model.mapClustersRevision,
                     usesServerClusters: model.responseMetadata?.mode == "clusters",
                     mapStyle: model.mapStyle,
                     showsUserLocation: model.userLocation != nil,

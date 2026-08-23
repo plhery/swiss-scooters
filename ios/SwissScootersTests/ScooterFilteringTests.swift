@@ -80,6 +80,25 @@ final class ScooterFilteringTests: XCTestCase {
         XCTAssertFalse(ScooterClusteringPolicy.shouldCluster(at: 20))
     }
 
+    func testDenseVehicleResponsesStayLocallyClusteredUntilScootersAreSeparable() {
+        XCTAssertFalse(ScooterClusteringPolicy.shouldClusterLocally(
+            at: 16,
+            scooterCount: ScooterClusteringPolicy.denseLocalClusterMinimumCount - 1
+        ))
+        XCTAssertTrue(ScooterClusteringPolicy.shouldClusterLocally(
+            at: 16,
+            scooterCount: ScooterClusteringPolicy.denseLocalClusterMinimumCount
+        ))
+        XCTAssertTrue(ScooterClusteringPolicy.shouldClusterLocally(
+            at: ScooterClusteringPolicy.maximumDenseLocalClusterZoom,
+            scooterCount: 353
+        ))
+        XCTAssertFalse(ScooterClusteringPolicy.shouldClusterLocally(
+            at: ScooterClusteringPolicy.maximumDenseLocalClusterZoom + 0.01,
+            scooterCount: 353
+        ))
+    }
+
     @MainActor
     func testAnnotationPinsCannotBeHiddenByCollisions() {
         let view = ScooterAnnotationView(annotation: nil, reuseIdentifier: nil)
