@@ -2,22 +2,16 @@ import MapKit
 import SwiftUI
 import UIKit
 
-enum ScooterClusteringPolicy {
-    static let maximumClusterZoom = 15.0
-
-    static func shouldCluster(at zoomLevel: Double) -> Bool {
-        zoomLevel <= maximumClusterZoom
-    }
-}
-
 struct ScooterMapView: UIViewRepresentable {
     let scooters: [Scooter]
+    let clusters: [ScooterCluster]
+    let usesServerClusters: Bool
     let mapStyle: AppleMapStyle
     let showsUserLocation: Bool
     let focusRequest: MapFocusRequest?
     let destination: MapDestination?
     let selectedScooterID: String?
-    let onRegionChange: (MKCoordinateRegion) -> Void
+    let onRegionChange: (MKCoordinateRegion, Int) -> Void
     let onSelectionChange: (String?) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -42,6 +36,10 @@ struct ScooterMapView: UIViewRepresentable {
             forAnnotationViewWithReuseIdentifier: ScooterClusterAnnotationView.reuseIdentifier
         )
         mapView.register(
+            ScooterClusterAnnotationView.self,
+            forAnnotationViewWithReuseIdentifier: ScooterServerClusterAnnotation.reuseIdentifier
+        )
+        mapView.register(
             MKMarkerAnnotationView.self,
             forAnnotationViewWithReuseIdentifier: SearchedAddressAnnotation.reuseIdentifier
         )
@@ -59,6 +57,7 @@ struct ScooterMapView: UIViewRepresentable {
         }
         context.coordinator.updateClusteringMode(on: mapView)
         context.coordinator.reconcile(scooters, on: mapView)
+        context.coordinator.reconcile(clusters, on: mapView)
         context.coordinator.applyDestination(destination, on: mapView)
         context.coordinator.applySelection(selectedScooterID, on: mapView)
         context.coordinator.applyFocus(focusRequest, on: mapView)
@@ -67,9 +66,11 @@ struct ScooterMapView: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate {
         var parent: ScooterMapView
         private var annotationsByID: [String: ScooterMapAnnotation] = [:]
+        private var clusterAnnotationsByID: [String: ScooterServerClusterAnnotation] = [:]
         private var lastFocusToken: Int?
         private var appliedSelectionID: String?
         private var reconciledScooters: [Scooter] = []
+        private var reconciledClusters: [ScooterCluster] = []
         private var clusteringEnabled: Bool?
         private var appliedDestination: MapDestination?
         private var destinationAnnotation: SearchedAddressAnnotation?
@@ -104,6 +105,40 @@ struct ScooterMapView: UIViewRepresentable {
                 } else {
                     let annotation = ScooterMapAnnotation(scooter: scooter)
                     annotationsByID[scooter.id] = annotation
+                    additions.append(annotation)
+                }
+            }
+
+            if !additions.isEmpty {
+                mapView.addAnnotations(additions)
+            }
+        }
+
+        func reconcile(_ clusters: [ScooterCluster], on mapView: MKMapView) {
+            guard clusters != reconciledClusters else { return }
+            reconciledClusters = clusters
+
+            let incomingIDs = Set(clusters.map(\.id))
+            let removedAnnotations = clusterAnnotationsByID.compactMap { id, annotation in
+                incomingIDs.contains(id) ? nil : annotation
+            }
+            if !removedAnnotations.isEmpty {
+                mapView.removeAnnotations(removedAnnotations)
+                for annotation in removedAnnotations {
+                    clusterAnnotationsByID.removeValue(forKey: annotation.cluster.id)
+                }
+            }
+
+            var additions: [ScooterServerClusterAnnotation] = []
+            for cluster in clusters {
+                if let annotation = clusterAnnotationsByID[cluster.id] {
+                    if annotation.update(with: cluster),
+                       let view = mapView.view(for: annotation) as? ScooterClusterAnnotationView {
+                        view.refreshAppearance()
+                    }
+                } else {
+                    let annotation = ScooterServerClusterAnnotation(cluster: cluster)
+                    clusterAnnotationsByID[cluster.id] = annotation
                     additions.append(annotation)
                 }
             }
@@ -155,7 +190,7 @@ struct ScooterMapView: UIViewRepresentable {
         func updateClusteringMode(on mapView: MKMapView) {
             guard mapView.bounds.width > 0, mapView.visibleMapRect.width > 0 else { return }
 
-            let shouldCluster = ScooterClusteringPolicy.shouldCluster(
+            let shouldCluster = !parent.usesServerClusters && ScooterClusteringPolicy.shouldCluster(
                 at: Self.zoomLevel(on: mapView)
             )
             guard shouldCluster != clusteringEnabled else { return }
@@ -175,8 +210,9 @@ struct ScooterMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             updateClusteringMode(on: mapView)
             let region = mapView.region
+            let zoom = ScooterClusteringPolicy.apiZoom(for: Self.zoomLevel(on: mapView))
             Task { @MainActor [parent] in
-                parent.onRegionChange(region)
+                parent.onRegionChange(region, zoom)
             }
         }
 
@@ -208,6 +244,15 @@ struct ScooterMapView: UIViewRepresentable {
                 return view
             }
 
+            if let cluster = annotation as? ScooterServerClusterAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: ScooterServerClusterAnnotation.reuseIdentifier,
+                    for: cluster
+                ) as! ScooterClusterAnnotationView
+                view.refreshAppearance()
+                return view
+            }
+
             guard annotation is ScooterMapAnnotation else { return nil }
             let view = mapView.dequeueReusableAnnotationView(
                 withIdentifier: ScooterAnnotationView.reuseIdentifier,
@@ -227,6 +272,22 @@ struct ScooterMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            if let cluster = view.annotation as? ScooterServerClusterAnnotation {
+                let span = mapView.region.span
+                mapView.setRegion(
+                    MKCoordinateRegion(
+                        center: cluster.coordinate,
+                        span: MKCoordinateSpan(
+                            latitudeDelta: span.latitudeDelta / 4,
+                            longitudeDelta: span.longitudeDelta / 4
+                        )
+                    ),
+                    animated: !UIAccessibility.isReduceMotionEnabled
+                )
+                mapView.deselectAnnotation(cluster, animated: false)
+                return
+            }
+
             if let cluster = view.annotation as? MKClusterAnnotation {
                 mapView.showAnnotations(cluster.memberAnnotations, animated: true)
                 mapView.deselectAnnotation(cluster, animated: false)
@@ -278,6 +339,31 @@ final class ScooterMapAnnotation: NSObject, MKAnnotation {
         self.scooter = scooter
         if coordinateChanged {
             coordinate = scooter.coordinate
+        }
+        return true
+    }
+}
+
+final class ScooterServerClusterAnnotation: NSObject, MKAnnotation {
+    static let reuseIdentifier = "server-scooter-cluster"
+
+    @objc dynamic var coordinate: CLLocationCoordinate2D
+    private(set) var cluster: ScooterCluster
+
+    init(cluster: ScooterCluster) {
+        self.cluster = cluster
+        coordinate = cluster.coordinate
+        super.init()
+    }
+
+    @discardableResult
+    func update(with cluster: ScooterCluster) -> Bool {
+        guard self.cluster != cluster else { return false }
+        let coordinateChanged = coordinate.latitude != cluster.latitude ||
+            coordinate.longitude != cluster.longitude
+        self.cluster = cluster
+        if coordinateChanged {
+            coordinate = cluster.coordinate
         }
         return true
     }
@@ -453,17 +539,28 @@ final class ScooterClusterAnnotationView: MKAnnotationView {
     }
 
     func refreshAppearance() {
-        guard let cluster = annotation as? MKClusterAnnotation else { return }
         var providerCounts: [ScooterProvider: Int] = [:]
         providerCounts.reserveCapacity(ScooterProvider.allCases.count)
+        let count: Int
 
-        for case let member as ScooterMapAnnotation in cluster.memberAnnotations {
-            if let provider = member.scooter.providerInfo {
-                providerCounts[provider, default: 0] += 1
+        if let cluster = annotation as? MKClusterAnnotation {
+            for case let member as ScooterMapAnnotation in cluster.memberAnnotations {
+                if let provider = member.scooter.providerInfo {
+                    providerCounts[provider, default: 0] += 1
+                }
             }
+            count = cluster.memberAnnotations.count
+        } else if let annotation = annotation as? ScooterServerClusterAnnotation {
+            for (providerID, providerCount) in annotation.cluster.providers {
+                if let provider = ScooterProvider(rawValue: providerID) {
+                    providerCounts[provider, default: 0] += providerCount
+                }
+            }
+            count = annotation.cluster.count
+        } else {
+            return
         }
 
-        let count = cluster.memberAnnotations.count
         guard count != renderedCount || providerCounts != renderedProviderCounts else { return }
         renderedCount = count
         renderedProviderCounts = providerCounts

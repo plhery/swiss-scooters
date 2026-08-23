@@ -77,6 +77,81 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(message.contains(5_100.formatted()))
     }
 
+    func testCountryScaleResponseRepresentsThousandsWithOneServerClusterAnnotation() async {
+        let cluster = ScooterCluster(
+            id: "8:134:89",
+            latitude: ScooterMapModel.switzerlandCenter.latitude,
+            longitude: ScooterMapModel.switzerlandCenter.longitude,
+            count: 9_000,
+            providers: ["lime": 6_000, "bird": 3_000]
+        )
+        let response = ScooterResponse(
+            vehicles: [],
+            clusters: [cluster],
+            providers: ["lime": 6_000, "bird": 3_000],
+            meta: ScooterResponseMetadata(
+                partial: false,
+                failedSources: [],
+                totalVehicles: 9_000,
+                mode: "clusters",
+                zoom: 8
+            )
+        )
+        let api = StubScooterAPI(response: response)
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let loadingFinished = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+
+        XCTAssertTrue(loadingFinished)
+        XCTAssertTrue(model.mapScooters.isEmpty)
+        XCTAssertEqual(model.mapClusters.count, 1)
+        XCTAssertEqual(model.mapScooters.count + model.mapClusters.count, 1)
+        XCTAssertEqual(model.visibleCount, 9_000)
+        let snapshot = await api.snapshot()
+        XCTAssertEqual(snapshot.lastZoom, 8)
+        XCTAssertEqual(snapshot.lastMinimumBattery, 0)
+
+        model.toggle(provider: .bird)
+        XCTAssertEqual(model.mapClusters.first?.count, 6_000)
+        XCTAssertEqual(model.visibleCount, 6_000)
+    }
+
+    func testClusteredBatteryFilterIsAppliedByTheServer() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [],
+            clusters: [ScooterCluster(
+                id: "8:134:89",
+                latitude: ScooterMapModel.switzerlandCenter.latitude,
+                longitude: ScooterMapModel.switzerlandCenter.longitude,
+                count: 100,
+                providers: ["lime": 100]
+            )],
+            meta: ScooterResponseMetadata(
+                partial: false,
+                failedSources: [],
+                mode: "clusters",
+                zoom: 8
+            )
+        ))
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let initialLoadFinished = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(initialLoadFinished)
+
+        model.setMinimumBattery(53)
+        let filteredLoadFinished = await waitUntil {
+            let snapshot = await api.snapshot()
+            return snapshot.calls == 2 && !model.isLoading
+        }
+
+        XCTAssertTrue(filteredLoadFinished)
+        let snapshot = await api.snapshot()
+        XCTAssertEqual(snapshot.lastZoom, 8)
+        XCTAssertEqual(snapshot.lastMinimumBattery, 55)
+    }
+
     func testBatteryFilterNormalizesValuePersistsItAndClearsHiddenSelection() async throws {
         let scooter = Scooter(
             provider: "lime",
@@ -257,14 +332,19 @@ private actor StubScooterAPI: ScooterAPIClient {
     private let delaysFirstRequest: Bool
     private var calls = 0
     private var cancellations = 0
+    private var lastZoom: Int?
+    private var lastMinimumBattery: Int?
 
     init(response: ScooterResponse, delaysFirstRequest: Bool = false) {
         self.response = response
         self.delaysFirstRequest = delaysFirstRequest
     }
 
-    func scooters(bounds: GeoBounds) async throws -> ScooterResponse {
+    func scooters(bounds: GeoBounds, zoom: Int, minimumBattery: Int) async throws -> ScooterResponse {
+        _ = bounds
         calls += 1
+        lastZoom = zoom
+        lastMinimumBattery = minimumBattery
         if delaysFirstRequest, calls == 1 {
             do {
                 try await Task.sleep(for: .seconds(30))
@@ -280,7 +360,12 @@ private actor StubScooterAPI: ScooterAPIClient {
         self.response = response
     }
 
-    func snapshot() -> (calls: Int, cancellations: Int) {
-        (calls, cancellations)
+    func snapshot() -> (
+        calls: Int,
+        cancellations: Int,
+        lastZoom: Int?,
+        lastMinimumBattery: Int?
+    ) {
+        (calls, cancellations, lastZoom, lastMinimumBattery)
     }
 }

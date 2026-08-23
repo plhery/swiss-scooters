@@ -7,19 +7,19 @@ final class ScooterAPITests: XCTestCase {
     func testSuccessfulResponseIsDecoded() async throws {
         let api = makeAPI(responseStatus: 200, data: emptyResponseData)
 
-        let response = try await api.scooters(bounds: bounds)
+        let response = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
 
         XCTAssertTrue(response.vehicles.isEmpty)
     }
 
-    func testRequestSendsBoundsWithoutASeparateUserLocation() async throws {
+    func testRequestSendsBoundsZoomAndFilterWithoutASeparateUserLocation() async throws {
         let session = StubNetworkSession(mode: .response(
             statusCode: 200,
             data: emptyResponseData
         ))
         let api = ScooterAPI(baseURL: ScooterAPI.productionBaseURL, session: session)
 
-        _ = try await api.scooters(bounds: bounds)
+        _ = try await api.scooters(bounds: bounds, zoom: 12, minimumBattery: 55)
 
         let request = await session.lastRequest
         let components = URLComponents(
@@ -27,14 +27,19 @@ final class ScooterAPITests: XCTestCase {
             resolvingAgainstBaseURL: false
         )
         let names = Set(components?.queryItems?.map(\.name) ?? [])
-        XCTAssertEqual(names, Set(["south", "west", "north", "east"]))
+        XCTAssertEqual(names, Set(["south", "west", "north", "east", "zoom", "minBattery"]))
+        let values = Dictionary(uniqueKeysWithValues: components?.queryItems?.compactMap { item in
+            item.value.map { (item.name, $0) }
+        } ?? [])
+        XCTAssertEqual(values["zoom"], "12")
+        XCTAssertEqual(values["minBattery"], "55")
     }
 
     func testResponseHealthMetadataIsDecoded() async throws {
         let data = Data(#"{"vehicles":[],"clusters":[],"providers":{},"meta":{"partial":true,"stale":true,"failedSources":["national"],"sources":{"national":"failed","hopp":"fresh"},"generatedAt":"2026-08-05T12:00:00.000Z","truncated":true,"totalVehicles":6200,"mode":"vehicles","zoom":null}}"#.utf8)
         let api = makeAPI(responseStatus: 200, data: data)
 
-        let response = try await api.scooters(bounds: bounds)
+        let response = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
 
         XCTAssertTrue(response.meta?.partial == true)
         XCTAssertTrue(response.meta?.stale == true)
@@ -47,7 +52,7 @@ final class ScooterAPITests: XCTestCase {
         let api = makeAPI(responseStatus: 503)
 
         do {
-            _ = try await api.scooters(bounds: bounds)
+            _ = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
             XCTFail("Expected an HTTP status error")
         } catch let error as ScooterAPIError {
             XCTAssertEqual(error.statusCode, 503)
@@ -61,7 +66,7 @@ final class ScooterAPITests: XCTestCase {
         let api = makeAPI(urlError: .notConnectedToInternet)
 
         do {
-            _ = try await api.scooters(bounds: bounds)
+            _ = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
             XCTFail("Expected an offline error")
         } catch let error as ScooterAPIError {
             guard case .offline = error else {
@@ -77,7 +82,7 @@ final class ScooterAPITests: XCTestCase {
         let api = makeAPI(urlError: .timedOut)
 
         do {
-            _ = try await api.scooters(bounds: bounds)
+            _ = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
             XCTFail("Expected a timeout error")
         } catch let error as ScooterAPIError {
             guard case .timedOut = error else {
@@ -93,7 +98,7 @@ final class ScooterAPITests: XCTestCase {
         let api = makeAPI(responseStatus: 200, data: Data("{}".utf8))
 
         do {
-            _ = try await api.scooters(bounds: bounds)
+            _ = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
             XCTFail("Expected a decoding error")
         } catch let error as ScooterAPIError {
             guard case .invalidData = error else {

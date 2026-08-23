@@ -75,9 +75,16 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             rebuildVisibleCounts()
         }
     }
+    private(set) var clusters: [ScooterCluster] = [] {
+        didSet {
+            rebuildMapClusters()
+            rebuildVisibleCounts()
+        }
+    }
     var viewport = GeoBounds(region: initialRegion) {
         didSet { rebuildVisibleCounts() }
     }
+    private(set) var viewportZoom = 8
     var isLoading = false
     var isLocating = false
     var errorMessage: String?
@@ -88,6 +95,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var enabledProviders = Set(ScooterProvider.allCases) {
         didSet {
             rebuildMapScooters()
+            rebuildMapClusters()
             rebuildVisibleCounts()
             clearSelectionIfHidden()
         }
@@ -115,7 +123,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private let locationManager: CLLocationManager
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var queryBounds: GeoBounds?
+    @ObservationIgnored private var queryZoom: Int?
+    @ObservationIgnored private var queryMinimumBattery: Int?
     @ObservationIgnored private var pendingQueryBounds: GeoBounds?
+    @ObservationIgnored private var pendingQueryZoom: Int?
+    @ObservationIgnored private var pendingQueryMinimumBattery: Int?
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var locationTimeoutTask: Task<Void, Never>?
     @ObservationIgnored private var activeRequestID: UUID?
@@ -125,6 +137,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var hasCompleteResponse = false
     @ObservationIgnored private var distanceOrigin = switzerlandCenter
     private(set) var mapScooters: [Scooter] = []
+    private(set) var mapClusters: [ScooterCluster] = []
     private(set) var visibleScooterCount = 0
     private(set) var visibleProviderCounts: [ScooterProvider: Int] = [:]
 
@@ -184,10 +197,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             messages.append(String(localized: "Some providers are unavailable"))
         }
         if responseMetadata.truncated {
-            let total = responseMetadata.totalVehicles ?? vehicles.count
+            let shown = representedVehicleCount
+            let total = responseMetadata.totalVehicles ?? shown
             messages.append(String(
                 format: String(localized: "Showing %@ of %@ results"),
-                vehicles.count.formatted(),
+                shown.formatted(),
                 total.formatted()
             ))
         }
@@ -247,18 +261,19 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
     }
 
-    func updateViewport(_ region: MKCoordinateRegion) {
+    func updateViewport(_ region: MKCoordinateRegion, zoom: Int) {
         let nextViewport = GeoBounds(region: region)
         viewport = nextViewport
+        viewportZoom = zoom
         clearSelectionIfHidden()
 
-        guard queryBounds?.contains(nextViewport) != true,
-              pendingQueryBounds?.contains(nextViewport) != true else { return }
-        scheduleFetch(for: nextViewport.expanded(by: 0.25), debounce: true)
+        guard !queryCovers(nextViewport, zoom: zoom, pending: false),
+              !queryCovers(nextViewport, zoom: zoom, pending: true) else { return }
+        scheduleFetch(for: nextViewport.expanded(by: 0.25), zoom: zoom, debounce: true)
     }
 
     func refresh() {
-        scheduleFetch(for: viewport.expanded(by: 0.25), debounce: false)
+        scheduleFetch(for: viewport.expanded(by: 0.25), zoom: viewportZoom, debounce: false)
     }
 
     func showAllProviders() {
@@ -274,14 +289,23 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func resetFilters() {
+        let batteryChanged = minimumBattery != 0
         minimumBattery = 0
         enabledProviders = Set(ScooterProvider.allCases)
+        if batteryChanged, ScooterClusteringPolicy.shouldCluster(at: viewportZoom) {
+            clusters = []
+            scheduleFetch(for: viewport.expanded(by: 0.25), zoom: viewportZoom, debounce: true)
+        }
     }
 
     func setMinimumBattery(_ value: Double) {
         let normalizedValue = min(100, max(0, (value / 5).rounded() * 5))
         guard normalizedValue != minimumBattery else { return }
         minimumBattery = normalizedValue
+        if ScooterClusteringPolicy.shouldCluster(at: viewportZoom) {
+            clusters = []
+            scheduleFetch(for: viewport.expanded(by: 0.25), zoom: viewportZoom, debounce: true)
+        }
     }
 
     func focusOnUser() {
@@ -338,7 +362,42 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         )
     }
 
+    private func rebuildMapClusters() {
+        mapClusters = clusters.compactMap { $0.filtered(to: enabledProviders) }
+    }
+
     private func rebuildVisibleCounts() {
+        if responseMetadata?.mode == "clusters" {
+            var count = 0
+            var providerCounts: [ScooterProvider: Int] = [:]
+
+            for scooter in mapScooters where viewport.contains(
+                latitude: scooter.latitude,
+                longitude: scooter.longitude
+            ) {
+                count += 1
+                if let provider = scooter.providerInfo {
+                    providerCounts[provider, default: 0] += 1
+                }
+            }
+
+            for cluster in mapClusters where viewport.contains(
+                latitude: cluster.latitude,
+                longitude: cluster.longitude
+            ) {
+                count += cluster.count
+                for (providerID, providerCount) in cluster.providers {
+                    if let provider = ScooterProvider(rawValue: providerID) {
+                        providerCounts[provider, default: 0] += providerCount
+                    }
+                }
+            }
+
+            visibleScooterCount = count
+            visibleProviderCounts = providerCounts
+            return
+        }
+
         let summary = ScooterFiltering.visibleSummary(
             for: vehicles,
             viewport: viewport,
@@ -347,6 +406,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         )
         visibleScooterCount = summary.count
         visibleProviderCounts = summary.providerCounts
+    }
+
+    private var representedVehicleCount: Int {
+        vehicles.count + clusters.reduce(0) { $0 + $1.count }
     }
 
     private func clearSelectionIfHidden() {
@@ -363,13 +426,18 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
     }
 
-    private func scheduleFetch(for bounds: GeoBounds, debounce: Bool) {
+    private func scheduleFetch(for bounds: GeoBounds, zoom: Int, debounce: Bool) {
         fetchTask?.cancel()
 
         let requestID = UUID()
         let fetchOrigin = userLocation ?? Self.switzerlandCenter
+        let requestMinimumBattery = ScooterClusteringPolicy.shouldCluster(at: zoom)
+            ? Int(minimumBattery)
+            : 0
         activeRequestID = requestID
         pendingQueryBounds = bounds
+        pendingQueryZoom = zoom
+        pendingQueryMinimumBattery = requestMinimumBattery
         fetchTask = Task { [weak self] in
             guard let self else { return }
 
@@ -386,15 +454,23 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             errorMessage = nil
 
             do {
-                let response = try await api.scooters(bounds: bounds)
+                let response = try await api.scooters(
+                    bounds: bounds,
+                    zoom: zoom,
+                    minimumBattery: requestMinimumBattery
+                )
                 guard !Task.isCancelled, activeRequestID == requestID else { return }
                 if let metadata = response.meta, metadata.partial, hasCompleteResponse {
                     throw PartialScooterResponseError(failedSources: metadata.failedSources)
                 }
                 vehicles = response.vehicles
+                clusters = response.clusters
                 responseMetadata = response.meta
+                rebuildVisibleCounts()
                 hasCompleteResponse = response.meta?.partial != true
                 queryBounds = bounds
+                queryZoom = zoom
+                queryMinimumBattery = requestMinimumBattery
                 distanceOrigin = fetchOrigin
                 lastUpdated = Date()
                 clearSelectionIfHidden()
@@ -408,15 +484,42 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             if activeRequestID == requestID {
                 isLoading = false
                 pendingQueryBounds = nil
+                pendingQueryZoom = nil
+                pendingQueryMinimumBattery = nil
                 fetchTask = nil
             }
         }
     }
 
-    private func fetchIfNeeded(for targetViewport: GeoBounds, debounce: Bool = false) {
-        guard queryBounds?.contains(targetViewport) != true,
-              pendingQueryBounds?.contains(targetViewport) != true else { return }
-        scheduleFetch(for: targetViewport.expanded(by: 0.25), debounce: debounce)
+    private func fetchIfNeeded(
+        for targetViewport: GeoBounds,
+        zoom: Int? = nil,
+        debounce: Bool = false
+    ) {
+        let targetZoom = zoom ?? viewportZoom
+        guard !queryCovers(targetViewport, zoom: targetZoom, pending: false),
+              !queryCovers(targetViewport, zoom: targetZoom, pending: true) else { return }
+        scheduleFetch(
+            for: targetViewport.expanded(by: 0.25),
+            zoom: targetZoom,
+            debounce: debounce
+        )
+    }
+
+    private func queryCovers(_ targetViewport: GeoBounds, zoom: Int, pending: Bool) -> Bool {
+        let bounds = pending ? pendingQueryBounds : queryBounds
+        let storedZoom = pending ? pendingQueryZoom : self.queryZoom
+        let storedMinimumBattery = pending
+            ? pendingQueryMinimumBattery
+            : self.queryMinimumBattery
+        guard bounds?.contains(targetViewport) == true,
+              let storedZoom,
+              ScooterClusteringPolicy.representationsMatch(storedZoom, zoom) else { return false }
+
+        let targetMinimumBattery = ScooterClusteringPolicy.shouldCluster(at: zoom)
+            ? Int(minimumBattery)
+            : 0
+        return storedMinimumBattery == targetMinimumBattery
     }
 
     private func requestLocationAccess() {
@@ -506,7 +609,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             )
             let focusedViewport = GeoBounds(region: focusedRegion)
             viewport = focusedViewport
-            fetchIfNeeded(for: focusedViewport)
+            viewportZoom = 16
+            fetchIfNeeded(for: focusedViewport, zoom: viewportZoom)
         } else if Self.distance(from: distanceOrigin, to: nextLocation) >= max(75, location.horizontalAccuracy) {
             distanceOrigin = nextLocation
         }

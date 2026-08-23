@@ -59,6 +59,49 @@ struct ScooterCluster: Identifiable, Hashable, Sendable {
     let longitude: Double
     let count: Int
     let providers: [String: Int]
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+
+    func filtered(to enabledProviders: Set<ScooterProvider>) -> ScooterCluster? {
+        let filteredProviders = providers.filter { providerID, _ in
+            ScooterProvider(rawValue: providerID).map(enabledProviders.contains) == true
+        }
+        let filteredCount = filteredProviders.values.reduce(0, +)
+        guard filteredCount > 0 else { return nil }
+        return ScooterCluster(
+            id: id,
+            latitude: latitude,
+            longitude: longitude,
+            count: filteredCount,
+            providers: filteredProviders
+        )
+    }
+}
+
+enum ScooterClusteringPolicy {
+    static let maximumClusterZoom = 15
+
+    static func shouldCluster(at zoomLevel: Double) -> Bool {
+        zoomLevel <= Double(maximumClusterZoom)
+    }
+
+    static func shouldCluster(at apiZoom: Int) -> Bool {
+        apiZoom <= maximumClusterZoom
+    }
+
+    static func apiZoom(for zoomLevel: Double) -> Int {
+        guard zoomLevel.isFinite else { return 0 }
+        return min(22, max(0, Int(ceil(zoomLevel))))
+    }
+
+    static func representationsMatch(_ lhs: Int, _ rhs: Int) -> Bool {
+        if !shouldCluster(at: lhs), !shouldCluster(at: rhs) {
+            return true
+        }
+        return lhs == rhs
+    }
 }
 
 struct ScooterResponse: Sendable {

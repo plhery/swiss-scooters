@@ -1,7 +1,7 @@
 import Foundation
 
 protocol ScooterAPIClient: Sendable {
-    func scooters(bounds: GeoBounds) async throws -> ScooterResponse
+    func scooters(bounds: GeoBounds, zoom: Int, minimumBattery: Int) async throws -> ScooterResponse
 }
 
 protocol ScooterNetworkSession: Sendable {
@@ -28,7 +28,7 @@ actor ScooterAPI: ScooterAPIClient {
         self.session = session
     }
 
-    func scooters(bounds: GeoBounds) async throws -> ScooterResponse {
+    func scooters(bounds: GeoBounds, zoom: Int, minimumBattery: Int) async throws -> ScooterResponse {
         var components = URLComponents(
             url: baseURL.appending(path: "api/scooters"),
             resolvingAgainstBaseURL: false
@@ -37,7 +37,9 @@ actor ScooterAPI: ScooterAPIClient {
             URLQueryItem(name: "south", value: String(format: "%.5f", bounds.south)),
             URLQueryItem(name: "west", value: String(format: "%.5f", bounds.west)),
             URLQueryItem(name: "north", value: String(format: "%.5f", bounds.north)),
-            URLQueryItem(name: "east", value: String(format: "%.5f", bounds.east))
+            URLQueryItem(name: "east", value: String(format: "%.5f", bounds.east)),
+            URLQueryItem(name: "zoom", value: String(zoom)),
+            URLQueryItem(name: "minBattery", value: String(minimumBattery))
         ]
 
         guard let url = components.url else {
