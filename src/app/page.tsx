@@ -23,6 +23,7 @@ import {
   expandBounds,
   haversineM,
 } from '@/lib/geo';
+import { useLiveLocation } from '@/lib/useLiveLocation';
 
 const SWITZERLAND_CENTER: [number, number] = [46.8182, 8.2275];
 const INITIAL_ZOOM = 8;
@@ -79,7 +80,12 @@ function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
 export default function Home() {
   const { t, formatNumber } = useI18n();
   const [initialCenter, setInitialCenter] = useState<[number, number]>(SWITZERLAND_CENTER);
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const {
+    location: userLocation,
+    locating,
+    error: locationError,
+    locate,
+  } = useLiveLocation();
   const [minBattery, setMinBattery] = useState(0);
   const [tileLayer, setTileLayer] = useState<'dark' | 'light' | 'osm'>('light');
   const [enabledProviders, setEnabledProviders] = useState<Set<string>>(
@@ -97,8 +103,6 @@ export default function Home() {
   const [searchedAddress, setSearchedAddress] = useState<AddressResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [locating, setLocating] = useState(false);
-  const [locationDenied, setLocationDenied] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [responseMeta, setResponseMeta] = useState<ScooterResponse['meta'] | null>(null);
   const [controlsExpanded, setControlsExpanded] = useState(false);
@@ -274,35 +278,10 @@ export default function Home() {
 
   const handleLocateMe = useCallback(() => {
     setShowLocationIntro(false);
-    const focusOn = (coords: [number, number]) => {
+    locate((coords) => {
       setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
-    };
-
-    // The live watch already supplies the blue-marker position. Reusing it
-    // makes this control immediate and avoids a second permission/GPS roundtrip.
-    if (userLocation) {
-      focusOn(userLocation);
-      return;
-    }
-
-    if (!('geolocation' in navigator)) return;
-
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-        setUserLocation(coords);
-        focusOn(coords);
-        setLocating(false);
-        setLocationDenied(false);
-      },
-      (positionError) => {
-        setLocating(false);
-        setLocationDenied(positionError.code === positionError.PERMISSION_DENIED);
-      },
-      { timeout: 10000, enableHighAccuracy: true, maximumAge: 10000 }
-    );
-  }, [userLocation]);
+    });
+  }, [locate]);
 
   const resetFilters = useCallback(() => {
     setMinBattery(0);
@@ -441,9 +420,11 @@ export default function Home() {
         </div>
       )}
 
-      {locationDenied && !locating && !error && (
+      {locationError && !locating && !error && (
         <div className="toast glass toast-location" role="status">
-          {t('errors.locationDenied')}
+          {t(locationError === 'denied'
+            ? 'errors.locationDenied'
+            : 'errors.locationUnavailable')}
         </div>
       )}
 
