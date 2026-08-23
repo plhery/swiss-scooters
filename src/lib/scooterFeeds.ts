@@ -7,6 +7,7 @@ import {
 } from '@/lib/feedCoverage';
 import { boundsContainPoint, haversineM } from '@/lib/geo';
 import type { MapBounds, Vehicle } from '@/lib/types';
+import { legacyRentalLink, normalizeRentalUris } from '@/lib/rentalLinks';
 import { upstreamJsonCache, type CachedJson } from '@/lib/upstreamJsonCache';
 import {
   providerKeyForSystemId,
@@ -43,7 +44,7 @@ interface RawVehicle {
   id?: string;
   is_reserved?: AvailabilityFlag;
   is_disabled?: AvailabilityFlag;
-  rental_uris?: { ios?: string; android?: string };
+  rental_uris?: { ios?: string; android?: string; web?: string };
 }
 
 interface PubliBikeFreeFloatingVehicle {
@@ -235,7 +236,11 @@ function toVehicle(
   if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
   const range = raw.current_range_meters;
-  const rentalUris = raw.rental_uris ?? {};
+  const rentalUris = normalizeRentalUris(
+    provider,
+    raw.rental_uris,
+    raw.hopp_deeplink
+  );
 
   const distance = query.origin
     ? Math.round(haversineM(query.origin[0], query.origin[1], lat, lng) * 10) / 10
@@ -248,7 +253,8 @@ function toVehicle(
     battery: batteryPercent(raw),
     range_m: range != null && Number.isFinite(Number(range)) ? Math.round(Number(range)) : null,
     vehicle_id: vehicleId(systemId, raw),
-    deep_link: raw.hopp_deeplink || rentalUris.ios || rentalUris.android || null,
+    deep_link: legacyRentalLink(rentalUris),
+    rental_uris: rentalUris,
     distance_m: distance,
   };
 }
@@ -620,6 +626,7 @@ async function fetchPubliBikeFreeFloatingVehicles(
       range_m: null,
       vehicle_id: `publibike-freefloating:${raw.id}`,
       deep_link: null,
+      rental_uris: { ios: null, android: null, web: null },
       distance_m: distance,
     });
   }

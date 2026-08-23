@@ -397,7 +397,7 @@ struct ScooterControlDock: View {
                     }
                     .buttonStyle(.glass)
 
-                    if let deepLink = scooter.deepLink, let url = URL(string: deepLink) {
+                    if let url = scooter.rentalURL {
                         Link(destination: url) {
                             Label("Rent", systemImage: "scooter")
                                 .frame(maxWidth: .infinity)

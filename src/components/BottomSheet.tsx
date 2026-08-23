@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS, type Vehicle } from '@/lib/types';
 import { SUPPORTED_LOCALES, useI18n, type AppLocale } from '@/lib/i18n';
+import { browserRentalLink } from '@/lib/rentalLinks';
 import AddressSearch, { type AddressResult } from '@/components/AddressSearch';
 
 export interface SelectedVehicle {
@@ -235,6 +236,11 @@ export default function BottomSheet({
     const destination = `${vehicle.lat},${vehicle.lng}`;
     const range = vehicle.range_m === null ? null : formatDistance(vehicle.range_m);
     const distance = formatDistance(distanceM);
+    const rentalLink = browserRentalLink(
+      vehicle,
+      typeof navigator === 'undefined' ? '' : navigator.userAgent,
+      typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints
+    );
     return (
       <div className="vehicle-card vehicle-card-selected">
         <div className="vehicle-card-head">
@@ -268,11 +274,11 @@ export default function BottomSheet({
           >
             {t('marker.walkThere')}
           </a>
-          {vehicle.deep_link && (
+          {rentalLink && (
             <a
               className="vehicle-action-primary"
               style={{ background: provider?.color ?? 'var(--blue)' }}
-              href={vehicle.deep_link}
+              href={rentalLink}
               target="_blank"
               rel="noreferrer"
             >

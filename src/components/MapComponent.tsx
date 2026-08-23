@@ -8,6 +8,7 @@ import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
 import type { AddressResult } from '@/components/AddressSearch';
 import { haversineM } from '@/lib/geo';
+import { browserRentalLink } from '@/lib/rentalLinks';
 import './map.css';
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -183,11 +184,16 @@ function vehiclePopup(
   directions.rel = 'noopener noreferrer';
   actions.appendChild(directions);
 
-  if (vehicle.deep_link) {
+  const rentalLink = browserRentalLink(
+    vehicle,
+    navigator.userAgent,
+    navigator.maxTouchPoints
+  );
+  if (rentalLink) {
     const link = makeElement('a', 'popup-cta', t('marker.openIn', {
       name: cfg?.name ?? t('marker.app'),
     }));
-    link.href = vehicle.deep_link;
+    link.href = rentalLink;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.style.background = cfg?.color ?? '#0a84ff';

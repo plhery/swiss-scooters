@@ -56,6 +56,11 @@ function nationalResponse(url: string): Response | null {
           lon: 8.542,
           current_fuel_percent: 0.75,
           current_range_meters: 12_000,
+          rental_uris: {
+            ios: 'limebike://vehicle/lime-1',
+            android: 'https://lime.bike/vehicle/lime-1?platform=android',
+            web: 'https://lime.bike/vehicle/lime-1',
+          },
           is_reserved: false,
           is_disabled: false,
         }],
@@ -182,11 +187,26 @@ describe('fetchScooters source health', () => {
 
     expect(result.vehicles).toHaveLength(3);
     expect(result.vehicles).toEqual(expect.arrayContaining([
-      expect.objectContaining({ provider: 'lime', battery: 75, range_m: 12_000 }),
+      expect.objectContaining({
+        provider: 'lime',
+        battery: 75,
+        range_m: 12_000,
+        deep_link: 'https://lime.bike/vehicle/lime-1',
+        rental_uris: {
+          ios: 'limebike://vehicle/lime-1',
+          android: 'https://lime.bike/vehicle/lime-1?platform=android',
+          web: 'https://lime.bike/vehicle/lime-1',
+        },
+      }),
       expect.objectContaining({
         provider: 'hopp',
         battery: 68,
         deep_link: 'https://app.hopp.bike/launch/hopp-1?direct',
+        rental_uris: {
+          ios: 'https://app.hopp.bike/launch/hopp-1?direct',
+          android: 'https://app.hopp.bike/launch/hopp-1?direct',
+          web: 'https://app.hopp.bike/launch/hopp-1?direct',
+        },
       }),
       expect.objectContaining({
         provider: 'publibike',
@@ -237,6 +257,7 @@ describe('fetchScooters source health', () => {
       range_m: null,
       vehicle_id: 'publibike-freefloating:zurich-1',
       deep_link: null,
+      rental_uris: { ios: null, android: null, web: null },
       distance_m: expect.any(Number),
     }]);
     expect(result.meta).toEqual({

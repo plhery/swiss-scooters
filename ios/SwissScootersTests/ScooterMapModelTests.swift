@@ -161,6 +161,7 @@ final class ScooterMapModelTests: XCTestCase {
             rangeMeters: nil,
             vehicleID: "selected",
             deepLink: nil,
+            rentalURIs: nil,
             distanceMeters: 0
         )
         let api = StubScooterAPI(response: ScooterResponse(vehicles: [scooter]))
@@ -302,6 +303,7 @@ final class ScooterMapModelTests: XCTestCase {
             rangeMeters: nil,
             vehicleID: id,
             deepLink: nil,
+            rentalURIs: nil,
             distanceMeters: 0
         )
     }

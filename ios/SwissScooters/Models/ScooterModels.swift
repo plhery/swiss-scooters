@@ -11,6 +11,7 @@ struct Scooter: Identifiable, Hashable, Sendable {
     let rangeMeters: Int?
     let vehicleID: String?
     let deepLink: String?
+    let rentalURIs: ScooterRentalURIs?
     let distanceMeters: Double?
 
     var id: String {
@@ -46,10 +47,100 @@ struct Scooter: Identifiable, Hashable, Sendable {
         return Self.formattedLength(meters: Double(rangeMeters))
     }
 
+    var rentalURL: URL? {
+        ScooterRentalLinkPolicy.rentalURL(
+            provider: provider,
+            rentalURIs: rentalURIs,
+            legacyLink: deepLink
+        )
+    }
+
     private static func formattedLength(meters: Double) -> String {
         Measurement(value: meters, unit: UnitLength.meters).formatted(
             .measurement(width: .abbreviated, usage: .road)
         )
+    }
+}
+
+struct ScooterRentalURIs: Hashable, Sendable {
+    let ios: String?
+    let android: String?
+    let web: String?
+}
+
+enum ScooterRentalLinkPolicy {
+    private struct ProviderPolicy {
+        let schemes: Set<String>
+        let httpsHosts: Set<String>
+    }
+
+    private static let policies: [String: ProviderPolicy] = [
+        "bolt": ProviderPolicy(
+            schemes: ["bolt"],
+            httpsHosts: ["bolt.eu", "bolt.com"]
+        ),
+        "bird": ProviderPolicy(
+            schemes: ["bird"],
+            httpsHosts: ["bird.co", "birdapp.com", "birdapp.app.link"]
+        ),
+        "dott": ProviderPolicy(
+            schemes: ["dott", "ridedott"],
+            httpsHosts: ["ridedott.com"]
+        ),
+        "hopp": ProviderPolicy(
+            schemes: ["hopp"],
+            httpsHosts: ["hopp.bike"]
+        ),
+        "lime": ProviderPolicy(
+            schemes: ["lime", "limebike"],
+            httpsHosts: ["li.me", "lime.bike", "limebike.com"]
+        ),
+        "voi": ProviderPolicy(
+            schemes: ["voiapp"],
+            httpsHosts: ["voi.com", "voiscooters.com", "lqfa.adj.st"]
+        ),
+        "publibike": ProviderPolicy(
+            schemes: ["publibike", "velospot"],
+            httpsHosts: ["publibike.ch", "velospot.info"]
+        )
+    ]
+
+    static func rentalURL(
+        provider: String,
+        rentalURIs: ScooterRentalURIs?,
+        legacyLink: String?
+    ) -> URL? {
+        for candidate in [rentalURIs?.ios, rentalURIs?.web, legacyLink] {
+            if let url = safeURL(provider: provider, value: candidate) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    static func safeURL(provider: String, value: String?) -> URL? {
+        guard let value else { return nil }
+        let candidate = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty,
+              candidate.utf8.count <= 2_048,
+              !candidate.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              let policy = policies[provider],
+              let components = URLComponents(string: candidate),
+              components.user == nil,
+              components.password == nil,
+              let scheme = components.scheme?.lowercased() else { return nil }
+
+        if scheme == "https" {
+            guard components.port == nil,
+                  let hostname = components.host?.lowercased(),
+                  policy.httpsHosts.contains(where: { allowedHost in
+                      hostname == allowedHost || hostname.hasSuffix(".\(allowedHost)")
+                  }) else { return nil }
+        } else if !policy.schemes.contains(scheme) {
+            return nil
+        }
+
+        return components.url
     }
 }
 
@@ -167,6 +258,9 @@ extension ScooterVehiclePayload {
             rangeMeters: rangeMeters,
             vehicleID: vehicleID,
             deepLink: deepLink,
+            rentalURIs: rentalURIs.map {
+                ScooterRentalURIs(ios: $0.ios, android: $0.android, web: $0.web)
+            },
             distanceMeters: distanceMeters
         )
     }

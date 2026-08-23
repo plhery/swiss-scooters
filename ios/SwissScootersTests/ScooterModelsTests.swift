@@ -13,7 +13,12 @@ final class ScooterModelsTests: XCTestCase {
             "battery": 82,
             "range_m": 12345,
             "vehicle_id": "abc-123",
-            "deep_link": "lime://vehicle/abc-123",
+            "deep_link": "https://lime.bike/vehicle/abc-123",
+            "rental_uris": {
+              "ios": "limebike://vehicle/abc-123",
+              "android": "https://lime.bike/vehicle/abc-123?platform=android",
+              "web": "https://lime.bike/vehicle/abc-123"
+            },
             "distance_m": 250.5
           }],
           "clusters": [],
@@ -39,7 +44,8 @@ final class ScooterModelsTests: XCTestCase {
         XCTAssertEqual(scooter.providerInfo, .lime)
         XCTAssertEqual(scooter.battery, 82)
         XCTAssertEqual(scooter.rangeMeters, 12_345)
-        XCTAssertEqual(scooter.deepLink, "lime://vehicle/abc-123")
+        XCTAssertEqual(scooter.deepLink, "https://lime.bike/vehicle/abc-123")
+        XCTAssertEqual(scooter.rentalURL?.absoluteString, "limebike://vehicle/abc-123")
     }
 
     func testCoordinateIdentityIsUsedWhenVehicleIDIsMissing() throws {
@@ -76,6 +82,45 @@ final class ScooterModelsTests: XCTestCase {
         XCTAssertFalse(ScooterClusteringPolicy.representationsMatch(14, 15))
     }
 
+    func testRentalLinkPolicyUsesTheIOSLinkAndNeverTheAndroidLink() {
+        let rentalURIs = ScooterRentalURIs(
+            ios: "https://go.ridedott.com/vehicles/1?platform=ios",
+            android: "https://go.ridedott.com/vehicles/1?platform=android",
+            web: nil
+        )
+
+        let url = ScooterRentalLinkPolicy.rentalURL(
+            provider: "dott",
+            rentalURIs: rentalURIs,
+            legacyLink: nil
+        )
+
+        XCTAssertEqual(
+            url?.absoluteString,
+            "https://go.ridedott.com/vehicles/1?platform=ios"
+        )
+        XCTAssertFalse(url?.absoluteString.contains("platform=android") == true)
+    }
+
+    func testRentalLinkPolicyRejectsUnsafeAndCrossProviderURLs() {
+        XCTAssertNil(ScooterRentalLinkPolicy.safeURL(
+            provider: "lime",
+            value: "javascript:alert(1)"
+        ))
+        XCTAssertNil(ScooterRentalLinkPolicy.safeURL(
+            provider: "lime",
+            value: "bolt://action/rent"
+        ))
+        XCTAssertNil(ScooterRentalLinkPolicy.safeURL(
+            provider: "hopp",
+            value: "https://app.hopp.bike.example.com/launch/1"
+        ))
+        XCTAssertNil(ScooterRentalLinkPolicy.safeURL(
+            provider: "hopp",
+            value: "https://user@app.hopp.bike/launch/1"
+        ))
+    }
+
     private func makeScooter(
         provider: String = "lime",
         latitude: Double = 47.3769,
@@ -92,6 +137,7 @@ final class ScooterModelsTests: XCTestCase {
             rangeMeters: rangeMeters,
             vehicleID: vehicleID,
             deepLink: nil,
+            rentalURIs: nil,
             distanceMeters: serverDistance
         )
     }

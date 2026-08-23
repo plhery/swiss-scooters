@@ -32,6 +32,32 @@
       "type": "string",
       "enum": ["vehicles", "clusters"]
     },
+    "RentalUris": {
+      "x-swift-name": "ScooterRentalURIsPayload",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ios", "android", "web"],
+      "properties": {
+        "ios": {
+          "anyOf": [
+            { "type": "string", "format": "uri" },
+            { "type": "null" }
+          ]
+        },
+        "android": {
+          "anyOf": [
+            { "type": "string", "format": "uri" },
+            { "type": "null" }
+          ]
+        },
+        "web": {
+          "anyOf": [
+            { "type": "string", "format": "uri" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
     "Vehicle": {
       "x-swift-name": "ScooterVehiclePayload",
       "type": "object",
@@ -86,6 +112,10 @@
             { "type": "string", "format": "uri" },
             { "type": "null" }
           ]
+        },
+        "rental_uris": {
+          "x-swift-name": "rentalURIs",
+          "$ref": "#/$defs/RentalUris"
         },
         "distance_m": {
           "x-swift-name": "distanceMeters",

@@ -5,6 +5,12 @@ export type FeedSourceStatus = "fresh" | "stale" | "partial" | "failed" | "skipp
 
 export type ScooterResponseMode = "vehicles" | "clusters";
 
+export interface RentalUris {
+  ios: string | null;
+  android: string | null;
+  web: string | null;
+}
+
 export interface Vehicle {
   provider: string;
   lat: number;
@@ -13,6 +19,7 @@ export interface Vehicle {
   range_m: number | null;
   vehicle_id: string | null;
   deep_link: string | null;
+  rental_uris?: RentalUris;
   distance_m: number | null;
 }
 

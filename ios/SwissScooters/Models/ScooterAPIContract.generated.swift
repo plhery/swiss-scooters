@@ -16,6 +16,12 @@ enum ScooterResponseModePayload: String, Decodable, Sendable {
     case clusters = "clusters"
 }
 
+struct ScooterRentalURIsPayload: Decodable, Sendable {
+    let ios: String?
+    let android: String?
+    let web: String?
+}
+
 struct ScooterVehiclePayload: Decodable, Sendable {
     let provider: String
     let latitude: Double
@@ -24,6 +30,7 @@ struct ScooterVehiclePayload: Decodable, Sendable {
     let rangeMeters: Int?
     let vehicleID: String?
     let deepLink: String?
+    let rentalURIs: ScooterRentalURIsPayload?
     let distanceMeters: Double?
 
     private enum CodingKeys: String, CodingKey {
@@ -34,6 +41,7 @@ struct ScooterVehiclePayload: Decodable, Sendable {
         case rangeMeters = "range_m"
         case vehicleID = "vehicle_id"
         case deepLink = "deep_link"
+        case rentalURIs = "rental_uris"
         case distanceMeters = "distance_m"
     }
 }

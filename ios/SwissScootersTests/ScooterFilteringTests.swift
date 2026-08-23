@@ -110,6 +110,7 @@ final class ScooterFilteringTests: XCTestCase {
             rangeMeters: nil,
             vehicleID: id,
             deepLink: nil,
+            rentalURIs: nil,
             distanceMeters: 0
         )
     }
