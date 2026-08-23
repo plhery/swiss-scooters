@@ -85,6 +85,10 @@ struct ScooterMapView: UIViewRepresentable {
         private var clusteringEnabled: Bool?
         private var appliedDestination: MapDestination?
         private var destinationAnnotation: SearchedAddressAnnotation?
+        private var directTapSelectionID: String?
+        private var suppressMapKitSelectionUntil: TimeInterval = 0
+
+        static let mapKitTapResolutionGracePeriod: TimeInterval = 1
 
         init(parent: ScooterMapView) {
             self.parent = parent
@@ -201,7 +205,9 @@ struct ScooterMapView: UIViewRepresentable {
         func updateClusteringMode(on mapView: MKMapView) {
             guard mapView.bounds.width > 0, mapView.visibleMapRect.width > 0 else { return }
 
-            let shouldCluster = shouldUseLocalClustering(on: mapView)
+            let shouldCluster = !parent.usesServerClusters && ScooterClusteringPolicy.shouldCluster(
+                at: Self.zoomLevel(on: mapView)
+            )
             guard shouldCluster != clusteringEnabled else { return }
             clusteringEnabled = shouldCluster
 
@@ -267,16 +273,11 @@ struct ScooterMapView: UIViewRepresentable {
                 withIdentifier: ScooterAnnotationView.reuseIdentifier,
                 for: annotation
             ) as! ScooterAnnotationView
-            view.setClusteringEnabled(shouldUseLocalClustering(on: mapView))
+            view.setClusteringEnabled(ScooterClusteringPolicy.shouldCluster(
+                at: Self.zoomLevel(on: mapView)
+            ))
             view.refreshAppearance()
             return view
-        }
-
-        private func shouldUseLocalClustering(on mapView: MKMapView) -> Bool {
-            !parent.usesServerClusters && ScooterClusteringPolicy.shouldClusterLocally(
-                at: Self.zoomLevel(on: mapView),
-                scooterCount: parent.scooters.count
-            )
         }
 
         private static func zoomLevel(on mapView: MKMapView) -> Double {
@@ -286,17 +287,22 @@ struct ScooterMapView: UIViewRepresentable {
         }
 
         @objc func handleMapTap(_ gestureRecognizer: UITapGestureRecognizer) {
-            guard let mapView = gestureRecognizer.view as? MKMapView,
-                  let annotation = scooterAnnotation(
-                      at: gestureRecognizer.location(in: mapView),
-                      on: mapView
-                  ) else { return }
-
-            publishSelection(annotation)
-            mapView.selectAnnotation(
-                annotation,
-                animated: !UIAccessibility.isReduceMotionEnabled
+            guard let mapView = gestureRecognizer.view as? MKMapView else { return }
+            let annotation = scooterAnnotation(
+                at: gestureRecognizer.location(in: mapView),
+                on: mapView
             )
+            registerDirectMapTap(selectionID: annotation?.scooter.id)
+
+            if let annotation {
+                publishSelection(annotation)
+                mapView.selectAnnotation(
+                    annotation,
+                    animated: !UIAccessibility.isReduceMotionEnabled
+                )
+            } else {
+                clearSelection(on: mapView)
+            }
         }
 
         func gestureRecognizer(
@@ -340,6 +346,36 @@ struct ScooterMapView: UIViewRepresentable {
             parent.onSelectionChange(scooterID)
         }
 
+        func clearSelection(on mapView: MKMapView) {
+            guard appliedSelectionID != nil else { return }
+            appliedSelectionID = nil
+            for annotation in mapView.selectedAnnotations where annotation is ScooterMapAnnotation {
+                mapView.deselectAnnotation(annotation, animated: false)
+            }
+            parent.onSelectionChange(nil)
+        }
+
+        private func registerDirectMapTap(selectionID: String?) {
+            directTapSelectionID = selectionID
+            suppressMapKitSelectionUntil = ProcessInfo.processInfo.systemUptime +
+                Self.mapKitTapResolutionGracePeriod
+        }
+
+        static func shouldSuppressMapKitSelection(
+            candidateID: String,
+            intendedID: String?,
+            until deadline: TimeInterval,
+            now: TimeInterval
+        ) -> Bool {
+            now < deadline && candidateID != intendedID
+        }
+
+        private func restoreDirectSelection(on mapView: MKMapView) {
+            guard let directTapSelectionID,
+                  let annotation = annotationsByID[directTapSelectionID] else { return }
+            mapView.selectAnnotation(annotation, animated: false)
+        }
+
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
             if let cluster = view.annotation as? ScooterServerClusterAnnotation {
                 let span = mapView.region.span
@@ -364,10 +400,26 @@ struct ScooterMapView: UIViewRepresentable {
             }
 
             guard let annotation = view.annotation as? ScooterMapAnnotation else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            if Self.shouldSuppressMapKitSelection(
+                candidateID: annotation.scooter.id,
+                intendedID: directTapSelectionID,
+                until: suppressMapKitSelectionUntil,
+                now: now
+            ) {
+                mapView.deselectAnnotation(annotation, animated: false)
+                restoreDirectSelection(on: mapView)
+                return
+            }
+            if now >= suppressMapKitSelectionUntil {
+                directTapSelectionID = nil
+                suppressMapKitSelectionUntil = 0
+            }
             publishSelection(annotation)
         }
 
         func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
+            guard ProcessInfo.processInfo.systemUptime >= suppressMapKitSelectionUntil else { return }
             guard let annotation = view.annotation as? ScooterMapAnnotation,
                   appliedSelectionID == annotation.scooter.id else { return }
             appliedSelectionID = nil

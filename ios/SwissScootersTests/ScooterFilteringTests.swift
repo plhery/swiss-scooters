@@ -80,25 +80,6 @@ final class ScooterFilteringTests: XCTestCase {
         XCTAssertFalse(ScooterClusteringPolicy.shouldCluster(at: 20))
     }
 
-    func testDenseVehicleResponsesStayLocallyClusteredUntilScootersAreSeparable() {
-        XCTAssertFalse(ScooterClusteringPolicy.shouldClusterLocally(
-            at: 16,
-            scooterCount: ScooterClusteringPolicy.denseLocalClusterMinimumCount - 1
-        ))
-        XCTAssertTrue(ScooterClusteringPolicy.shouldClusterLocally(
-            at: 16,
-            scooterCount: ScooterClusteringPolicy.denseLocalClusterMinimumCount
-        ))
-        XCTAssertTrue(ScooterClusteringPolicy.shouldClusterLocally(
-            at: ScooterClusteringPolicy.maximumDenseLocalClusterZoom,
-            scooterCount: 353
-        ))
-        XCTAssertFalse(ScooterClusteringPolicy.shouldClusterLocally(
-            at: ScooterClusteringPolicy.maximumDenseLocalClusterZoom + 0.01,
-            scooterCount: 353
-        ))
-    }
-
     @MainActor
     func testAnnotationPinsCannotBeHiddenByCollisions() {
         let view = ScooterAnnotationView(annotation: nil, reuseIdentifier: nil)
@@ -112,6 +93,64 @@ final class ScooterFilteringTests: XCTestCase {
         XCTAssertEqual(view.collisionMode, .circle)
         XCTAssertEqual(view.displayPriority, .defaultHigh)
         XCTAssertEqual(view.clusteringIdentifier, ScooterAnnotationView.clusteringIdentifier)
+    }
+
+    @MainActor
+    func testDelayedMapKitSelectionCannotReplaceTheDirectTapTarget() {
+        let deadline = 11.0
+
+        XCTAssertTrue(ScooterMapView.Coordinator.shouldSuppressMapKitSelection(
+            candidateID: "voi:underneath",
+            intendedID: "lime:tapped",
+            until: deadline,
+            now: 10.5
+        ))
+        XCTAssertFalse(ScooterMapView.Coordinator.shouldSuppressMapKitSelection(
+            candidateID: "lime:tapped",
+            intendedID: "lime:tapped",
+            until: deadline,
+            now: 10.5
+        ))
+        XCTAssertFalse(ScooterMapView.Coordinator.shouldSuppressMapKitSelection(
+            candidateID: "voi:underneath",
+            intendedID: "lime:tapped",
+            until: deadline,
+            now: deadline
+        ))
+        XCTAssertTrue(ScooterMapView.Coordinator.shouldSuppressMapKitSelection(
+            candidateID: "voi:late",
+            intendedID: nil,
+            until: deadline,
+            now: 10.5
+        ))
+    }
+
+    @MainActor
+    func testMapBackgroundTapClearsSelectionSynchronously() {
+        var selectionChanges: [String?] = []
+        let parent = ScooterMapView(
+            scooters: [],
+            scooterRevision: 0,
+            clusters: [],
+            clusterRevision: 0,
+            usesServerClusters: false,
+            mapStyle: .standard,
+            showsUserLocation: false,
+            focusRequest: nil,
+            destination: nil,
+            selectedScooterID: nil,
+            onRegionChange: { _, _ in },
+            onSelectionChange: { selectionChanges.append($0) }
+        )
+        let coordinator = ScooterMapView.Coordinator(parent: parent)
+        let mapView = MKMapView()
+        coordinator.applySelection("lime:tapped", on: mapView)
+
+        coordinator.clearSelection(on: mapView)
+        coordinator.clearSelection(on: mapView)
+
+        XCTAssertEqual(selectionChanges.count, 1)
+        XCTAssertNil(selectionChanges[0])
     }
 
     private func scooter(
