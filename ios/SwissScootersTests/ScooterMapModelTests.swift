@@ -271,6 +271,37 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(ScooterLocationPolicy.bestCandidate(in: [fallback, stale, preferred]) === preferred)
     }
 
+    func testUserLocationFocusUsesThreeAdditionalZoomLevels() throws {
+        let locationManager = CLLocationManager()
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: locationManager,
+            defaults: isolatedDefaults()
+        )
+        let location = CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 47.3769, longitude: 8.5417),
+            altitude: 0,
+            horizontalAccuracy: 25,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )
+        let expectedFocusMeters: CLLocationDistance = 850 / pow(2, 3)
+
+        model.locationManager(locationManager, didUpdateLocations: [location])
+
+        let openingFocus = try XCTUnwrap(model.focusRequest)
+        XCTAssertEqual(openingFocus.latitudinalMeters, expectedFocusMeters, accuracy: 0.001)
+        XCTAssertEqual(openingFocus.longitudinalMeters, expectedFocusMeters, accuracy: 0.001)
+        XCTAssertEqual(model.viewportZoom, 19)
+
+        model.focusOnUser()
+
+        let buttonFocus = try XCTUnwrap(model.focusRequest)
+        XCTAssertNotEqual(buttonFocus.token, openingFocus.token)
+        XCTAssertEqual(buttonFocus.latitudinalMeters, expectedFocusMeters, accuracy: 0.001)
+        XCTAssertEqual(buttonFocus.longitudinalMeters, expectedFocusMeters, accuracy: 0.001)
+    }
+
     func testOnlyDeniedLocationAccessOffersASettingsShortcut() {
         XCTAssertTrue(LocationAuthorizationIssue.denied.canOpenSettings)
         XCTAssertFalse(LocationAuthorizationIssue.restricted.canOpenSettings)

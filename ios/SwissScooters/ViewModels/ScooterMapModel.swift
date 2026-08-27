@@ -148,6 +148,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     private static let minimumBatteryKey = "minimum-battery"
     private static let mapStyleKey = "apple-map-style"
     private static let locationTimeout: Duration = .seconds(5)
+    private static let userFocusZoomIncrease = 3
+    private static let userFocusMeters: CLLocationDistance = 850 / pow(
+        2,
+        Double(userFocusZoomIncrease)
+    )
+    private static let userFocusZoom = 16 + userFocusZoomIncrease
 
     override convenience init() {
         self.init(api: ScooterAPI(), locationManager: CLLocationManager(), defaults: .standard)
@@ -314,8 +320,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     func focusOnUser() {
         if let userLocation {
-            focusToken += 1
-            focusRequest = MapFocusRequest(point: userLocation, token: focusToken)
+            requestUserFocus(at: userLocation)
         } else {
             isLocating = true
             requestLocationAccess()
@@ -611,22 +616,31 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         isLocating = false
 
         if !hadLocation {
-            focusToken += 1
-            focusRequest = MapFocusRequest(point: nextLocation, token: focusToken)
+            requestUserFocus(at: nextLocation)
             distanceOrigin = nextLocation
 
             let focusedRegion = MKCoordinateRegion(
                 center: nextLocation.coordinate,
-                latitudinalMeters: 850,
-                longitudinalMeters: 850
+                latitudinalMeters: Self.userFocusMeters,
+                longitudinalMeters: Self.userFocusMeters
             )
             let focusedViewport = GeoBounds(region: focusedRegion)
             viewport = focusedViewport
-            viewportZoom = 16
+            viewportZoom = Self.userFocusZoom
             fetchIfNeeded(for: focusedViewport, zoom: viewportZoom)
         } else if Self.distance(from: distanceOrigin, to: nextLocation) >= max(75, location.horizontalAccuracy) {
             distanceOrigin = nextLocation
         }
+    }
+
+    private func requestUserFocus(at point: GeoPoint) {
+        focusToken += 1
+        focusRequest = MapFocusRequest(
+            point: point,
+            token: focusToken,
+            latitudinalMeters: Self.userFocusMeters,
+            longitudinalMeters: Self.userFocusMeters
+        )
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
