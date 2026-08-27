@@ -46,6 +46,7 @@ const en = {
   'map.osm': 'OSM',
   'language.title': 'Language',
   'status.updatingLocation': 'Updating location…',
+  'status.refreshed': 'Scooters refreshed',
   'status.retry': 'Retry',
   'errors.fetchScooters': 'Unable to load scooters',
   'errors.locationDenied': 'Location access is off. You can still search or browse the map.',
@@ -71,6 +72,8 @@ const en = {
   'search.noResults': 'No Swiss addresses found',
   'search.error': 'Address search is unavailable',
   'search.results': 'Address suggestions',
+  'empty.filtered': 'No scooters match these filters here.',
+  'empty.area': 'No scooters on this part of the map.',
   'links.privacy': 'Privacy',
 } as const;
 
@@ -120,6 +123,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'map.osm': 'OSM',
     'language.title': 'Sprache',
     'status.updatingLocation': 'Standort wird aktualisiert…',
+    'status.refreshed': 'Scooter aktualisiert',
     'status.retry': 'Erneut versuchen',
     'errors.fetchScooters': 'Scooter konnten nicht geladen werden',
     'errors.locationDenied': 'Der Standortzugriff ist deaktiviert. Du kannst weiterhin suchen oder die Karte durchsuchen.',
@@ -145,6 +149,8 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'search.noResults': 'Keine Schweizer Adressen gefunden',
     'search.error': 'Die Adresssuche ist nicht verfügbar',
     'search.results': 'Adressvorschläge',
+    'empty.filtered': 'Hier passen keine Scooter zu diesen Filtern.',
+    'empty.area': 'In diesem Kartenausschnitt sind keine Scooter verfügbar.',
     'links.privacy': 'Datenschutz',
   },
   fr: {
@@ -188,6 +194,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'map.osm': 'OSM',
     'language.title': 'Langue',
     'status.updatingLocation': 'Actualisation de la position…',
+    'status.refreshed': 'Trottinettes actualisées',
     'status.retry': 'Réessayer',
     'errors.fetchScooters': 'Impossible de charger les trottinettes',
     'errors.locationDenied': "L’accès à la position est désactivé. Vous pouvez toujours rechercher ou parcourir la carte.",
@@ -213,6 +220,8 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'search.noResults': 'Aucune adresse suisse trouvée',
     'search.error': "La recherche d’adresse est indisponible",
     'search.results': 'Suggestions d’adresses',
+    'empty.filtered': 'Aucune trottinette ne correspond à ces filtres ici.',
+    'empty.area': 'Aucune trottinette dans cette zone de la carte.',
     'links.privacy': 'Confidentialité',
   },
   it: {
@@ -256,6 +265,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'map.osm': 'OSM',
     'language.title': 'Lingua',
     'status.updatingLocation': 'Aggiornamento della posizione…',
+    'status.refreshed': 'Monopattini aggiornati',
     'status.retry': 'Riprova',
     'errors.fetchScooters': 'Impossibile caricare i monopattini',
     'errors.locationDenied': 'L’accesso alla posizione è disattivato. Puoi comunque cercare o esplorare la mappa.',
@@ -281,6 +291,8 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'search.noResults': 'Nessun indirizzo svizzero trovato',
     'search.error': 'La ricerca indirizzo non è disponibile',
     'search.results': 'Suggerimenti di indirizzi',
+    'empty.filtered': 'Nessun monopattino corrisponde a questi filtri qui.',
+    'empty.area': 'Nessun monopattino in questa zona della mappa.',
     'links.privacy': 'Privacy',
   },
 };

@@ -161,7 +161,7 @@ export default function Home() {
 
   const fetchScooters = useCallback(async (requestedQuery?: ScooterMapQuery) => {
     const query = requestedQuery ?? mapQueryRef.current;
-    if (!query) return;
+    if (!query) return false;
     const { bounds, zoom } = query;
 
     requestRef.current?.controller.abort();
@@ -194,10 +194,12 @@ export default function Home() {
       const updatedAt = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt;
       lastUpdatedRef.current = updatedAt.getTime();
       setLastUpdated(updatedAt);
+      return true;
     } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
+      if ((e as Error).name === 'AbortError') return false;
       console.error('Failed to fetch scooters:', e);
       setError(true);
+      return false;
     } finally {
       if (requestRef.current?.id === request.id) {
         requestRef.current = null;
@@ -432,7 +434,7 @@ export default function Home() {
         loading={loading}
         hidden={controlsExpanded}
         onLocateMe={handleLocateMe}
-        onRefresh={() => void fetchScooters()}
+        onRefresh={() => fetchScooters()}
       />
 
       <BottomSheet
@@ -451,7 +453,10 @@ export default function Home() {
         onShowAllProviders={handleShowAllProviders}
         onProviderToggle={handleProviderToggle}
         onTileLayerChange={setTileLayer}
-        onExpandedChange={setControlsExpanded}
+        onExpandedChange={expanded => {
+          setControlsExpanded(expanded);
+          if (expanded) setShowLocationIntro(false);
+        }}
         onClearSelection={() => setSelectedVehicleKey(null)}
         onResetFilters={resetFilters}
       />

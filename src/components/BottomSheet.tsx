@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { PROVIDERS, type Vehicle } from '@/lib/types';
 import { SUPPORTED_LOCALES, useI18n, type AppLocale } from '@/lib/i18n';
@@ -53,6 +53,17 @@ function useDesktopPanel() {
     () => window.matchMedia(DESKTOP_PANEL_QUERY).matches,
     () => false
   );
+}
+
+function useCurrentTime() {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return now;
 }
 
 function SliderRow({
@@ -111,6 +122,7 @@ export default function BottomSheet({
   const { locale, setLocale, t, formatNumber } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [peekH, setPeekH] = useState(160);
+  const now = useCurrentTime();
   const desktopPanel = useDesktopPanel();
   const controlsVisible = desktopPanel || expanded;
   const providerKeys = Object.keys(PROVIDERS);
@@ -208,16 +220,22 @@ export default function BottomSheet({
     sheet.style.transform = '';
   };
 
+  const updatedAgeMs = lastUpdated ? Math.max(0, now - lastUpdated.getTime()) : null;
   const updatedLabel = loading
     ? t('sheet.updating')
-    : lastUpdated
-      ? t('sheet.updated', {
-          time: lastUpdated.toLocaleTimeString(`${locale}-CH`, {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        })
+    : lastUpdated && updatedAgeMs !== null
+      ? updatedAgeMs < 60_000
+        ? t('sheet.justNow')
+        : updatedAgeMs < 60 * 60_000
+          ? t('sheet.minutesAgo', { count: Math.max(1, Math.floor(updatedAgeMs / 60_000)) })
+          : t('sheet.updated', {
+              time: lastUpdated.toLocaleTimeString(`${locale}-CH`, {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            })
       : t('sheet.onMap');
+  const showsFreshness = !loading && !dataHealthNotice && updatedAgeMs !== null && updatedAgeMs < 90_000;
 
   const formatDistance = (meters: number | null) => {
     if (meters === null) return null;
@@ -334,7 +352,8 @@ export default function BottomSheet({
                 </div>
               )}
               <div className="sheet-sub">
-                {hasActiveFilters ? `${t('filters.active')} · ${updatedLabel}` : updatedLabel}
+                {showsFreshness && <span className="freshness-dot" aria-hidden="true" />}
+                <span>{hasActiveFilters ? `${t('filters.active')} · ${updatedLabel}` : updatedLabel}</span>
               </div>
               {dataHealthNotice && (
                 <div className="sheet-health" role="status">
@@ -354,41 +373,56 @@ export default function BottomSheet({
         {selectedVehicle ? (
           <div className="selected-vehicle-wrap">{selectedVehicleDetails(selectedVehicle)}</div>
         ) : (
-          <div className="chips" role="group" aria-label={t('providers.filter')}>
-            <button
-              className={`chip ${allProvidersSelected ? '' : 'chip-off'}`}
-              style={allProvidersSelected ? { background: 'rgba(10, 132, 255, 0.12)' } : undefined}
-              onClick={onShowAllProviders}
-              aria-pressed={allProvidersSelected}
-              aria-label={t('providers.allLabel', { count: formatNumber(allProviderCount) })}
-              title={t('providers.showAll')}
-            >
-              <span className="chip-dot chip-dot-all" aria-hidden="true" />
-              {t('providers.all')}
-              <span className="chip-count">{formatNumber(allProviderCount)}</span>
-            </button>
-            {Object.entries(PROVIDERS).map(([key, provider]) => {
-              const selected = enabledProviders.has(key);
-              return (
-                <button
-                  key={key}
-                  className={`chip ${selected ? '' : 'chip-off'}`}
-                  style={selected && !allProvidersSelected ? { background: `${provider.color}1f` } : undefined}
-                  onClick={() => onProviderToggle(key)}
-                  aria-pressed={selected}
-                  aria-label={t('providers.toggleLabel', {
-                    name: provider.name,
-                    count: formatNumber(providerCounts[key] ?? 0),
-                    state: t(selected ? 'providers.selected' : 'providers.notSelected'),
-                  })}
-                >
-                  <span className="chip-dot" style={{ background: provider.color }} aria-hidden="true" />
-                  {provider.name}
-                  <span className="chip-count">{formatNumber(providerCounts[key] ?? 0)}</span>
-                </button>
-              );
-            })}
-          </div>
+          <>
+            <div className="chips" role="group" aria-label={t('providers.filter')}>
+              <button
+                className={`chip ${allProvidersSelected ? '' : 'chip-off'}`}
+                style={allProvidersSelected ? { background: 'rgba(10, 132, 255, 0.12)' } : undefined}
+                onClick={onShowAllProviders}
+                aria-pressed={allProvidersSelected}
+                aria-label={t('providers.allLabel', { count: formatNumber(allProviderCount) })}
+                title={t('providers.showAll')}
+              >
+                <span className="chip-dot chip-dot-all" aria-hidden="true" />
+                {t('providers.all')}
+                <span className="chip-count">{formatNumber(allProviderCount)}</span>
+              </button>
+              {Object.entries(PROVIDERS).map(([key, provider]) => {
+                const selected = enabledProviders.has(key);
+                return (
+                  <button
+                    key={key}
+                    className={`chip ${selected ? '' : 'chip-off'}`}
+                    style={selected && !allProvidersSelected ? { background: `${provider.color}1f` } : undefined}
+                    onClick={() => onProviderToggle(key)}
+                    aria-pressed={selected}
+                    aria-label={t('providers.toggleLabel', {
+                      name: provider.name,
+                      count: formatNumber(providerCounts[key] ?? 0),
+                      state: t(selected ? 'providers.selected' : 'providers.notSelected'),
+                    })}
+                  >
+                    <span className="chip-dot" style={{ background: provider.color }} aria-hidden="true" />
+                    {provider.name}
+                    <span className="chip-count">{formatNumber(providerCounts[key] ?? 0)}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {!loading && totalCount === 0 && (
+              <div className="empty-hint" role="status">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+                <span>{t(hasActiveFilters ? 'empty.filtered' : 'empty.area')}</span>
+                {hasActiveFilters && (
+                  <button type="button" onClick={onResetFilters}>{t('filters.reset')}</button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

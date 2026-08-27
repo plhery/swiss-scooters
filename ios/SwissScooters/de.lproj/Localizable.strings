@@ -25,6 +25,8 @@
 "On this map" = "Auf dieser Karte";
 "Go to my location" = "Zu meinem Standort";
 "Refresh scooters" = "Scooter aktualisieren";
+"Scooters refreshed" = "Scooter aktualisiert";
+"Just now" = "Gerade eben";
 "Standard" = "Standard";
 "Quiet" = "Ruhig";
 "Satellite" = "Satellit";
@@ -69,3 +71,5 @@
 "Close scooter details" = "Scooter-Details schliessen";
 "Reset filters" = "Filter zurücksetzen";
 "Scooters without battery data are hidden." = "Scooter ohne Akkuangabe werden ausgeblendet.";
+"No scooters match these filters here." = "Hier passen keine Scooter zu diesen Filtern.";
+"No scooters on this part of the map." = "In diesem Kartenausschnitt sind keine Scooter verfügbar.";

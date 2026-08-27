@@ -8,6 +8,7 @@ struct ScooterMapScreen: View {
     @State private var showLocationIntro = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         GeometryReader { proxy in
@@ -90,6 +91,12 @@ struct ScooterMapScreen: View {
                 model.becameActive()
             }
         }
+        .onChange(of: controlsExpanded) { _, expanded in
+            if expanded {
+                showLocationIntro = false
+            }
+        }
+        .sensoryFeedback(.selection, trigger: model.selectedScooterID)
     }
 
     @ViewBuilder
@@ -144,30 +151,44 @@ struct ScooterMapScreen: View {
                 Text("Find a scooter nearby")
                     .font(.headline)
                 Text("Use your location for nearby distances, or search any Swiss address.")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 8) {
-                Button("Use my location") {
-                    showLocationIntro = false
-                    model.focusOnUser()
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 8) {
+                    locationIntroActions
                 }
-                .buttonStyle(.glassProminent)
-
-                Button("Browse Switzerland") {
-                    showLocationIntro = false
-                    model.focusOnSwitzerland()
+            } else {
+                HStack(spacing: 8) {
+                    locationIntroActions
                 }
-                .buttonStyle(.glass)
             }
-            .font(.caption.weight(.semibold))
         }
         .padding(16)
         .frame(maxWidth: 390, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: .black.opacity(0.14), radius: 16, y: 7)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.14), radius: 12, y: 6)
+    }
+
+    @ViewBuilder
+    private var locationIntroActions: some View {
+        Button("Use my location") {
+            showLocationIntro = false
+            model.focusOnUser()
+        }
+        .buttonStyle(.glassProminent)
+        .font(.caption.weight(.semibold))
+        .frame(minHeight: 44)
+
+        Button("Browse Switzerland") {
+            showLocationIntro = false
+            model.focusOnSwitzerland()
+        }
+        .buttonStyle(.glass)
+        .font(.caption.weight(.semibold))
+        .frame(minHeight: 44)
     }
 
     private func openLocationSettings() {

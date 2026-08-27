@@ -222,6 +222,7 @@ test('keeps collapsed sheet controls out of interaction until expanded', async (
   await handle.press('Enter');
   await expect(sheetBody).not.toHaveAttribute('inert', '');
   await expect(page.getByRole('combobox')).toBeVisible();
+  await expect(page.getByText('Find a scooter nearby')).toHaveCount(0);
 });
 
 test('primary controls have no WCAG A/AA accessibility violations', async ({ page }) => {

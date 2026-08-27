@@ -43,6 +43,7 @@ struct SwissAddressSearch: View {
                 if searchModel.isSearching {
                     ProgressView()
                         .controlSize(.small)
+                        .frame(width: 44, height: 44)
                         .accessibilityLabel(String(localized: "Searching addresses…"))
                 } else if !searchModel.query.isEmpty {
                     Button {
@@ -51,12 +52,14 @@ struct SwissAddressSearch: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "Clear address search"))
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.leading, 12)
+            .padding(.trailing, 4)
             .frame(minHeight: 44)
             .background(
                 .quaternary.opacity(0.55),
@@ -110,15 +113,6 @@ struct SwissAddressSearch: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 2)
-            }
-
-            if !compact {
-                Link(
-                    "Address data © swisstopo",
-                    destination: URL(string: "https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api")!
-                )
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
             }
         }
         .onChange(of: searchModel.query) { _, _ in

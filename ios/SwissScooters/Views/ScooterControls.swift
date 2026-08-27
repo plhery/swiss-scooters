@@ -78,6 +78,7 @@ struct ScooterControlDock: View {
         .clipped()
         .opacity(drawerTravel == 0 ? 0 : 1)
         .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.selectedScooterID)
+        .sensoryFeedback(.selection, trigger: model.enabledProviders)
     }
 
     private var draggableHeader: some View {
@@ -176,7 +177,7 @@ struct ScooterControlDock: View {
             Image(systemName: "chevron.up")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
                 .rotationEffect(.degrees(180 * expansionProgress))
                 .glassEffect(.clear.interactive(), in: Circle())
         }
@@ -197,7 +198,8 @@ struct ScooterControlDock: View {
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(model.visibleCount, format: .number)
-                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                        .font(.title.bold())
+                        .monospacedDigit()
                         .contentTransition(.numericText())
                     Text(
                         model.visibleCount == 1
@@ -208,15 +210,7 @@ struct ScooterControlDock: View {
                 }
             }
 
-            HStack(spacing: 6) {
-                if model.isLoading {
-                    ProgressView()
-                        .controlSize(.mini)
-                }
-                Text(model.hasActiveFilters ? String(localized: "Filters active") + " · " + updateLabel : updateLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            updateStatus
 
             if let dataHealthMessage = model.dataHealthMessage {
                 Label(dataHealthMessage, systemImage: "exclamationmark.triangle.fill")
@@ -227,6 +221,33 @@ struct ScooterControlDock: View {
                         format: String(localized: "Data status: %@"),
                         dataHealthMessage
                     ))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var updateStatus: some View {
+        if !model.isLoading || model.lastUpdated != nil {
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                HStack(spacing: 6) {
+                    if model.isLoading {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else if showsFreshness(at: context.date) {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 7, height: 7)
+                            .background(Circle().fill(.green.opacity(0.16)).frame(width: 13, height: 13))
+                            .accessibilityHidden(true)
+                    }
+                    Text(
+                        model.hasActiveFilters
+                            ? String(localized: "Filters active") + " · " + updateLabel(at: context.date)
+                            : updateLabel(at: context.date)
+                    )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -259,22 +280,53 @@ struct ScooterControlDock: View {
     }
 
     private var providerPicker: some View {
-        GlassEffectContainer(spacing: 8) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    allProvidersButton
-                    ForEach(ScooterProvider.allCases) { provider in
-                        providerButton(provider)
+        VStack(spacing: 2) {
+            GlassEffectContainer(spacing: 8) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        allProvidersButton
+                        ForEach(ScooterProvider.allCases) { provider in
+                            providerButton(provider)
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled(false)
+                .clipped()
             }
-            .scrollIndicators(.hidden)
-            .scrollClipDisabled(false)
-            .clipped()
+
+            if !model.isLoading && model.visibleCount == 0 {
+                emptyMapHint
+            }
         }
         .padding(.bottom, 11)
+    }
+
+    private var emptyMapHint: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "mappin.slash")
+                .accessibilityHidden(true)
+            Text(
+                model.hasActiveFilters
+                    ? String(localized: "No scooters match these filters here.")
+                    : String(localized: "No scooters on this part of the map.")
+            )
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if model.hasActiveFilters {
+                Button("Reset filters", action: model.resetFilters)
+                    .buttonStyle(.plain)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.blue)
+                    .frame(minHeight: 44)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .frame(minHeight: 44)
     }
 
     private var allProvidersButton: some View {
@@ -294,7 +346,7 @@ struct ScooterControlDock: View {
             }
             .font(.caption)
             .padding(.horizontal, 11)
-            .frame(minHeight: 40)
+            .frame(minHeight: 44)
         }
         .buttonStyle(.plain)
         .glassEffect(
@@ -303,7 +355,7 @@ struct ScooterControlDock: View {
                 .interactive(),
             in: Capsule()
         )
-        .opacity(isSelected ? 1 : 0.48)
+        .foregroundStyle(isSelected ? .primary : .secondary)
         .accessibilityLabel(
             String(
                 format: String(localized: "All providers, %@ scooters, %@"),
@@ -332,7 +384,7 @@ struct ScooterControlDock: View {
             }
             .font(.caption)
             .padding(.horizontal, 11)
-            .frame(minHeight: 40)
+            .frame(minHeight: 44)
         }
         .buttonStyle(.plain)
         .glassEffect(
@@ -341,7 +393,7 @@ struct ScooterControlDock: View {
                 .interactive(),
             in: Capsule()
         )
-        .opacity(isDimmed ? 0.48 : 1)
+        .foregroundStyle(isDimmed ? .secondary : .primary)
         .accessibilityLabel(
             String(
                 format: String(localized: "%@, %@ scooters, %@"),
@@ -362,7 +414,7 @@ struct ScooterControlDock: View {
                     model.selectScooter(nil)
                 } label: {
                     Image(systemName: "xmark")
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.glass)
                 .accessibilityLabel(String(localized: "Close scooter details"))
@@ -411,7 +463,7 @@ struct ScooterControlDock: View {
             }
         }
         .padding(14)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var addressSearch: some View {
@@ -553,13 +605,31 @@ struct ScooterControlDock: View {
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
-    private var updateLabel: String {
+    private func updateLabel(at referenceDate: Date) -> String {
         if model.isLoading { return String(localized: "Updating nearby vehicles…") }
         guard let lastUpdated = model.lastUpdated else { return String(localized: "On this map") }
+
+        let age = max(0, referenceDate.timeIntervalSince(lastUpdated))
+        if age < 60 {
+            return String(localized: "Just now")
+        }
+        if age < 60 * 60 {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .abbreviated
+            return formatter.localizedString(fromTimeInterval: -age)
+        }
+
         return String(
             format: String(localized: "Updated %@"),
             lastUpdated.formatted(date: .omitted, time: .shortened)
         )
+    }
+
+    private func showsFreshness(at referenceDate: Date) -> Bool {
+        guard !model.isLoading,
+              model.dataHealthMessage == nil,
+              let lastUpdated = model.lastUpdated else { return false }
+        return max(0, referenceDate.timeIntervalSince(lastUpdated)) < 90
     }
 
     private func toggleExpanded() {
@@ -608,6 +678,10 @@ struct ScooterControlDock: View {
 struct FloatingMapControls: View {
     @Bindable var model: ScooterMapModel
     let onLocationIntent: () -> Void
+    @State private var refreshRequested = false
+    @State private var refreshSucceeded = false
+    @State private var refreshSuccessCount = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GlassEffectContainer(spacing: 12) {
@@ -622,11 +696,14 @@ struct FloatingMapControls: View {
                 .accessibilityLabel(String(localized: "Go to my location"))
 
                 Button {
+                    refreshRequested = true
+                    refreshSucceeded = false
                     model.refresh()
                 } label: {
                     ZStack {
-                        Image(systemName: "arrow.clockwise")
+                        Image(systemName: refreshSucceeded ? "checkmark" : "arrow.clockwise")
                             .opacity(model.isLoading ? 0 : 1)
+                            .contentTransition(.symbolEffect(.replace))
                         if model.isLoading {
                             ProgressView()
                         }
@@ -634,11 +711,39 @@ struct FloatingMapControls: View {
                     .frame(width: 48, height: 48)
                 }
                 .disabled(model.isLoading)
-                .accessibilityLabel(String(localized: "Refresh scooters"))
+                .accessibilityLabel(
+                    refreshSucceeded
+                        ? String(localized: "Scooters refreshed")
+                        : String(localized: "Refresh scooters")
+                )
             }
             .buttonStyle(.glass)
             .font(.system(size: 18, weight: .semibold))
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: refreshSucceeded)
+        .onChange(of: model.lastUpdated) { previous, current in
+            guard refreshRequested, current != nil, current != previous else { return }
+            refreshRequested = false
+            refreshSucceeded = true
+            refreshSuccessCount += 1
+        }
+        .onChange(of: model.errorMessage) { _, errorMessage in
+            if refreshRequested && errorMessage != nil {
+                refreshRequested = false
+            }
+        }
+        .task(id: refreshSucceeded) {
+            guard refreshSucceeded else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(1_200))
+            } catch {
+                return
+            }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                refreshSucceeded = false
+            }
+        }
+        .sensoryFeedback(.success, trigger: refreshSuccessCount)
     }
 }
 

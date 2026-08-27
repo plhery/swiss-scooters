@@ -25,6 +25,8 @@
 "On this map" = "Su questa mappa";
 "Go to my location" = "Vai alla mia posizione";
 "Refresh scooters" = "Aggiorna i monopattini";
+"Scooters refreshed" = "Monopattini aggiornati";
+"Just now" = "Adesso";
 "Standard" = "Standard";
 "Quiet" = "Essenziale";
 "Satellite" = "Satellite";
@@ -69,3 +71,5 @@
 "Close scooter details" = "Chiudi i dettagli";
 "Reset filters" = "Reimposta filtri";
 "Scooters without battery data are hidden." = "I monopattini senza dati sulla batteria sono nascosti.";
+"No scooters match these filters here." = "Nessun monopattino corrisponde a questi filtri qui.";
+"No scooters on this part of the map." = "Nessun monopattino in questa zona della mappa.";

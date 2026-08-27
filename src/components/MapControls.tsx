@@ -1,12 +1,13 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 
 interface MapControlsProps {
   loading: boolean;
   hidden: boolean;
   onLocateMe: () => void;
-  onRefresh: () => void;
+  onRefresh: () => Promise<boolean>;
 }
 
 export default function MapControls({
@@ -16,30 +17,74 @@ export default function MapControls({
   onRefresh,
 }: MapControlsProps) {
   const { t } = useI18n();
+  const [refreshed, setRefreshed] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+  }, []);
+
+  const handleRefresh = async () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+    setRefreshed(false);
+    const succeeded = await onRefresh();
+    if (!succeeded) return;
+
+    setRefreshed(true);
+    resetTimerRef.current = window.setTimeout(() => {
+      setRefreshed(false);
+      resetTimerRef.current = null;
+    }, 1_200);
+  };
 
   return (
     <div className="fab-stack" inert={hidden} aria-hidden={hidden}>
+      <span className="sr-only" role="status" aria-live="polite">
+        {refreshed ? t('status.refreshed') : ''}
+      </span>
       <button className="fab glass" onClick={onLocateMe} aria-label={t('controls.locate')}>
         <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M21.7 2.3a1 1 0 0 1 .2 1.1l-8 18a1 1 0 0 1-1.9-.1l-2.2-6.6a1 1 0 0 0-.6-.6L2.7 12a1 1 0 0 1-.1-1.9l18-8a1 1 0 0 1 1.1.2Z" />
         </svg>
       </button>
-      <button className="fab glass" onClick={onRefresh} disabled={loading} aria-label={t('controls.refresh')}>
-        <svg
-          className={loading ? 'spin' : undefined}
-          width="19"
-          height="19"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <path d="M21 3v5h-5" />
-        </svg>
+      <button
+        className={`fab glass ${refreshed ? 'fab-success' : ''}`}
+        onClick={() => void handleRefresh()}
+        disabled={loading}
+        aria-label={refreshed ? t('status.refreshed') : t('controls.refresh')}
+      >
+        {refreshed ? (
+          <svg
+            className="refresh-check"
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m5 12 4 4L19 6" />
+          </svg>
+        ) : (
+          <svg
+            className={loading ? 'spin' : undefined}
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v5h-5" />
+          </svg>
+        )}
       </button>
     </div>
   );

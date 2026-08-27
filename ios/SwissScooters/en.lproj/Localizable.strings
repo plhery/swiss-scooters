@@ -25,6 +25,8 @@
 "On this map" = "On this map";
 "Go to my location" = "Go to my location";
 "Refresh scooters" = "Refresh scooters";
+"Scooters refreshed" = "Scooters refreshed";
+"Just now" = "Just now";
 "Standard" = "Standard";
 "Quiet" = "Quiet";
 "Satellite" = "Satellite";
@@ -69,3 +71,5 @@
 "Close scooter details" = "Close scooter details";
 "Reset filters" = "Reset filters";
 "Scooters without battery data are hidden." = "Scooters without battery data are hidden.";
+"No scooters match these filters here." = "No scooters match these filters here.";
+"No scooters on this part of the map." = "No scooters on this part of the map.";

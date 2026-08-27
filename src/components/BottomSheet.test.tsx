@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BottomSheet from '@/components/BottomSheet';
 import { I18nProvider } from '@/lib/i18n';
@@ -80,6 +80,30 @@ describe('BottomSheet', () => {
     renderSheet({ dataHealthNotice: 'Some providers unavailable' });
 
     expect(screen.getByRole('status')).toHaveTextContent('Some providers unavailable');
+  });
+
+  it('shows fresh data in human terms', () => {
+    renderSheet({ lastUpdated: new Date() });
+
+    expect(screen.getByText('Just now')).toBeVisible();
+    expect(document.querySelector('.freshness-dot')).toBeInTheDocument();
+  });
+
+  it('offers an immediate recovery when filters hide every scooter', () => {
+    const onResetFilters = vi.fn();
+    renderSheet({
+      minBattery: 80,
+      totalCount: 0,
+      providerCounts: {},
+      onResetFilters,
+    });
+
+    const emptyStatus = screen.getByRole('status');
+    expect(emptyStatus).toHaveTextContent(
+      'No scooters match these filters here.'
+    );
+    fireEvent.click(within(emptyStatus).getByRole('button', { name: 'Reset filters' }));
+    expect(onResetFilters).toHaveBeenCalledOnce();
   });
 
   it('supports explicit All and individual provider toggles', () => {
