@@ -146,15 +146,16 @@ function writeOrCheck(path, expected) {
 
 function swiftCoverage() {
   const swiss = JSON.parse(readFileSync(resolve(root, 'data/swiss-scooter-areas.json'), 'utf8'));
-  const french = JSON.parse(readFileSync(resolve(root, 'data/french-scooter-feeds.json'), 'utf8')).systems;
+  const regional = ['french', 'german', 'italian'].flatMap(country =>
+    JSON.parse(readFileSync(resolve(root, `data/${country}-scooter-feeds.json`), 'utf8')).systems);
   const bounds = b => `GeoBounds(south: ${b.south}, west: ${b.west}, north: ${b.north}, east: ${b.east})`;
   return `
 enum ScooterProviderCoverage {
     private static let swissAreas: [GeoBounds] = [
 ${swiss.map(area => `        ${bounds(area.bounds)},`).join('\n')}
     ]
-    private static let frenchSystems: [(ScooterProvider, GeoBounds)] = [
-${french.map(system => `        (.${system.provider}, ${bounds(system.bounds)}),`).join('\n')}
+    private static let regionalSystems: [(ScooterProvider, GeoBounds)] = [
+${regional.flatMap(system => (system.areas ?? [system]).map(area => `        (.${system.provider}, ${bounds(area.bounds)}),`)).join('\n')}
     ]
 
     static func providers(in viewport: GeoBounds) -> [ScooterProvider] {
@@ -162,7 +163,7 @@ ${french.map(system => `        (.${system.provider}, ${bounds(system.bounds)}),
         if swissAreas.contains(where: { $0.intersects(viewport) }) {
             available.formUnion(ScooterProvider.allCases.filter { $0 != .pony })
         }
-        for (provider, bounds) in frenchSystems where bounds.intersects(viewport) {
+        for (provider, bounds) in regionalSystems where bounds.intersects(viewport) {
             available.insert(provider)
         }
         return ScooterProvider.allCases.filter { available.contains($0) }

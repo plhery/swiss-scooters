@@ -1,0 +1,26 @@
+{
+  "verifiedOn": "2026-09-08",
+  "catalogSource": "https://github.com/MobilityData/gbfs/blob/master/systems.csv",
+  "systems": [
+    {
+      "id": "bird_it_rome",
+      "country": "IT",
+      "provider": "bird",
+      "city": "Roma",
+      "center": [
+        41.9028,
+        12.4964
+      ],
+      "bounds": {
+        "south": 41.6884,
+        "north": 42.0928,
+        "west": 12.2183,
+        "east": 12.7268
+      },
+      "discoveryUrl": "https://mds.bird.co/gbfs/v2/public/rome/gbfs.json",
+      "aliases": [
+        "Rome"
+      ]
+    }
+  ]
+}

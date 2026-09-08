@@ -499,6 +499,10 @@ export default function BottomSheet({
                 France: Dott, Bird, Lime, Voi, Pony
               </a>
               <span aria-hidden="true">·</span>
+              <a href="https://www.mobidata-bw.de/" target="_blank" rel="noreferrer">MobiData BW</a>
+              <span aria-hidden="true">·</span>
+              <a href="https://github.com/MobilityData/gbfs" target="_blank" rel="noreferrer">DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird</a>
+              <span aria-hidden="true">·</span>
               <a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api" target="_blank" rel="noreferrer">
                 Address data © swisstopo
               </a>

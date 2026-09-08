@@ -96,7 +96,7 @@ describe('French scooter feeds', () => {
     const result = await fetchScooters({ ...parsed.query, origin: [47.3769, 8.5417] });
     expect(result.vehicles).toHaveLength(1);
     expect(result.vehicles[0].vehicle_id).toBe('dott_fr_lyon:test-scooter');
-    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'fresh' });
+    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'fresh', germany: 'skipped', italy: 'skipped' });
     expect(fetchMock).toHaveBeenCalledTimes(4);
     for (const [, init] of fetchMock.mock.calls as unknown as [unknown, RequestInit][]) {
       expect(init.headers).not.toHaveProperty('Authorization');
@@ -118,7 +118,7 @@ describe('French scooter feeds', () => {
       bounds,
       minBattery: 0,
     });
-    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'fresh' });
+    expect(result.meta.sources).toEqual({ national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'fresh', germany: 'skipped', italy: 'skipped' });
     expect(result.vehicles.length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenCalledTimes(relevant.length * 4);
   });

@@ -6,6 +6,7 @@
     "generate:providers": "node scripts/generate-provider-catalog.mjs",
     "check:providers": "node scripts/generate-provider-catalog.mjs --check",
     "check:france": "node scripts/check-french-feeds.mjs",
+    "check:europe": "node scripts/check-french-feeds.mjs --countries=DE,IT",
     "generate:api-contract": "node scripts/generate-api-contract.mjs",
     "check:api-contract": "node scripts/generate-api-contract.mjs --check",
     "dev": "next dev",

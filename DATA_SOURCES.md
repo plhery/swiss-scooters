@@ -68,9 +68,9 @@ catalog. French street-address geocoding is not provided.
 - Zooms above 19 scale the last native tile level without requesting unavailable tiles.
 - The service worker does not bulk-download or create offline tile archives.
 
-## French scooter parking
+## Scooter parking in France, Germany and Italy
 
-The reviewed French GBFS systems also supply `station_information`,
+The reviewed regional GBFS systems also supply `station_information`,
 `station_status` and `geofencing_zones` where published. Actual virtual parking
 bays are shown from zoom 16, filtered to the selected providers. Parking never
 adds to scooter counts or disappears because of a battery filter. Selecting a
@@ -99,3 +99,25 @@ References: [GBFS station information and geofencing](https://github.com/Mobilit
 
 Lille source and attribution: [Métropole Européenne de Lille — mandatory shared
 e-scooter and e-bike parking](https://www.data.gouv.fr/datasets/espaces-de-stationnement-des-trottinettes-electriques-et-velos-a-assistance-electrique-en-libre-service).
+
+
+## Germany and Italy
+
+Reviewed catalogs live in `data/german-scooter-feeds.json` and
+`data/italian-scooter-feeds.json`. Germany has 90 verified feeds across 86 cities:
+Dott, Bolt, Hopp, Lime and Voi. Italy currently has Bird Rome; the other tested
+Italian scooter feeds were empty, stale or unavailable. See the
+[coverage audit](docs/german-italian-scooter-feeds.md).
+
+Sources: [MobilityData's GBFS registry](https://github.com/MobilityData/gbfs/blob/master/systems.csv),
+[Dott Germany](https://gbfs.api.ridedott.com/public/v2/countries/de/gbfs.json),
+[MobiData BW](https://www.mobidata-bw.de/) and the individual public operator feeds.
+MobiData BW supplies the reviewed Bolt, Hopp, Lime and Voi GBFS 3.0 systems;
+its Voi feed covers six Baden-Württemberg cities, not all of Germany.
+
+Multi-city feeds are fetched once and routed through separate city envelopes.
+City totals remain country-specific, with one count per vehicle. Published
+geofencing envelopes take precedence over stray vehicle coordinates when setting
+routing bounds. The map never treats these routing envelopes as legal riding
+or parking boundaries. Native provider filters use the same generated catalog.
+Supported city names and aliases are resolved locally before Swiss address search.

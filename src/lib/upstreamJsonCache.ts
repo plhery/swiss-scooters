@@ -1,7 +1,6 @@
-// Coverage-aware discovery adds small manifest, type, region, and spatial-probe
-// entries alongside the larger status feeds. Keep enough entries for several
-// Swiss cities so panning does not evict useful metadata immediately.
-const DEFAULT_MAX_ENTRIES = 512;
+// Keep the reviewed four-country catalog (up to nine documents per feed) resident.
+// Otherwise the minute collector evicts hourly metadata before its next pass.
+const DEFAULT_MAX_ENTRIES = 2048;
 const DEFAULT_ERROR_RETRY_SECONDS = 15;
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;

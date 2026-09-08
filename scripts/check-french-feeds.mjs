@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 
-const catalog = JSON.parse(readFileSync(new URL('../data/french-scooter-feeds.json', import.meta.url), 'utf8'));
+const requested = process.argv.find(arg => arg.startsWith('--countries='))?.split('=')[1].split(',') ?? ['FR'];
+const catalogs = { FR: 'french', DE: 'german', IT: 'italian' };
+if (requested.some(country => !catalogs[country])) throw new Error('Use --countries=FR,DE,IT');
+const catalog = { systems: requested.flatMap(country => JSON.parse(readFileSync(
+  new URL(`../data/${catalogs[country]}-scooter-feeds.json`, import.meta.url), 'utf8')).systems.map(system => ({ ...system, country }))) };
 const results = [];
 const headers = { Accept: 'application/json', 'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)' };
 
@@ -22,7 +26,7 @@ function feedUrl(entries, names, discoveryUrl) {
 }
 
 async function inspect(system) {
-  const result = { system: system.id, city: system.city, provider: system.provider, discoveryUrl: system.discoveryUrl };
+  const result = { system: system.id, country: system.country, city: system.city, provider: system.provider, discoveryUrl: system.discoveryUrl };
   try {
     const discovery = await json(system.discoveryUrl);
     const data = discovery.data;
@@ -43,8 +47,8 @@ async function inspect(system) {
     const available = vehicles.filter(vehicle => (
       scooters.has(vehicle.vehicle_type_id) && !vehicle.is_reserved && !vehicle.is_disabled &&
       Number.isFinite(vehicle.lat) && Number.isFinite(vehicle.lon) &&
-      vehicle.lat >= system.bounds.south && vehicle.lat <= system.bounds.north &&
-      vehicle.lon >= system.bounds.west && vehicle.lon <= system.bounds.east
+      (system.areas ?? [system]).some(area => vehicle.lat >= area.bounds.south && vehicle.lat <= area.bounds.north &&
+        vehicle.lon >= area.bounds.west && vehicle.lon <= area.bounds.east)
     ));
     return {
       ...result, version: discovery.version, availableScooters: available.length,

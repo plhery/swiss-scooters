@@ -1,0 +1,1694 @@
+{
+  "verifiedOn": "2026-09-08",
+  "catalogSource": "https://github.com/MobilityData/gbfs/blob/master/systems.csv",
+  "systems": [
+    {
+      "id": "bolt_de_karlsruhe",
+      "country": "DE",
+      "provider": "bolt",
+      "city": "Karlsruhe",
+      "center": [
+        49.0069,
+        8.4037
+      ],
+      "bounds": {
+        "south": 48.8623,
+        "north": 49.5247,
+        "west": 8.3074,
+        "east": 8.7576
+      },
+      "discoveryUrl": "https://api.mobidata-bw.de/sharing/gbfs/v3/bolt_karlsruhe/gbfs"
+    },
+    {
+      "id": "bolt_de_reutlingen_tuebingen",
+      "country": "DE",
+      "provider": "bolt",
+      "city": "Reutlingen / Tübingen",
+      "center": [
+        48.4914,
+        9.2043
+      ],
+      "bounds": {
+        "south": 48.4312,
+        "north": 48.5647,
+        "west": 9.0088,
+        "east": 9.2596
+      },
+      "discoveryUrl": "https://api.mobidata-bw.de/sharing/gbfs/v3/bolt_reutlingen_tuebingen/gbfs",
+      "areas": [
+        {
+          "city": "Reutlingen",
+          "center": [
+            48.4914,
+            9.2043
+          ],
+          "bounds": {
+            "south": 48.4312,
+            "north": 48.5396,
+            "west": 9.1335,
+            "east": 9.2596
+          }
+        },
+        {
+          "city": "Tübingen",
+          "center": [
+            48.5216,
+            9.0576
+          ],
+          "bounds": {
+            "south": 48.4824,
+            "north": 48.5647,
+            "west": 9.0088,
+            "east": 9.1103
+          }
+        }
+      ]
+    },
+    {
+      "id": "bolt_de_stuttgart",
+      "country": "DE",
+      "provider": "bolt",
+      "city": "Stuttgart",
+      "center": [
+        48.7758,
+        9.1829
+      ],
+      "bounds": {
+        "south": 48.6977,
+        "north": 48.8618,
+        "west": 9.0717,
+        "east": 9.2897
+      },
+      "discoveryUrl": "https://api.mobidata-bw.de/sharing/gbfs/v3/bolt_stuttgart/gbfs"
+    },
+    {
+      "id": "dott_de_aachen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Aachen",
+      "center": [
+        50.7773,
+        6.0895
+      ],
+      "bounds": {
+        "south": 50.7249,
+        "north": 50.8211,
+        "west": 6.023,
+        "east": 6.1962
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/aachen/gbfs.json"
+    },
+    {
+      "id": "dott_de_berlin",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Berlin",
+      "center": [
+        52.52,
+        13.405
+      ],
+      "bounds": {
+        "south": 52.4275,
+        "north": 52.6548,
+        "west": 13.1051,
+        "east": 13.6436
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/berlin/gbfs.json"
+    },
+    {
+      "id": "dott_de_bielefeld",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Bielefeld",
+      "center": [
+        52.0224,
+        8.535
+      ],
+      "bounds": {
+        "south": 51.9238,
+        "north": 52.0749,
+        "west": 8.4615,
+        "east": 8.6393
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bielefeld/gbfs.json"
+    },
+    {
+      "id": "dott_de_boblingen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Böblingen",
+      "center": [
+        48.6907,
+        9.0055
+      ],
+      "bounds": {
+        "south": 48.6495,
+        "north": 48.7431,
+        "west": 8.959,
+        "east": 9.0623
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/boblingen/gbfs.json"
+    },
+    {
+      "id": "dott_de_bochum",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Bochum",
+      "center": [
+        51.4782,
+        7.1625
+      ],
+      "bounds": {
+        "south": 51.4257,
+        "north": 51.5133,
+        "west": 7.1003,
+        "east": 7.2923
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bochum/gbfs.json"
+    },
+    {
+      "id": "dott_de_bonn",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Bonn",
+      "center": [
+        50.7221,
+        7.1095
+      ],
+      "bounds": {
+        "south": 50.6349,
+        "north": 50.7878,
+        "west": 7.0115,
+        "east": 7.2157
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bonn/gbfs.json"
+    },
+    {
+      "id": "dott_de_bremen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Bremen",
+      "center": [
+        53.0916,
+        8.791
+      ],
+      "bounds": {
+        "south": 53.0332,
+        "north": 53.2113,
+        "west": 8.5819,
+        "east": 8.9083
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bremen/gbfs.json"
+    },
+    {
+      "id": "dott_de_bremerhaven",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Bremerhaven",
+      "center": [
+        53.5711,
+        8.6035
+      ],
+      "bounds": {
+        "south": 53.4718,
+        "north": 53.6408,
+        "west": 8.544,
+        "east": 8.6612
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bremerhaven/gbfs.json"
+    },
+    {
+      "id": "dott_de_bruhl",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Brühl",
+      "center": [
+        50.8295,
+        6.8956
+      ],
+      "bounds": {
+        "south": 50.7834,
+        "north": 50.8626,
+        "west": 6.8557,
+        "east": 6.9434
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bruhl/gbfs.json"
+    },
+    {
+      "id": "dott_de_brunswick",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Braunschweig",
+      "center": [
+        52.262,
+        10.5221
+      ],
+      "bounds": {
+        "south": 52.1916,
+        "north": 52.339,
+        "west": 10.4482,
+        "east": 10.6171
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/brunswick/gbfs.json"
+    },
+    {
+      "id": "dott_de_celle",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Celle",
+      "center": [
+        52.6146,
+        10.0586
+      ],
+      "bounds": {
+        "south": 52.5657,
+        "north": 52.6612,
+        "west": 9.9847,
+        "east": 10.1369
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/celle/gbfs.json"
+    },
+    {
+      "id": "dott_de_chemnitz",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Chemnitz",
+      "center": [
+        50.826,
+        12.9214
+      ],
+      "bounds": {
+        "south": 50.7751,
+        "north": 50.8757,
+        "west": 12.855,
+        "east": 12.988
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/chemnitz/gbfs.json"
+    },
+    {
+      "id": "dott_de_cologne",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Köln",
+      "center": [
+        50.9375,
+        6.9603
+      ],
+      "bounds": {
+        "south": 50.8217,
+        "north": 51.0145,
+        "west": 6.796,
+        "east": 7.1351
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/cologne/gbfs.json",
+      "aliases": [
+        "Cologne",
+        "Koeln"
+      ]
+    },
+    {
+      "id": "dott_de_cottbus",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Cottbus",
+      "center": [
+        51.7554,
+        14.3333
+      ],
+      "bounds": {
+        "south": 51.7022,
+        "north": 51.8076,
+        "west": 14.2745,
+        "east": 14.4092
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/cottbus/gbfs.json"
+    },
+    {
+      "id": "dott_de_darmstadt",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Darmstadt",
+      "center": [
+        49.8744,
+        8.6472
+      ],
+      "bounds": {
+        "south": 49.8267,
+        "north": 49.9149,
+        "west": 8.5998,
+        "east": 8.7069
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/darmstadt/gbfs.json"
+    },
+    {
+      "id": "dott_de_detmold",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Detmold",
+      "center": [
+        51.9329,
+        8.8757
+      ],
+      "bounds": {
+        "south": 51.9022,
+        "north": 51.9745,
+        "west": 8.8056,
+        "east": 8.9365
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/detmold/gbfs.json"
+    },
+    {
+      "id": "dott_de_dortmund",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Dortmund",
+      "center": [
+        51.5139,
+        7.4637
+      ],
+      "bounds": {
+        "south": 51.4692,
+        "north": 51.5505,
+        "west": 7.3943,
+        "east": 7.5419
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/dortmund/gbfs.json"
+    },
+    {
+      "id": "dott_de_duisburg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Duisburg",
+      "center": [
+        51.417,
+        6.7118
+      ],
+      "bounds": {
+        "south": 51.3686,
+        "north": 51.4531,
+        "west": 6.6664,
+        "east": 6.8151
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/duisburg/gbfs.json"
+    },
+    {
+      "id": "dott_de_dusseldorf",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Düsseldorf",
+      "center": [
+        51.2213,
+        6.7886
+      ],
+      "bounds": {
+        "south": 51.1371,
+        "north": 51.294,
+        "west": 6.6843,
+        "east": 6.8991
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/dusseldorf/gbfs.json",
+      "aliases": [
+        "Dusseldorf",
+        "Duesseldorf"
+      ]
+    },
+    {
+      "id": "dott_de_erfurt",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Erfurt",
+      "center": [
+        50.9797,
+        11.0266
+      ],
+      "bounds": {
+        "south": 50.9424,
+        "north": 51.0284,
+        "west": 10.9747,
+        "east": 11.1023
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/erfurt/gbfs.json"
+    },
+    {
+      "id": "dott_de_erlangen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Erlangen",
+      "center": [
+        49.5943,
+        11.0074
+      ],
+      "bounds": {
+        "south": 49.525,
+        "north": 49.6293,
+        "west": 10.9281,
+        "east": 11.0697
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/erlangen/gbfs.json"
+    },
+    {
+      "id": "dott_de_essen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Essen",
+      "center": [
+        51.4508,
+        7.0085
+      ],
+      "bounds": {
+        "south": 51.4073,
+        "north": 51.5455,
+        "west": 6.915,
+        "east": 7.1088
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/essen/gbfs.json"
+    },
+    {
+      "id": "dott_de_flensburg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Flensburg",
+      "center": [
+        54.7882,
+        9.4384
+      ],
+      "bounds": {
+        "south": 54.7392,
+        "north": 54.8439,
+        "west": 9.3528,
+        "east": 9.5133
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/flensburg/gbfs.json"
+    },
+    {
+      "id": "dott_de_friedrichshafen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Friedrichshafen",
+      "center": [
+        47.6682,
+        9.4607
+      ],
+      "bounds": {
+        "south": 47.6253,
+        "north": 47.7256,
+        "west": 9.3768,
+        "east": 9.539
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/friedrichshafen/gbfs.json"
+    },
+    {
+      "id": "dott_de_gera",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Gera",
+      "center": [
+        50.8807,
+        12.0781
+      ],
+      "bounds": {
+        "south": 50.82,
+        "north": 50.9204,
+        "west": 12.0332,
+        "east": 12.1157
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/gera/gbfs.json"
+    },
+    {
+      "id": "dott_de_gifhorn",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Gifhorn",
+      "center": [
+        52.4842,
+        10.5425
+      ],
+      "bounds": {
+        "south": 52.4397,
+        "north": 52.5252,
+        "west": 10.4923,
+        "east": 10.5919
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/gifhorn/gbfs.json"
+    },
+    {
+      "id": "dott_de_gladbeck",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Gladbeck",
+      "center": [
+        51.5677,
+        6.9987
+      ],
+      "bounds": {
+        "south": 51.5246,
+        "north": 51.6108,
+        "west": 6.9472,
+        "east": 7.0437
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/gladbeck/gbfs.json"
+    },
+    {
+      "id": "dott_de_hamburg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Hamburg",
+      "center": [
+        53.5734,
+        10.0023
+      ],
+      "bounds": {
+        "south": 53.4145,
+        "north": 53.6967,
+        "west": 9.7802,
+        "east": 10.2789
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/hamburg/gbfs.json"
+    },
+    {
+      "id": "dott_de_hamm",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Hamm",
+      "center": [
+        51.6886,
+        7.8126
+      ],
+      "bounds": {
+        "south": 51.6387,
+        "north": 51.7344,
+        "west": 7.7086,
+        "east": 7.9014
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/hamm/gbfs.json"
+    },
+    {
+      "id": "dott_de_hannover",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Hannover",
+      "center": [
+        52.3903,
+        9.7399
+      ],
+      "bounds": {
+        "south": 52.26,
+        "north": 52.5007,
+        "west": 9.5647,
+        "east": 9.893
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/hannover/gbfs.json"
+    },
+    {
+      "id": "dott_de_heidelberg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Heidelberg",
+      "center": [
+        49.4037,
+        8.6752
+      ],
+      "bounds": {
+        "south": 49.3288,
+        "north": 49.4539,
+        "west": 8.6176,
+        "east": 8.7379
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/heidelberg/gbfs.json"
+    },
+    {
+      "id": "dott_de_heilbronn",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Heilbronn",
+      "center": [
+        49.1426,
+        9.2168
+      ],
+      "bounds": {
+        "south": 49.0791,
+        "north": 49.2308,
+        "west": 9.0868,
+        "east": 9.3189
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/heilbronn/gbfs.json"
+    },
+    {
+      "id": "dott_de_hennef",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Hennef",
+      "center": [
+        50.7724,
+        7.2718
+      ],
+      "bounds": {
+        "south": 50.7444,
+        "north": 50.8025,
+        "west": 7.2321,
+        "east": 7.3398
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/hennef/gbfs.json"
+    },
+    {
+      "id": "dott_de_herford",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Herford",
+      "center": [
+        52.1151,
+        8.6628
+      ],
+      "bounds": {
+        "south": 52.0614,
+        "north": 52.1544,
+        "west": 8.5998,
+        "east": 8.7344
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/herford/gbfs.json"
+    },
+    {
+      "id": "dott_de_herne",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Herne",
+      "center": [
+        51.5427,
+        7.2156
+      ],
+      "bounds": {
+        "south": 51.4973,
+        "north": 51.5797,
+        "west": 7.1339,
+        "east": 7.2834
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/herne/gbfs.json"
+    },
+    {
+      "id": "dott_de_herten",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Herten",
+      "center": [
+        51.6032,
+        7.1386
+      ],
+      "bounds": {
+        "south": 51.5614,
+        "north": 51.642,
+        "west": 7.1018,
+        "east": 7.1775
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/herten/gbfs.json"
+    },
+    {
+      "id": "dott_de_hilden",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Hilden",
+      "center": [
+        51.1691,
+        6.9335
+      ],
+      "bounds": {
+        "south": 51.1271,
+        "north": 51.2036,
+        "west": 6.8804,
+        "east": 7.0022
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/hilden/gbfs.json"
+    },
+    {
+      "id": "dott_de_hildesheim",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Hildesheim",
+      "center": [
+        52.1482,
+        9.9662
+      ],
+      "bounds": {
+        "south": 52.096,
+        "north": 52.197,
+        "west": 9.8853,
+        "east": 10.0174
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/hildesheim/gbfs.json"
+    },
+    {
+      "id": "dott_de_ingolstadt",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Ingolstadt",
+      "center": [
+        48.7701,
+        11.4338
+      ],
+      "bounds": {
+        "south": 48.6917,
+        "north": 48.833,
+        "west": 11.3234,
+        "east": 11.5982
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/ingolstadt/gbfs.json"
+    },
+    {
+      "id": "dott_de_jena",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Jena",
+      "center": [
+        50.9254,
+        11.5837
+      ],
+      "bounds": {
+        "south": 50.8632,
+        "north": 50.9672,
+        "west": 11.543,
+        "east": 11.6482
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/jena/gbfs.json"
+    },
+    {
+      "id": "dott_de_kaiserslautern",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Kaiserslautern",
+      "center": [
+        49.4426,
+        7.766
+      ],
+      "bounds": {
+        "south": 49.3892,
+        "north": 49.4986,
+        "west": 7.6348,
+        "east": 7.8377
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/kaiserslautern/gbfs.json"
+    },
+    {
+      "id": "dott_de_karlsruhe",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Karlsruhe",
+      "center": [
+        49.0069,
+        8.4037
+      ],
+      "bounds": {
+        "south": 48.9649,
+        "north": 49.059,
+        "west": 8.2776,
+        "east": 8.5008
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/karlsruhe/gbfs.json"
+    },
+    {
+      "id": "dott_de_kassel",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Kassel",
+      "center": [
+        51.3149,
+        9.4644
+      ],
+      "bounds": {
+        "south": 51.2454,
+        "north": 51.3692,
+        "west": 9.336,
+        "east": 9.5851
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/kassel/gbfs.json"
+    },
+    {
+      "id": "dott_de_kiel",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Kiel",
+      "center": [
+        54.3249,
+        10.1267
+      ],
+      "bounds": {
+        "south": 54.2734,
+        "north": 54.383,
+        "west": 10.0288,
+        "east": 10.2072
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/kiel/gbfs.json"
+    },
+    {
+      "id": "dott_de_langenfeld",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Langenfeld",
+      "center": [
+        51.1188,
+        6.9563
+      ],
+      "bounds": {
+        "south": 51.0544,
+        "north": 51.1576,
+        "west": 6.8995,
+        "east": 7.0137
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/langenfeld/gbfs.json"
+    },
+    {
+      "id": "dott_de_leipzig",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Leipzig",
+      "center": [
+        51.3439,
+        12.3787
+      ],
+      "bounds": {
+        "south": 51.2569,
+        "north": 51.4182,
+        "west": 12.2412,
+        "east": 12.5247
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/leipzig/gbfs.json"
+    },
+    {
+      "id": "dott_de_lindau",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Lindau",
+      "center": [
+        47.5568,
+        9.6812
+      ],
+      "bounds": {
+        "south": 47.5243,
+        "north": 47.6092,
+        "west": 9.6391,
+        "east": 9.7528
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/lindau/gbfs.json"
+    },
+    {
+      "id": "dott_de_lubeck",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Lübeck",
+      "center": [
+        53.879,
+        10.7125
+      ],
+      "bounds": {
+        "south": 53.8068,
+        "north": 53.9928,
+        "west": 10.5825,
+        "east": 10.8994
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/lubeck/gbfs.json"
+    },
+    {
+      "id": "dott_de_ludwigsburg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Ludwigsburg",
+      "center": [
+        48.8973,
+        9.1902
+      ],
+      "bounds": {
+        "south": 48.8617,
+        "north": 48.9381,
+        "west": 9.1264,
+        "east": 9.2885
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/ludwigsburg/gbfs.json"
+    },
+    {
+      "id": "dott_de_mannheim",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Mannheim",
+      "center": [
+        49.4875,
+        8.466
+      ],
+      "bounds": {
+        "south": 49.4082,
+        "north": 49.569,
+        "west": 8.3311,
+        "east": 8.589
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/mannheim/gbfs.json"
+    },
+    {
+      "id": "dott_de_minden",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Minden",
+      "center": [
+        52.2887,
+        8.8972
+      ],
+      "bounds": {
+        "south": 52.2501,
+        "north": 52.3304,
+        "west": 8.8456,
+        "east": 8.9823
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/minden/gbfs.json"
+    },
+    {
+      "id": "dott_de_monchengladbach",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Mönchengladbach",
+      "center": [
+        51.1936,
+        6.4407
+      ],
+      "bounds": {
+        "south": 51.1064,
+        "north": 51.2439,
+        "west": 6.3634,
+        "east": 6.4988
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/monchengladbach/gbfs.json",
+      "aliases": [
+        "Monchengladbach"
+      ]
+    },
+    {
+      "id": "dott_de_monheim-am-rhein",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Monheim am Rhein",
+      "center": [
+        51.0933,
+        6.8918
+      ],
+      "bounds": {
+        "south": 51.0519,
+        "north": 51.1432,
+        "west": 6.8618,
+        "east": 6.9314
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/monheim-am-rhein/gbfs.json"
+    },
+    {
+      "id": "dott_de_mulheim-an-der-ruhr",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Mülheim an der Ruhr",
+      "center": [
+        51.4576,
+        6.8696
+      ],
+      "bounds": {
+        "south": 51.3913,
+        "north": 51.5768,
+        "west": 6.7848,
+        "east": 6.9454
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/mulheim-an-der-ruhr/gbfs.json",
+      "aliases": [
+        "Mülheim"
+      ]
+    },
+    {
+      "id": "dott_de_munich",
+      "country": "DE",
+      "provider": "dott",
+      "city": "München",
+      "center": [
+        48.1372,
+        11.5756
+      ],
+      "bounds": {
+        "south": 48.0524,
+        "north": 48.3714,
+        "west": 11.3135,
+        "east": 11.7866
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/munich/gbfs.json",
+      "aliases": [
+        "Munich",
+        "Muenchen"
+      ]
+    },
+    {
+      "id": "dott_de_munster",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Münster",
+      "center": [
+        51.9583,
+        7.6259
+      ],
+      "bounds": {
+        "south": 51.8732,
+        "north": 52.023,
+        "west": 7.538,
+        "east": 7.7053
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/munster/gbfs.json"
+    },
+    {
+      "id": "dott_de_neumunster",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Neumünster",
+      "center": [
+        54.0746,
+        9.9781
+      ],
+      "bounds": {
+        "south": 54.0269,
+        "north": 54.1564,
+        "west": 9.922,
+        "east": 10.0373
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/neumunster/gbfs.json"
+    },
+    {
+      "id": "dott_de_neuss",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Neuss",
+      "center": [
+        51.1985,
+        6.6831
+      ],
+      "bounds": {
+        "south": 51.1397,
+        "north": 51.2502,
+        "west": 6.6118,
+        "east": 6.7563
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/neuss/gbfs.json"
+    },
+    {
+      "id": "dott_de_nuremberg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Nürnberg",
+      "center": [
+        49.4542,
+        11.0746
+      ],
+      "bounds": {
+        "south": 49.3802,
+        "north": 49.5102,
+        "west": 10.934,
+        "east": 11.1618
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/nuremberg/gbfs.json",
+      "aliases": [
+        "Nuremberg",
+        "Nuernberg"
+      ]
+    },
+    {
+      "id": "dott_de_osnabruck",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Osnabrück",
+      "center": [
+        52.275,
+        8.0494
+      ],
+      "bounds": {
+        "south": 52.2304,
+        "north": 52.3258,
+        "west": 7.9693,
+        "east": 8.1174
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/osnabruck/gbfs.json"
+    },
+    {
+      "id": "dott_de_paderborn",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Paderborn",
+      "center": [
+        51.7227,
+        8.7589
+      ],
+      "bounds": {
+        "south": 51.6802,
+        "north": 51.7754,
+        "west": 8.693,
+        "east": 8.8261
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/paderborn/gbfs.json"
+    },
+    {
+      "id": "dott_de_peine",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Peine",
+      "center": [
+        52.3291,
+        10.2375
+      ],
+      "bounds": {
+        "south": 52.2846,
+        "north": 52.3715,
+        "west": 10.1457,
+        "east": 10.3028
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/peine/gbfs.json"
+    },
+    {
+      "id": "dott_de_potsdam",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Potsdam",
+      "center": [
+        52.395,
+        13.0639
+      ],
+      "bounds": {
+        "south": 52.3368,
+        "north": 52.4514,
+        "west": 12.9564,
+        "east": 13.1474
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/potsdam/gbfs.json"
+    },
+    {
+      "id": "dott_de_recklinghausen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Recklinghausen",
+      "center": [
+        51.6093,
+        7.2052
+      ],
+      "bounds": {
+        "south": 51.544,
+        "north": 51.6464,
+        "west": 7.1475,
+        "east": 7.2986
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/recklinghausen/gbfs.json"
+    },
+    {
+      "id": "dott_de_regensburg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Regensburg",
+      "center": [
+        49.0107,
+        12.0977
+      ],
+      "bounds": {
+        "south": 48.9671,
+        "north": 49.0506,
+        "west": 12.0227,
+        "east": 12.1659
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/regensburg/gbfs.json"
+    },
+    {
+      "id": "dott_de_reutlingen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Reutlingen",
+      "center": [
+        48.4914,
+        9.2043
+      ],
+      "bounds": {
+        "south": 48.4312,
+        "north": 48.5396,
+        "west": 9.1335,
+        "east": 9.2596
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/reutlingen/gbfs.json"
+    },
+    {
+      "id": "dott_de_rheda-wiedenbruck",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Rheda-Wiedenbrück",
+      "center": [
+        51.845,
+        8.3044
+      ],
+      "bounds": {
+        "south": 51.7905,
+        "north": 51.8802,
+        "west": 8.2427,
+        "east": 8.3831
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/rheda-wiedenbruck/gbfs.json"
+    },
+    {
+      "id": "dott_de_rheine",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Rheine",
+      "center": [
+        52.2929,
+        7.4462
+      ],
+      "bounds": {
+        "south": 52.238,
+        "north": 52.3354,
+        "west": 7.3664,
+        "east": 7.5334
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/rheine/gbfs.json"
+    },
+    {
+      "id": "dott_de_rostock",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Rostock",
+      "center": [
+        54.1363,
+        12.0681
+      ],
+      "bounds": {
+        "south": 54.0489,
+        "north": 54.1971,
+        "west": 12.0106,
+        "east": 12.1967
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/rostock/gbfs.json"
+    },
+    {
+      "id": "dott_de_russelsheim",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Rüsselsheim",
+      "center": [
+        49.9914,
+        8.4261
+      ],
+      "bounds": {
+        "south": 49.9421,
+        "north": 50.0197,
+        "west": 8.3689,
+        "east": 8.4781
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/russelsheim/gbfs.json"
+    },
+    {
+      "id": "dott_de_saarbrucken",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Saarbrücken",
+      "center": [
+        49.2383,
+        6.9951
+      ],
+      "bounds": {
+        "south": 49.1602,
+        "north": 49.31,
+        "west": 6.871,
+        "east": 7.0888
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/saarbrucken/gbfs.json"
+    },
+    {
+      "id": "dott_de_salzgitter",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Salzgitter",
+      "center": [
+        52.1524,
+        10.3326
+      ],
+      "bounds": {
+        "south": 52.0187,
+        "north": 52.1909,
+        "west": 10.2662,
+        "east": 10.4147
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/salzgitter/gbfs.json"
+    },
+    {
+      "id": "dott_de_sankt-augustin",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Sankt Augustin",
+      "center": [
+        50.7928,
+        7.2048
+      ],
+      "bounds": {
+        "south": 50.7374,
+        "north": 50.8283,
+        "west": 7.1182,
+        "east": 7.2951
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/sankt-augustin/gbfs.json"
+    },
+    {
+      "id": "dott_de_solingen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Solingen",
+      "center": [
+        51.1636,
+        7.0646
+      ],
+      "bounds": {
+        "south": 51.1193,
+        "north": 51.2317,
+        "west": 6.9723,
+        "east": 7.1405
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/solingen/gbfs.json"
+    },
+    {
+      "id": "dott_de_stuttgart",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Stuttgart",
+      "center": [
+        48.7758,
+        9.1829
+      ],
+      "bounds": {
+        "south": 48.6983,
+        "north": 48.8556,
+        "west": 9.0659,
+        "east": 9.2723
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/stuttgart/gbfs.json"
+    },
+    {
+      "id": "dott_de_troisdorf",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Troisdorf",
+      "center": [
+        50.8206,
+        7.1232
+      ],
+      "bounds": {
+        "south": 50.7571,
+        "north": 50.8597,
+        "west": 7.0678,
+        "east": 7.2034
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/troisdorf/gbfs.json"
+    },
+    {
+      "id": "dott_de_tubingen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Tübingen",
+      "center": [
+        48.5216,
+        9.0576
+      ],
+      "bounds": {
+        "south": 48.4824,
+        "north": 48.5647,
+        "west": 9.0088,
+        "east": 9.1103
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/tubingen/gbfs.json"
+    },
+    {
+      "id": "dott_de_uberlingen",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Überlingen",
+      "center": [
+        47.7766,
+        9.158
+      ],
+      "bounds": {
+        "south": 47.7349,
+        "north": 47.7957,
+        "west": 9.1186,
+        "east": 9.2181
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/uberlingen/gbfs.json"
+    },
+    {
+      "id": "dott_de_ulm",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Ulm",
+      "center": [
+        48.4003,
+        9.9973
+      ],
+      "bounds": {
+        "south": 48.3279,
+        "north": 48.4615,
+        "west": 9.9057,
+        "east": 10.0918
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/ulm/gbfs.json"
+    },
+    {
+      "id": "dott_de_wiesbaden",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Wiesbaden",
+      "center": [
+        50.0767,
+        8.2377
+      ],
+      "bounds": {
+        "south": 49.9273,
+        "north": 50.1206,
+        "west": 8.0728,
+        "east": 8.3414
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/wiesbaden/gbfs.json"
+    },
+    {
+      "id": "dott_de_wolfsburg",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Wolfsburg",
+      "center": [
+        52.423,
+        10.7863
+      ],
+      "bounds": {
+        "south": 52.3522,
+        "north": 52.4808,
+        "west": 10.6624,
+        "east": 10.882
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/wolfsburg/gbfs.json"
+    },
+    {
+      "id": "dott_de_zwickau",
+      "country": "DE",
+      "provider": "dott",
+      "city": "Zwickau",
+      "center": [
+        50.7283,
+        12.4887
+      ],
+      "bounds": {
+        "south": 50.6888,
+        "north": 50.7562,
+        "west": 12.4389,
+        "east": 12.537
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/zwickau/gbfs.json"
+    },
+    {
+      "id": "hopp_de_konstanz",
+      "country": "DE",
+      "provider": "hopp",
+      "city": "Konstanz",
+      "center": [
+        47.6603,
+        9.1758
+      ],
+      "bounds": {
+        "south": 47.64,
+        "north": 47.74,
+        "west": 9.1,
+        "east": 9.25
+      },
+      "discoveryUrl": "https://api.mobidata-bw.de/sharing/gbfs/v3/hopp_konstanz/gbfs"
+    },
+    {
+      "id": "lime_de_bw",
+      "country": "DE",
+      "provider": "lime",
+      "city": "Stuttgart / Konstanz",
+      "center": [
+        48.7758,
+        9.1829
+      ],
+      "bounds": {
+        "south": 47.64,
+        "north": 48.8556,
+        "west": 9.0659,
+        "east": 9.2723
+      },
+      "discoveryUrl": "https://api.mobidata-bw.de/sharing/gbfs/v3/lime_bw/gbfs",
+      "areas": [
+        {
+          "city": "Stuttgart",
+          "center": [
+            48.7758,
+            9.1829
+          ],
+          "bounds": {
+            "south": 48.6983,
+            "north": 48.8556,
+            "west": 9.0659,
+            "east": 9.2723
+          }
+        },
+        {
+          "city": "Konstanz",
+          "center": [
+            47.6603,
+            9.1758
+          ],
+          "bounds": {
+            "south": 47.64,
+            "north": 47.74,
+            "west": 9.1,
+            "east": 9.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "lime_de_frankfurt",
+      "country": "DE",
+      "provider": "lime",
+      "city": "Frankfurt",
+      "center": [
+        50.1155,
+        8.6683
+      ],
+      "bounds": {
+        "south": 49.9311,
+        "north": 50.2246,
+        "west": 8.4319,
+        "east": 8.7884
+      },
+      "discoveryUrl": "https://data.lime.bike/api/partners/v2/gbfs/frankfurt/gbfs.json"
+    },
+    {
+      "id": "lime_de_wuppertal",
+      "country": "DE",
+      "provider": "lime",
+      "city": "Wuppertal",
+      "center": [
+        51.2669,
+        7.1769
+      ],
+      "bounds": {
+        "south": 51.2053,
+        "north": 51.314,
+        "west": 7.0316,
+        "east": 7.2833
+      },
+      "discoveryUrl": "https://data.lime.bike/api/partners/v2/gbfs/wuppertal/gbfs.json"
+    },
+    {
+      "id": "voi_de_bw",
+      "country": "DE",
+      "provider": "voi",
+      "city": "Baden-Württemberg",
+      "center": [
+        49.0069,
+        8.4037
+      ],
+      "bounds": {
+        "south": 48.4312,
+        "north": 49.569,
+        "west": 8.2776,
+        "east": 9.2723
+      },
+      "discoveryUrl": "https://api.mobidata-bw.de/sharing/gbfs/v3/voi_de/gbfs",
+      "areas": [
+        {
+          "city": "Karlsruhe",
+          "center": [
+            49.0069,
+            8.4037
+          ],
+          "bounds": {
+            "south": 48.9649,
+            "north": 49.059,
+            "west": 8.2776,
+            "east": 8.5008
+          }
+        },
+        {
+          "city": "Pforzheim",
+          "center": [
+            48.8926,
+            8.6946
+          ],
+          "bounds": {
+            "south": 48.83,
+            "north": 48.96,
+            "west": 8.59,
+            "east": 8.81
+          }
+        },
+        {
+          "city": "Mannheim",
+          "center": [
+            49.4875,
+            8.466
+          ],
+          "bounds": {
+            "south": 49.4082,
+            "north": 49.569,
+            "west": 8.3311,
+            "east": 8.589
+          }
+        },
+        {
+          "city": "Stuttgart",
+          "center": [
+            48.7758,
+            9.1829
+          ],
+          "bounds": {
+            "south": 48.6983,
+            "north": 48.8556,
+            "west": 9.0659,
+            "east": 9.2723
+          }
+        },
+        {
+          "city": "Tübingen",
+          "center": [
+            48.5216,
+            9.0576
+          ],
+          "bounds": {
+            "south": 48.4824,
+            "north": 48.5647,
+            "west": 9.0088,
+            "east": 9.1103
+          }
+        },
+        {
+          "city": "Reutlingen",
+          "center": [
+            48.4914,
+            9.2043
+          ],
+          "bounds": {
+            "south": 48.4312,
+            "north": 48.5396,
+            "west": 9.1335,
+            "east": 9.2596
+          }
+        }
+      ]
+    }
+  ]
+}

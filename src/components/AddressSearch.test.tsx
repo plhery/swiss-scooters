@@ -28,7 +28,7 @@ describe('AddressSearch', () => {
       </I18nProvider>
     );
 
-    const input = screen.getByRole('combobox', { name: 'Swiss address or French city' });
+    const input = screen.getByRole('combobox', { name: 'City or Swiss address' });
     fireEvent.change(input, { target: { value: 'Zürich HB' } });
     await act(async () => vi.advanceTimersByTimeAsync(350));
 

@@ -1,4 +1,4 @@
-import type { FrenchScooterSystem } from './frenchScooterSystems';
+import type { RegionalScooterSystem } from './regionalScooterSystems';
 import { boundsContainPoint } from './geo';
 import { fetchJson } from './scooterFeeds';
 import type { ParkingLocation } from './types';
@@ -11,7 +11,7 @@ export interface LilleParkingFeature {
   properties?: { objectid?: number; numero_voie?: string; nom_voie?: string; commune?: string;
     typologie?: string; type_engin?: string };
 }
-export function normalizeLilleParking(features: LilleParkingFeature[], system: FrenchScooterSystem): ParkingLocation[] {
+export function normalizeLilleParking(features: LilleParkingFeature[], system: RegionalScooterSystem): ParkingLocation[] {
   const locations = new Map<string, ParkingLocation>();
   for (const feature of features) {
     const properties = feature.properties;
@@ -29,7 +29,7 @@ export function normalizeLilleParking(features: LilleParkingFeature[], system: F
   }
   return [...locations.values()];
 }
-export async function fetchLilleParking(system: FrenchScooterSystem) {
+export async function fetchLilleParking(system: RegionalScooterSystem) {
   const features: LilleParkingFeature[] = [];
   let stale = false;
   // Construct pagination on the reviewed endpoint; never follow arbitrary feed links.
