@@ -52,31 +52,6 @@
   top: calc(var(--sat) + 8px);
 }
 
-.leaflet-bottom {
-  bottom: calc(var(--sheet-peek-h) + var(--dock-bottom) + 6px);
-  transition: bottom 280ms var(--spring);
-}
-
-.leaflet-control-attribution {
-  max-width: min(540px, calc(100vw - 92px));
-  box-sizing: border-box;
-  margin: 0 8px 0 0 !important;
-  padding: 3px 7px !important;
-  border-radius: 999px;
-  background: var(--attribution-bg) !important;
-  backdrop-filter: blur(12px) saturate(160%);
-  -webkit-backdrop-filter: blur(12px) saturate(160%);
-  color: var(--attribution-ink);
-  font-size: 10px !important;
-  line-height: 1.3 !important;
-  box-shadow: 0 1px 5px rgba(24, 28, 34, 0.08);
-}
-
-.leaflet-control-attribution a {
-  color: inherit;
-  text-decoration: none;
-}
-
 .map-zoom-controls {
   position: absolute;
   z-index: 1000;
@@ -398,9 +373,4 @@ a.popup-walk {
 
 @media (min-width: 900px) {
   .map-zoom-controls { top: calc(var(--sat) + 24px); right: 24px; }
-  .leaflet-bottom {
-    bottom: 4px;
-    left: 420px;
-  }
-  .leaflet-control-attribution { max-width: calc(100vw - 510px); }
 }

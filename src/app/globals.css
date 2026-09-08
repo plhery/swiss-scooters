@@ -8,10 +8,10 @@
   --hairline: rgba(60, 60, 67, 0.12);
   --page-bg: #e8e6e1;
   --top-scrim: rgba(255, 255, 255, 0.28);
-  --glass-bg: rgba(255, 255, 255, 0.94);
-  --glass-edge: rgba(255, 255, 255, 0.86);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-edge: rgba(255, 255, 255, 0.66);
   --glass-shadow: 0 8px 32px rgba(28, 36, 48, 0.1), 0 2px 6px rgba(28, 36, 48, 0.04);
-  --sheet-bg: rgba(250, 250, 252, 0.97);
+  --sheet-bg: rgba(250, 250, 252, 0.9);
   --grabber-bg: rgba(60, 60, 67, 0.22);
   --raised-bg: #fff;
   --focus-bg: rgba(255, 255, 255, 0.9);
@@ -79,10 +79,10 @@ body {
   --hairline: rgba(235, 235, 245, 0.15);
   --page-bg: #1c1c1e;
   --top-scrim: rgba(0, 0, 0, 0.28);
-  --glass-bg: rgba(32, 32, 36, 0.94);
+  --glass-bg: rgba(32, 32, 36, 0.86);
   --glass-edge: rgba(255, 255, 255, 0.13);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.12);
-  --sheet-bg: rgba(32, 32, 36, 0.96);
+  --sheet-bg: rgba(32, 32, 36, 0.92);
   --grabber-bg: rgba(235, 235, 245, 0.25);
   --raised-bg: #38383d;
   --focus-bg: rgba(58, 58, 64, 0.94);
@@ -141,8 +141,8 @@ svg {
 }
 .glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(28px) saturate(145%);
+  -webkit-backdrop-filter: blur(28px) saturate(145%);
   box-shadow:
     var(--glass-shadow),
     inset 0 0 0 1px var(--glass-edge);
@@ -1109,51 +1109,158 @@ svg {
   visibility: hidden;
   pointer-events: none;
 }
-.location-intro {
+/* A single small attribution stays visible; the full source list opens on demand. */
+.map-attribution {
+  --credits-bottom: calc(var(--sheet-peek-h) + var(--dock-bottom) + 6px);
   position: fixed;
-  z-index: var(--z-intro);
-  left: max(16px, calc((100vw - 540px) / 2));
-  bottom: calc(var(--sheet-peek-h) + var(--dock-bottom) + 38px);
-  width: min(380px, calc(100vw - 92px));
+  left: max(12px, env(safe-area-inset-left, 0px));
+  bottom: var(--credits-bottom);
+  z-index: var(--z-map-actions);
+  display: flex;
+  align-items: center;
+  border-radius: 16px;
+  padding-left: 10px;
+  background: var(--attribution-bg);
+  color: var(--attribution-ink);
+  font-size: 11px;
+  line-height: 1.3;
+  transition: bottom 280ms var(--spring);
+}
+.map-attribution > a {
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  padding-block: 6px;
+}
+.map-attribution > button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 3px;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: transparent;
+}
+.map-credits {
+  position: fixed;
+  inset: auto auto calc(var(--credits-bottom) + 40px) max(12px, env(safe-area-inset-left, 0px));
   box-sizing: border-box;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(420px, calc(100dvh - var(--credits-bottom) - var(--sat) - 56px));
+  margin: 0;
+  padding: 12px 18px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: 24px;
+  color: var(--ink);
+}
+.map-credits:popover-open {
+  animation: content-in 220ms var(--spring);
+}
+.map-credits header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.map-credits h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.025em;
+}
+.map-credits ul {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.map-credits li a {
+  display: block;
+  padding-block: 7px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 3px;
+}
+.app-shell[data-searching='true'] .map-attribution {
+  --credits-bottom: var(--dock-bottom);
+}
+.location-intro-positioner {
+  position: fixed;
+  inset: calc(var(--sat) + 88px) 0 calc(var(--sheet-peek-h) + var(--dock-bottom) + 44px);
+  z-index: var(--z-intro);
+  display: grid;
+  place-items: center;
   padding: 16px;
-  border-radius: 22px;
+  pointer-events: none;
+}
+.location-intro {
+  box-sizing: border-box;
+  width: min(336px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 24px 24px 16px;
+  border-radius: 28px;
+  text-align: center;
+  pointer-events: auto;
   animation: content-in 300ms var(--spring);
 }
-.location-intro strong,
-.location-intro span {
-  display: block;
+.location-intro-symbol {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 18px;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 11%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 8%, transparent);
 }
-.location-intro strong {
-  font-size: 16px;
-  letter-spacing: -0.02em;
+.location-intro h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
 }
-.location-intro span {
-  margin-top: 5px;
+.location-intro p {
+  max-width: 28ch;
+  margin: 10px auto 0;
   color: var(--ink-2);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.5;
 }
 .location-intro-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 13px;
+  display: grid;
+  gap: 4px;
+  margin-top: 20px;
 }
 .location-intro-actions button {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 44px;
-  padding: 8px 10px;
+  padding: 10px;
   border: 0;
-  border-radius: 14px;
-  background: var(--fill-tertiary);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
 }
 .location-intro-actions .intro-primary {
+  min-height: 48px;
   background: #0070eb;
   color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 3px 10px rgba(0, 107, 220, 0.16);
 }
 .toast {
   position: fixed;
@@ -1250,6 +1357,9 @@ svg {
   }
 }
 @media (min-width: 900px) {
+  .location-intro-positioner {
+    inset: 0;
+  }
   .search-island {
     left: 24px;
     right: auto;
@@ -1264,10 +1374,12 @@ svg {
     margin: 0;
     bottom: max(24px, var(--sab));
   }
-  .location-intro {
-    left: 24px;
-    bottom: calc(var(--sheet-peek-h) + 64px);
-    width: 380px;
+  .map-attribution {
+    --credits-bottom: max(24px, var(--sab));
+    left: 428px;
+  }
+  .map-credits {
+    left: 428px;
   }
   .fab-stack {
     right: 24px;
@@ -1312,8 +1424,29 @@ svg {
     gap: 6px;
   }
 }
-@media (max-height: 500px) {
+@media (max-height: 600px) {
   .location-intro {
+    padding: 18px 20px 10px;
+  }
+  .location-intro-symbol {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+  }
+  .location-intro-actions {
+    margin-top: 12px;
+  }
+}
+@media (min-height: 501px) {
+  .app-shell:has(.location-intro) .fab-stack {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+@media (max-height: 500px) {
+  .location-intro-positioner {
     display: none;
   }
   .sheet-content {
@@ -1379,6 +1512,9 @@ svg {
   .app-shell :active {
     transform: none !important;
   }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: var(--raised-bg); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .glass {

@@ -50,9 +50,6 @@ function createDestinationIcon(): L.DivIcon {
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>';
-const MOBILITY_ATTRIBUTION = '<a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">Mobility data CH</a> · <a href="https://transport.data.gouv.fr/datasets?type=vehicles-sharing">FR: Dott, Bird, Lime, Voi, Pony</a> · <a href="https://www.mobidata-bw.de/">MobiData BW</a> · <a href="https://github.com/MobilityData/gbfs">DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird</a>';
-const ADDRESS_ATTRIBUTION = '<a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api">&copy; swisstopo</a>';
-const TILE_ATTRIBUTION = `${OSM_ATTRIBUTION} · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION} · <a href="https://data.lillemetropole.fr/">Parking MEL</a>`;
 
 function formatDistance(meters: number, t: Translate, formatNumber: FormatNumber): string {
   return meters < 1000
@@ -289,7 +286,6 @@ export default function MapComponent({
     scooterLayerRef.current = L.layerGroup().addTo(map);
     destinationLayerRef.current = L.layerGroup().addTo(map);
     userLayerRef.current = L.layerGroup().addTo(map);
-    L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
 
     const updateZoom = () => {
       const currentZoom = map.getZoom();
@@ -366,7 +362,7 @@ export default function MapComponent({
 
     tileLayerRef.current?.remove();
     const layer = L.tileLayer(TILE_URL, {
-      attribution: TILE_ATTRIBUTION,
+      attribution: OSM_ATTRIBUTION,
       className: `map-basemap-${tileLayer}`,
       // Identify the site without sending a shared link's coordinates in Referer.
       referrerPolicy: 'origin',

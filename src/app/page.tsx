@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
 import BottomSheet, { type SelectedVehicle } from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
+import MapCredits from '@/components/MapCredits';
+import Icon from '@/components/Icon';
 import SearchIsland from '@/components/SearchIsland';
 import ControlSheet from '@/components/ControlSheet';
 import { selectionFeedback } from '@/lib/feedback';
@@ -385,6 +387,7 @@ export default function Home() {
     ? [...new Set([...providersForViewport(viewportBounds), ...Object.keys(viewportData.providerCounts)])]
     : Object.keys(PROVIDERS);
   const hasActiveFilters = minBattery > 0 || availableProviders.some(provider => !enabledProviders.has(provider));
+  const locationIntroVisible = showLocationIntro && !searchExpanded && !userLocation && !searchedAddress;
 
   const openPanel = (panel: 'filters' | 'settings') => {
     selectionFeedback();
@@ -446,15 +449,24 @@ export default function Home() {
         onShowSettings={() => openPanel('settings')}
       />
 
-      {showLocationIntro && !searchExpanded && !userLocation && !searchedAddress && (
-        <div className="location-intro glass" role="dialog" aria-labelledby="location-intro-title">
-          <div>
-            <strong id="location-intro-title">{t('intro.title')}</strong>
-            <span>{t('intro.body')}</span>
-          </div>
-          <div className="location-intro-actions">
-            <button className="intro-primary" onClick={() => { selectionFeedback(); handleLocateMe(); }}>{t('intro.useLocation')}</button>
-            <button onClick={() => { selectionFeedback(); setShowLocationIntro(false); }}>{t('intro.browse')}</button>
+      {locationIntroVisible && (
+        <div className="location-intro-positioner">
+          <div
+            className="location-intro glass"
+            role="dialog"
+            aria-labelledby="location-intro-title"
+            aria-describedby="location-intro-description"
+            onKeyDown={event => { if (event.key === 'Escape') setShowLocationIntro(false); }}
+          >
+            <div className="location-intro-symbol"><Icon name="location" size={27} /></div>
+            <h2 id="location-intro-title">{t('intro.title')}</h2>
+            <p id="location-intro-description">{t('intro.body')}</p>
+            <div className="location-intro-actions">
+              <button type="button" className="intro-primary" onClick={() => { selectionFeedback(); handleLocateMe(); }}>
+                <Icon name="location" size={18} />{t('intro.useLocation')}
+              </button>
+              <button type="button" onClick={() => { selectionFeedback(); setShowLocationIntro(false); }}>{t('intro.browse')}</button>
+            </div>
           </div>
         </div>
       )}
@@ -488,6 +500,8 @@ export default function Home() {
         onLocateMe={handleLocateMe}
         onRefresh={() => fetchScooters()}
       />
+
+      <MapCredits />
 
       <BottomSheet
         minBattery={minBattery}

@@ -16,6 +16,7 @@ async function zoomTo(page: Page, target: number) {
 }
 
 async function focusFixtureArea(page: Page) {
+  await page.getByRole('button', { name: 'Browse the map' }).click();
   await page.locator('.cluster-marker').first().click();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '10');
 }
@@ -208,6 +209,7 @@ test('city overview drills directly into the city and preserves unchanged marker
   await page.goto('/');
   const marker = page.locator('.cluster-marker-wrap');
   await expect(marker).toHaveCount(1);
+  await page.getByRole('button', { name: 'Browse the map' }).click();
   const original = await marker.elementHandle();
   await marker.click();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
@@ -315,6 +317,38 @@ test('reduced motion and narrow screens retain accessible controls', async ({ pa
   expect(box!.x + box!.width).toBeLessThanOrEqual(320);
   await dialog.getByRole('button', { name: 'Done' }).click();
   await expect(dialog).not.toBeVisible();
+});
+
+test('centers the location prompt and keeps map credits compact and accessible', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const intro = page.getByRole('dialog', { name: 'Find a scooter nearby' });
+  await expect(intro).toBeVisible();
+  const box = await intro.boundingBox();
+  expect(Math.abs(box!.x + box!.width / 2 - 195)).toBeLessThan(2);
+  expect(box!.y).toBeGreaterThan(88);
+  await expect(page.getByRole('link', { name: '© OpenStreetMap', exact: true })).toBeVisible();
+  const credits = page.getByRole('region', { name: 'Map & data credits' });
+  await expect(credits).toBeHidden();
+  const creditBox = await page.locator('.map-attribution').boundingBox();
+  expect(box!.y + box!.height).toBeLessThan(creditBox!.y);
+  expect(creditBox!.height).toBeLessThanOrEqual(34);
+  expect(creditBox!.width).toBeLessThan(180);
+  const accessibility = await new AxeBuilder({ page }).include('.location-intro').include('.map-attribution').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.getByRole('button', { name: 'Browse the map' }).click();
+  await expect(intro).toBeHidden();
+  const infoButton = page.getByRole('button', { name: 'Map & data credits' });
+  await infoButton.click();
+  await expect(credits).toBeVisible();
+  await expect(credits.getByRole('link', { name: '© swisstopo' })).toBeVisible();
+  await expect(credits.getByRole('link', { name: 'Parking · Métropole Européenne de Lille' })).toBeVisible();
+  const expandedAccessibility = await new AxeBuilder({ page }).include('#map-credits').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(expandedAccessibility.violations).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(credits).toBeHidden();
+  await expect(infoButton).toBeFocused();
 });
 
 test('publishes a standalone privacy notice', async ({ page }) => {

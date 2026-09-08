@@ -25,6 +25,12 @@ const paths = {
       <path d="M7 12h.01M12 12h.01M17 12h.01" strokeWidth="3" />
     </>
   ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6M12 7h.01" />
+    </>
+  ),
   close: <path d="m7 7 10 10M17 7 7 17" />,
   grid: (
     <>
