@@ -19,7 +19,8 @@
 }
 
 .map-basemap-light {
-  filter: saturate(0.6) brightness(1.03);
+  /* Keep geography in the background while street labels stay legible. */
+  filter: saturate(0.18) contrast(0.68) brightness(1.22);
 }
 
 .map-basemap-dark {
