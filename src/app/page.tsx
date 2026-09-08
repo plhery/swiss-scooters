@@ -353,7 +353,6 @@ export default function Home() {
   const dataHealthNotice = useMemo(
     () => scooterDataHealthNotice(responseMeta, representedVehicleCount, {
       cached: t('data.cached'),
-      overview: t('data.overview'),
       parkingUnavailable: t('parking.unavailable'),
       parkingStale: t('parking.stale'),
       partial: t('data.partial'),

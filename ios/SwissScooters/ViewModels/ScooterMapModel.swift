@@ -270,10 +270,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         guard let responseMetadata else { return nil }
 
         var messages: [String] = []
-        if responseMetadata.overview {
-            messages.append(String(localized: "City totals · refreshed hourly"))
-        }
-        if responseMetadata.stale {
+        if responseMetadata.stale && !responseMetadata.overview {
             messages.append(String(localized: "Showing cached data"))
         }
         if responseMetadata.partial {
