@@ -51,7 +51,7 @@ const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>';
 const MOBILITY_ATTRIBUTION = '<a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">Mobility data CH</a> · <a href="https://transport.data.gouv.fr/datasets?type=vehicles-sharing">FR: Dott, Bird, Lime, Voi, Pony</a>';
 const ADDRESS_ATTRIBUTION = '<a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api">&copy; swisstopo</a>';
-const TILE_ATTRIBUTION = `${OSM_ATTRIBUTION} · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`;
+const TILE_ATTRIBUTION = `${OSM_ATTRIBUTION} · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION} · <a href="https://data.lillemetropole.fr/">Parking MEL</a>`;
 
 function formatDistance(meters: number, t: Translate, formatNumber: FormatNumber): string {
   return meters < 1000

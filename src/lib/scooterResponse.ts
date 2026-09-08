@@ -4,7 +4,7 @@ import type { ScooterFetchResult } from '@/lib/scooterFeeds';
 import type { ScooterResponse, ScooterResponseMeta } from '@/lib/types';
 
 export const MOBILITY_SOURCE =
-  'Open data platform mobility Switzerland; Hopp GBFS; PubliBike Velospot public app feed; France: Dott, Bird, Lime, Voi, Pony GBFS (transport.data.gouv.fr)';
+  'Open data platform mobility Switzerland; Hopp GBFS; PubliBike Velospot public app feed; France: Dott, Bird, Lime, Voi, Pony GBFS (transport.data.gouv.fr); Lille parking: Metropole Europeenne de Lille';
 
 export function scooterResponse(
   result: ScooterFetchResult,

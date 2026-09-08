@@ -3,11 +3,13 @@ import { discoveryFeedEntries, discoveredFeedUrl, fetchJson } from './scooterFee
 import { filterReturningParking, normalizeParkingLocations,
   type ParkingStationsFeed, type ParkingStatusFeed, type ParkingTypesFeed, type ParkingZonesFeed } from './parking';
 import type { ParkingLocation } from './types';
+import { fetchLilleParking } from './lilleParking';
 
 const normalized = new Map<string, { information: ParkingStationsFeed; types: ParkingTypesFeed;
   zones: ParkingZonesFeed; hour: number; locations: ParkingLocation[] }>();
 
 export async function fetchFrenchParking(system: FrenchScooterSystem) {
+  if (system.id === 'lime_fr_lille') return fetchLilleParking(system);
   const discovery = await fetchJson<Parameters<typeof discoveryFeedEntries>[0]>(system.discoveryUrl, { revalidate: 3600 });
   const entries = discoveryFeedEntries(discovery.data);
   const base = new URL('.', system.discoveryUrl).toString();

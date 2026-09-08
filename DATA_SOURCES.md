@@ -80,8 +80,11 @@ opens directions. The operator app remains the final check for ending a ride.
 - GBFS 2.3 `vehicle_type_id` and GBFS 3 `vehicle_type_ids`, localized names,
   polygon holes, ordered rules, global defaults and active dates are supported.
 - Only scooter-compatible virtual/infrastructure stations are used. Lime's
-  synthetic whole-city Lille station is excluded; missing spots do not imply
-  unrestricted parking.
+  synthetic whole-city Lille station is excluded. Lime's Lille parking instead
+  comes from the official MEL inventory of mandatory e-scooter bays, paginated
+  and cached hourly. Bike-only and non-parking records are excluded. This
+  municipal inventory does not publish live return availability. Missing spots
+  do not imply unrestricted parking.
 - `is_returning=false` removes a bay. Virtual stations do not require installed
   docking hardware: Pony publishes `is_installed=false` alongside
   `is_returning=true` throughout its virtual parking feeds.
@@ -93,3 +96,6 @@ opens directions. The operator app remains the final check for ending a ride.
 
 References: [GBFS station information and geofencing](https://github.com/MobilityData/gbfs/blob/master/gbfs.md),
 [Dott France's published GBFS feeds](https://transport.data.gouv.fr/datasets/tier-dott-gbfs-france?locale=fr).
+
+Lille source and attribution: [Métropole Européenne de Lille — mandatory shared
+e-scooter and e-bike parking](https://www.data.gouv.fr/datasets/espaces-de-stationnement-des-trottinettes-electriques-et-velos-a-assistance-electrique-en-libre-service).
