@@ -757,12 +757,9 @@ final class ScooterAnnotationView: MKAnnotationView {
     static let selectedMarkerZPriority = MKAnnotationViewZPriority(rawValue: 900)
     static let markerSize = CGSize(width: 40, height: 40)
 
-    private static let scooterGlyph = UIImage(systemName: "scooter") ??
-        UIImage(systemName: "bicycle")
-
     private let selectionLayer = CAShapeLayer()
     private let markerLayer = CAShapeLayer()
-    private let glyphImageView = UIImageView()
+    private let providerLabel = UILabel()
     private var providerBrandColor = UIColor.systemGray
 
     override var annotation: MKAnnotation? {
@@ -803,14 +800,12 @@ final class ScooterAnnotationView: MKAnnotationView {
         markerLayer.lineWidth = 1.5
         layer.addSublayer(markerLayer)
 
-        glyphImageView.image = Self.scooterGlyph
-        glyphImageView.contentMode = .scaleAspectFit
-        glyphImageView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
-            pointSize: 18,
-            weight: .semibold
-        )
-        glyphImageView.isAccessibilityElement = false
-        addSubview(glyphImageView)
+        providerLabel.font = .systemFont(ofSize: 18, weight: .bold)
+        providerLabel.textAlignment = .center
+        providerLabel.adjustsFontSizeToFitWidth = true
+        providerLabel.minimumScaleFactor = 0.75
+        providerLabel.isAccessibilityElement = false
+        addSubview(providerLabel)
 
         updateAdaptiveColors()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
@@ -820,6 +815,7 @@ final class ScooterAnnotationView: MKAnnotationView {
 
         isAccessibilityElement = true
         accessibilityTraits = .button
+        refreshAppearance()
     }
 
     override func layoutSubviews() {
@@ -829,14 +825,14 @@ final class ScooterAnnotationView: MKAnnotationView {
         selectionLayer.path = path.cgPath
         markerLayer.frame = bounds
         markerLayer.path = path.cgPath
-        glyphImageView.frame = CGRect(x: 9, y: 9, width: 22, height: 22)
+        providerLabel.frame = bounds.insetBy(dx: 6, dy: 6)
         layer.shadowPath = path.cgPath
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
         providerBrandColor = .systemGray
-        glyphImageView.image = Self.scooterGlyph
+        providerLabel.text = nil
         selectionLayer.opacity = 0
         markerLayer.lineWidth = 1.5
         transform = .identity
@@ -860,7 +856,7 @@ final class ScooterAnnotationView: MKAnnotationView {
         markerLayer.fillColor = accentColor.cgColor
         markerLayer.strokeColor = UIColor.white.withAlphaComponent(0.92).cgColor
         selectionLayer.strokeColor = accentColor.withAlphaComponent(0.42).cgColor
-        glyphImageView.tintColor = Self.glyphColor(on: accentColor)
+        providerLabel.textColor = Self.glyphColor(on: accentColor)
     }
 
     static func markerAccentColor(_ brandColor: UIColor, against surfaceColor: UIColor) -> UIColor {
@@ -929,8 +925,8 @@ final class ScooterAnnotationView: MKAnnotationView {
     func refreshAppearance() {
         guard let scooterAnnotation = annotation as? ScooterMapAnnotation else { return }
         let scooter = scooterAnnotation.scooter
-        glyphImageView.image = Self.scooterGlyph
         let provider = scooter.providerInfo
+        providerLabel.text = provider?.shortName ?? "?"
         providerBrandColor = provider?.uiColor ?? .systemGray
         updateAdaptiveColors()
         accessibilityLabel = String(

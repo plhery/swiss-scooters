@@ -141,38 +141,34 @@ final class ScooterFilteringTests: XCTestCase {
     }
 
     @MainActor
-    func testScooterGlyphSurvivesAnnotationReuse() throws {
-        let scooter = Scooter(
-            provider: "bolt",
-            latitude: 47.3769,
-            longitude: 8.5417,
-            battery: 82,
-            rangeMeters: nil,
-            vehicleID: "reused",
-            deepLink: nil,
-            rentalURIs: nil,
-            distanceMeters: 0
+    func testProviderLettersUpdateWhenScooterAnnotationsAreReused() throws {
+        let view = ScooterAnnotationView(
+            annotation: ScooterMapAnnotation(scooter: scooter(id: "bolt", provider: "bolt", battery: 82)),
+            reuseIdentifier: nil
         )
-        let view = ScooterAnnotationView(annotation: nil, reuseIdentifier: nil)
-        let glyphView = try XCTUnwrap(view.subviews.compactMap { $0 as? UIImageView }.first)
+        let label = try XCTUnwrap(view.subviews.compactMap { $0 as? UILabel }.first)
+        XCTAssertEqual(label.text, "B")
 
-        view.annotation = ScooterMapAnnotation(scooter: scooter)
-        XCTAssertNotNil(glyphView.image)
+        for (provider, letters) in [("bird", "Bi"), ("publibike", "PB"), ("lime", "L"), ("unknown", "?")] {
+            view.prepareForReuse()
+            XCTAssertNil(label.text)
+            view.annotation = ScooterMapAnnotation(scooter: scooter(id: provider, provider: provider, battery: 82))
+            view.layoutIfNeeded()
 
-        view.prepareForReuse()
-        view.annotation = ScooterMapAnnotation(scooter: scooter)
-
-        XCTAssertNotNil(glyphView.image)
-        XCTAssertFalse(glyphView.isHidden)
+            XCTAssertEqual(label.text, letters)
+            XCTAssertFalse(label.isHidden)
+            XCTAssertFalse(label.isAccessibilityElement)
+            XCTAssertTrue(view.bounds.contains(label.frame))
+        }
     }
 
     @MainActor
-    func testProviderPinsPreferAWhiteScooterGlyph() {
+    func testProviderPinsPreferWhiteLetters() {
         for provider in ScooterProvider.allCases {
             XCTAssertEqual(
                 ScooterAnnotationView.glyphColor(on: provider.uiColor),
                 .white,
-                "Expected a white glyph for \(provider.name)"
+                "Expected white letters for \(provider.name)"
             )
         }
     }
