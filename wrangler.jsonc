@@ -15,7 +15,7 @@
     }
   ],
   "vars": {
-    "SCOOTER_SNAPSHOT_API_URL": ""
+    "SCOOTER_SNAPSHOT_API_URL": "https://scooter-data.plhery.com"
   },
   "assets": {
     "directory": ".open-next/assets",

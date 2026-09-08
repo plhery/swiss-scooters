@@ -85,6 +85,8 @@ must be `swiss-scooters`.
 - Origin: `https://scooter-data.plhery.com`, container port 3001.
 - Persistent named volume: `mouc13tsnvylg0v9ee9wp5v5-scooter-snapshots`, mounted at `/data`.
 - Resource limits: 1 CPU, 512 MB. No host port is exposed.
+- Coolify HTTP health check: `http://127.0.0.1:3001/health`, 15-second start
+  period. Use the IPv4 address because the server binds to `0.0.0.0`.
 - Netcup tunnel: `b1f36e92-77d5-4c92-846c-28848a492643`; exact hostname rule to
   `http://127.0.0.1:80`, routed by Coolify's proxy.
 

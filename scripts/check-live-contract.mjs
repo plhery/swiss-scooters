@@ -79,7 +79,7 @@ for (const [index, cluster] of body.clusters.entries()) {
     typeof cluster.lat !== 'number' ||
     typeof cluster.lng !== 'number' ||
     !Number.isInteger(cluster.count) ||
-    cluster.count < 2 ||
+    cluster.count < (body.meta.overview ? 1 : 2) ||
     !cluster.providers ||
     typeof cluster.providers !== 'object'
   ) {
