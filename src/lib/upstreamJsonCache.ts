@@ -51,6 +51,8 @@ interface UpstreamJsonCacheOptions {
 
 export class UpstreamJsonCache {
   private readonly entries = new Map<string, CacheEntry>();
+  private readonly hostIntervals = new Map<string, number>();
+  private readonly nextRequests = new Map<string, number>();
   private readonly fetcher: Fetcher;
   private readonly maxEntries: number;
   private readonly errorRetryMs: number;
@@ -90,8 +92,24 @@ export class UpstreamJsonCache {
     }
   }
 
+  /** Collector pacing prevents large country catalogs from bursting upstream quotas. */
+  paceHost(hostname: string, intervalMs: number): void {
+    this.hostIntervals.set(hostname, Math.max(0, intervalMs));
+  }
+
   clear(): void {
     this.entries.clear();
+    this.nextRequests.clear();
+  }
+
+  private async waitForHost(url: string): Promise<void> {
+    const host = new URL(url).hostname;
+    const interval = this.hostIntervals.get(host) ?? 0;
+    if (!interval) return;
+    const now = this.now();
+    const start = Math.max(now, this.nextRequests.get(host) ?? 0);
+    this.nextRequests.set(host, start + interval);
+    if (start > now) await new Promise(resolve => setTimeout(resolve, start - now));
   }
 
   private async fetchFresh<T>(
@@ -100,6 +118,7 @@ export class UpstreamJsonCache {
     options: UpstreamJsonOptions
   ): Promise<CachedJson<T>> {
     try {
+      if (this.hostIntervals.size) await this.waitForHost(url);
       const response = await this.fetcher(url, {
         headers: options.headers,
         cache: 'no-store',

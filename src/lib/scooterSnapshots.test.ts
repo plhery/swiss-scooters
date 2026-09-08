@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCityOverview, querySnapshot, VEHICLE_MAX_AGE_MS, type FeedSnapshot, type MobilitySnapshot } from './scooterSnapshots';
+import { buildCityOverview, overviewNeedsRefresh, querySnapshot, VEHICLE_MAX_AGE_MS, type FeedSnapshot, type MobilitySnapshot } from './scooterSnapshots';
 import { ScooterFeedsUnavailableError } from './scooterFeeds';
 import { providersForViewport, mapRepresentationsMatch } from './mapCoverage';
 import type { Vehicle } from './types';
@@ -22,6 +22,17 @@ const snapshot = (feeds: FeedSnapshot[]): MobilitySnapshot => ({
 const query = { bounds: lyon, minBattery: 0 };
 
 describe('persistent map snapshots', () => {
+  it('refreshes incomplete startup city counts as failed feeds recover', () => {
+    const unavailable = feed({ observedAt: 0, failed: true, stale: true, vehicles: [] });
+    const initial = snapshot([unavailable]);
+    expect(overviewNeedsRefresh(initial, [unavailable], now)).toBe(false);
+    const healthy = feed();
+    expect(overviewNeedsRefresh(initial, [healthy], now)).toBe(true);
+    const refreshed = { ...initial, feeds: [healthy], overview: buildCityOverview([healthy], now) };
+    expect(querySnapshot(refreshed, { bounds: lyon, minBattery: 0 }, 8, now).meta.totalVehicles).toBe(2);
+    expect(overviewNeedsRefresh(refreshed, [healthy], now + 60_000)).toBe(false);
+  });
+
   it('returns empty coverage without needing live or even fresh cached feeds', () => {
     const response = querySnapshot(snapshot([feed({ observedAt: 0 })]), { ...query, outsideCoverage: true }, 16, now);
     expect(response.vehicles).toEqual([]);

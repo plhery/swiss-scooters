@@ -162,3 +162,9 @@ The upstream cache holds 2048 documents to retain hourly metadata across minute
 refreshes. The country catalogs are bundled into both the cache backend and the
 Cloudflare web app; deploy the cache before the web app. City totals rebuild on
 startup when the catalog adds/removes cities, even if the old hourly cache is fresh.
+
+Dott requests are spaced by 150 ms during collection (below 400/minute), including
+cold starts and hourly metadata refreshes. A full cold collection can take about
+two minutes; persisted snapshots keep map requests independent of that work.
+City overviews rebuild when previously failed feeds recover, avoiding an hour
+of incomplete startup counts.

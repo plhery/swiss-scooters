@@ -4,11 +4,15 @@ import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import { discoverCollectableFeeds, independentCollectableFeeds, ScooterFeedsUnavailableError } from '../src/lib/scooterFeeds';
 import { parseScooterQuery } from '../src/lib/scooterQuery';
-import { buildCityOverview, OVERVIEW_REFRESH_MS, querySnapshot, type FeedSnapshot, type MobilitySnapshot } from '../src/lib/scooterSnapshots';
+import { buildCityOverview, overviewNeedsRefresh, querySnapshot, type FeedSnapshot, type MobilitySnapshot } from '../src/lib/scooterSnapshots';
 import { scooterResponseHeaders } from '../src/lib/scooterResponse';
-import { REGIONAL_SCOOTER_SYSTEMS, REGIONAL_SCOOTER_CITIES, regionalSource, isRegionalSource } from '../src/lib/regionalScooterSystems';
-import { SWISS_SCOOTER_AREAS } from '../src/lib/feedCoverage';
+import { REGIONAL_SCOOTER_SYSTEMS, regionalSource, isRegionalSource } from '../src/lib/regionalScooterSystems';
+import { upstreamJsonCache } from '../src/lib/upstreamJsonCache';
 import { fetchRegionalParking } from '../src/lib/parkingFeeds';
+
+// Dott publishes a separate set of metadata documents per city. Keep cold-start
+// and hourly metadata refreshes below 400 requests/minute for this host.
+upstreamJsonCache.paceHost('gbfs.api.ridedott.com', 150);
 
 const snapshotPath = process.env.SCOOTER_SNAPSHOT_PATH ?? '/data/scooters.json';
 const port = Number(process.env.PORT ?? 3001);
@@ -83,7 +87,7 @@ async function refresh() {
     for (const id of next.keys()) if (!active.has(id)) next.delete(id);
   }
   const feeds = [...next.values()];
-  const overview = !snapshot || snapshot.overview.cities.length !== REGIONAL_SCOOTER_CITIES.length + SWISS_SCOOTER_AREAS.length || now - snapshot.overview.generatedAt >= OVERVIEW_REFRESH_MS
+  const overview = overviewNeedsRefresh(snapshot, feeds, now)
     ? buildCityOverview(feeds, now) : snapshot.overview;
   snapshot = { version: 1, updatedAt: now, feeds, overview };
   const temporaryPath = `${snapshotPath}.${randomUUID()}.tmp`;

@@ -41,6 +41,29 @@ describe('UpstreamJsonCache', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it('paces cold requests per host without delaying other providers or cache hits', async () => {
+    vi.useFakeTimers();
+    try {
+      const started: Array<{ host: string; time: number }> = [];
+      const cache = new UpstreamJsonCache({ fetcher: async url => {
+        started.push({ host: new URL(String(url)).hostname, time: Date.now() });
+        return jsonResponse({ ok: true });
+      } });
+      cache.paceHost('dott.example', 150);
+      const first = cache.fetch('https://dott.example/a', options);
+      const second = cache.fetch('https://dott.example/b', options);
+      const other = cache.fetch('https://other.example/a', options);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(started.map(entry => entry.host)).toEqual(['dott.example', 'other.example']);
+      await first;
+      await cache.fetch('https://dott.example/a', options);
+      expect(started).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(150);
+      await Promise.all([first, second, other]);
+      expect(started[2].time - started[0].time).toBe(150);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('serves stale data during an outage and backs off before retrying', async () => {
     let now = 0;
     let failing = false;

@@ -66,6 +66,13 @@ function healthFor(feeds: FeedSnapshot[], now: number): ScooterFetchMetadata {
 
 const regionalCities = REGIONAL_SCOOTER_CITIES;
 
+export function overviewNeedsRefresh(snapshot: MobilitySnapshot | undefined, feeds: FeedSnapshot[], now: number): boolean {
+  if (!snapshot || snapshot.overview.cities.length !== regionalCities.length + SWISS_SCOOTER_AREAS.length ||
+    now - snapshot.overview.generatedAt >= OVERVIEW_REFRESH_MS) return true;
+  const recovered = new Set(feeds.filter(feed => !feed.failed && now - feed.observedAt < VEHICLE_MAX_AGE_MS).map(feed => feed.id));
+  return snapshot.overview.cities.some(city => city.failedSources.some(id => recovered.has(id)));
+}
+
 export function buildCityOverview(feeds: FeedSnapshot[], now: number): MobilitySnapshot['overview'] {
   const totals = new Map<string, CityTotals>();
   for (const city of [...regionalCities, ...SWISS_SCOOTER_AREAS]) {
