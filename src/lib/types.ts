@@ -1,6 +1,7 @@
 export type {
   FeedSourceStatus,
   RentalUris,
+  RidePricing,
   ScooterCluster,
   ScooterResponse,
   ScooterResponseMeta,

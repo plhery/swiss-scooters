@@ -1,5 +1,5 @@
 import type { FeedQuery } from '@/lib/scooterFeeds';
-import { SWISS_MOBILITY_BOUNDS } from '@/lib/feedCoverage';
+import { coverageIntersects, MOBILITY_COVERAGE, SUPPORTED_MOBILITY_BOUNDS } from '@/lib/feedCoverage';
 import { boundsIntersection } from '@/lib/geo';
 import { PROVIDERS } from '@/lib/types';
 
@@ -68,16 +68,16 @@ export function parseScooterQuery(params: URLSearchParams): ScooterQueryResult {
   }
 
   const requestedBounds = { south, west, north, east };
-  const swissBounds = boundsIntersection(requestedBounds, SWISS_MOBILITY_BOUNDS);
+  const supportedBounds = boundsIntersection(requestedBounds, SUPPORTED_MOBILITY_BOUNDS);
 
   return {
     ok: true,
     query: {
       origin: lat !== null && lng !== null ? [lat, lng] : null,
-      bounds: swissBounds ?? requestedBounds,
+      bounds: supportedBounds ?? requestedBounds,
       minBattery,
       providers,
-      outsideCoverage: swissBounds === null,
+      outsideCoverage: !coverageIntersects(MOBILITY_COVERAGE, requestedBounds),
     },
     zoom,
   };

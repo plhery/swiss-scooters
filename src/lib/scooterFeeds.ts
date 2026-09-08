@@ -4,8 +4,10 @@ import {
   HOPP_COVERAGE,
   knownSystemCoverage,
   PUBLIBIKE_FREE_FLOATING_COVERAGE,
+  SWISS_MOBILITY_BOUNDS,
 } from '@/lib/feedCoverage';
-import { boundsContainPoint, haversineM } from '@/lib/geo';
+import { boundsContainPoint, boundsIntersection, haversineM } from '@/lib/geo';
+import { FRENCH_SCOOTER_SYSTEMS, type FrenchScooterSystem } from '@/lib/frenchScooterSystems';
 import type { MapBounds, Vehicle } from '@/lib/types';
 import { legacyRentalLink, normalizeRentalUris } from '@/lib/rentalLinks';
 import { upstreamJsonCache, type CachedJson } from '@/lib/upstreamJsonCache';
@@ -41,6 +43,7 @@ interface RawVehicle {
   bike_id?: string;
   vehicle_id?: string;
   vehicle_type_id?: string;
+  pricing_plan_id?: string;
   id?: string;
   is_reserved?: AvailabilityFlag;
   is_disabled?: AvailabilityFlag;
@@ -61,6 +64,7 @@ interface VehicleType {
 }
 
 interface StatusFeed {
+  last_updated?: number | string;
   data?: {
     bikes?: RawVehicle[];
     vehicles?: RawVehicle[];
@@ -72,6 +76,31 @@ interface VehicleTypesFeed {
     vehicle_types?: VehicleType[];
   };
 }
+
+interface PerMinutePrice {
+  start?: number;
+  rate?: number;
+  interval?: number;
+}
+
+interface PricingPlan {
+  plan_id?: string;
+  currency?: string;
+  price?: number;
+  description?: string | Array<{ language: string; text: string }>;
+  per_min_pricing?: PerMinutePrice[];
+  // Hopp currently publishes this singular key instead of the GBFS key above.
+  per_min_price?: PerMinutePrice[];
+}
+
+interface PricingPlansFeed {
+  data?: {
+    plans?: PricingPlan[];
+    pricing_plans?: PricingPlan[];
+  };
+}
+
+type VehiclePricing = NonNullable<Vehicle['pricing']>;
 
 interface RegistryFeed {
   systems?: Array<{
@@ -131,6 +160,7 @@ export interface ScooterFetchMetadata {
     national: FeedSourceStatus;
     hopp: FeedSourceStatus;
     publibike: FeedSourceStatus;
+    france: FeedSourceStatus;
   };
 }
 
@@ -229,7 +259,8 @@ function toVehicle(
   systemId: string,
   provider: ProviderKey,
   raw: RawVehicle,
-  query: Pick<FeedQuery, 'origin'>
+  query: Pick<FeedQuery, 'origin'>,
+  pricingByPlanId: Map<string, VehiclePricing>
 ): Vehicle | null {
   const lat = raw.lat;
   const lng = raw.lon ?? raw.lng;
@@ -245,6 +276,9 @@ function toVehicle(
   const distance = query.origin
     ? Math.round(haversineM(query.origin[0], query.origin[1], lat, lng) * 10) / 10
     : null;
+  const pricing = raw.pricing_plan_id
+    ? pricingByPlanId.get(raw.pricing_plan_id)
+    : undefined;
 
   return {
     provider,
@@ -256,6 +290,7 @@ function toVehicle(
     deep_link: legacyRentalLink(rentalUris),
     rental_uris: rentalUris,
     distance_m: distance,
+    ...(pricing ? { pricing } : {}),
   };
 }
 
@@ -263,7 +298,8 @@ function filterVehicles(
   systemId: string,
   vehicles: RawVehicle[],
   types: Map<string, VehicleType>,
-  query: FeedQuery
+  query: FeedQuery,
+  pricingByPlanId: Map<string, VehiclePricing> = new Map()
 ): Vehicle[] {
   const provider = providerKeyForSystemId(systemId);
   if (!provider || (query.providers && !query.providers.has(provider))) return [];
@@ -281,7 +317,7 @@ function filterVehicles(
       !boundsContainPoint(query.bounds, lat, lng)
     ) continue;
 
-    const vehicle = toVehicle(systemId, provider, raw, query);
+    const vehicle = toVehicle(systemId, provider, raw, query, pricingByPlanId);
     if (!vehicle) continue;
     filtered.push(vehicle);
   }
@@ -290,6 +326,98 @@ function filterVehicles(
 
 function typeMap(feed: VehicleTypesFeed): Map<string, VehicleType> {
   return new Map((feed.data?.vehicle_types ?? []).map(type => [type.vehicle_type_id, type]));
+}
+
+function minorUnits(value: number | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value < 0) return null;
+  const minor = Math.round((value + Number.EPSILON) * 100);
+  return Number.isSafeInteger(minor) ? minor : null;
+}
+
+function describedMinorUnits(
+  description: PricingPlan['description'],
+  currency: string,
+  priceContext: 'unlock' | 'minute'
+): number | null {
+  if (Array.isArray(description)) {
+    description = description.find(value => value.language === 'en')?.text;
+  }
+  if (typeof description !== 'string') return null;
+  const suffix = priceContext === 'unlock' ? 'to\\s+unlock' : 'per\\s+minute';
+  const match = description.match(new RegExp(
+    `([0-9]+(?:[.,][0-9]+)?)\\s*${currency}\\s+${suffix}`,
+    'i'
+  ));
+  if (!match) return null;
+  return minorUnits(Number(match[1].replace(',', '.')));
+}
+
+function vehiclePricing(plan: PricingPlan): VehiclePricing | null {
+  const currency = plan.currency?.trim().toUpperCase();
+  const unlockFee = minorUnits(plan.price);
+  const minuteBands = plan.per_min_pricing?.length
+    ? plan.per_min_pricing
+    : plan.per_min_price;
+  const firstMinuteBand = minuteBands
+    ?.filter(band => (
+      band.rate != null && Number.isFinite(band.rate) && band.rate >= 0 &&
+      band.interval != null && Number.isFinite(band.interval) && band.interval > 0
+    ))
+    .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))[0];
+  const minuteFee = firstMinuteBand
+    ? minorUnits(firstMinuteBand.rate! / firstMinuteBand.interval!)
+    : null;
+
+  if (!currency?.match(/^[A-Z]{3}$/) || unlockFee == null || minuteFee == null) {
+    return null;
+  }
+
+  // Descriptions are never used as the tariff source, but they can expose a
+  // contradictory canonical value. In that case omitting the estimate is safer.
+  const describedUnlockFee = describedMinorUnits(plan.description, currency, 'unlock');
+  const describedMinuteFee = describedMinorUnits(plan.description, currency, 'minute');
+  if (
+    (describedUnlockFee != null && describedUnlockFee !== unlockFee) ||
+    (describedMinuteFee != null && describedMinuteFee !== minuteFee)
+  ) {
+    return null;
+  }
+
+  return {
+    currency,
+    unlock_fee_minor_units: unlockFee,
+    minute_fee_minor_units: minuteFee,
+  };
+}
+
+function pricingPlanMap(feed: PricingPlansFeed): Map<string, VehiclePricing> {
+  const plans = feed.data?.plans ?? feed.data?.pricing_plans ?? [];
+  const pricingByPlanId = new Map<string, VehiclePricing>();
+  for (const plan of plans) {
+    const planId = plan.plan_id?.trim();
+    const pricing = vehiclePricing(plan);
+    if (planId && pricing) pricingByPlanId.set(planId, pricing);
+  }
+  return pricingByPlanId;
+}
+
+async function fetchPricingPlans(
+  url: string | null,
+  options: { authenticated?: boolean; source: string }
+): Promise<Map<string, VehiclePricing>> {
+  if (!url) return new Map();
+
+  try {
+    const result = await fetchJson<PricingPlansFeed>(url, {
+      authenticated: options.authenticated,
+      revalidate: METADATA_REVALIDATE_SECONDS,
+    });
+    return pricingPlanMap(result.data);
+  } catch (error) {
+    // Pricing enriches availability and must never make otherwise-valid scooters disappear.
+    logFallback(`${options.source}:system_pricing_plans`, error);
+    return new Map();
+  }
 }
 
 function registrySystem(systemId: string, systemUrl: string): NationalSystem | null {
@@ -342,7 +470,8 @@ function trustedFeedUrl(rawUrl: string | undefined, trustedBaseUrl: string): str
     const basePath = base.pathname.replace(/\/$/, '');
     if (
       url.protocol !== 'https:' ||
-      url.hostname !== base.hostname ||
+      url.origin !== base.origin ||
+      url.username || url.password ||
       !url.pathname.startsWith(`${basePath}/`)
     ) return null;
     url.hash = '';
@@ -458,6 +587,7 @@ async function fetchSystemVehicles(
   const entries = discoveryFeedEntries(discovery.data);
   const statusUrl = discoveredFeedUrl(entries, 'free_bike_status', system.baseUrl);
   const typesUrl = discoveredFeedUrl(entries, 'vehicle_types', system.baseUrl);
+  const pricingUrl = discoveredFeedUrl(entries, 'system_pricing_plans', system.baseUrl);
   if (!statusUrl || !typesUrl) {
     return { vehicles: [], stale: discovery.stale, skipped: true };
   }
@@ -484,13 +614,22 @@ async function fetchSystemVehicles(
     }
   }
 
-  const status = await fetchJson<StatusFeed>(statusUrl, {
-    authenticated: true,
-    revalidate: STATUS_REVALIDATE_SECONDS,
-  });
+  const [status, pricingByPlanId] = await Promise.all([
+    fetchJson<StatusFeed>(statusUrl, {
+      authenticated: true,
+      revalidate: STATUS_REVALIDATE_SECONDS,
+    }),
+    fetchPricingPlans(pricingUrl, { authenticated: true, source: system.id }),
+  ]);
 
   return {
-    vehicles: filterVehicles(system.id, rawVehicles(status.data), typesById, query),
+    vehicles: filterVehicles(
+      system.id,
+      rawVehicles(status.data),
+      typesById,
+      query,
+      pricingByPlanId
+    ),
     stale: discovery.stale || types.stale || coverageStale || status.stale,
   };
 }
@@ -565,13 +704,15 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
   const hoppBaseUrl = 'https://api.hopp.bike/gbfs/ch-zurich';
   const statusUrl = discoveredFeedUrl(entries, 'free_bike_status', hoppBaseUrl);
   const typesUrl = discoveredFeedUrl(entries, 'vehicle_types', hoppBaseUrl);
+  const pricingUrl = discoveredFeedUrl(entries, 'system_pricing_plans', hoppBaseUrl);
   if (!statusUrl || !typesUrl) {
     throw new Error('Hopp GBFS discovery contains no supported scooter feeds');
   }
 
-  const [status, types] = await Promise.all([
+  const [status, types, pricingByPlanId] = await Promise.all([
     fetchJson<StatusFeed>(statusUrl, { revalidate: STATUS_REVALIDATE_SECONDS }),
     fetchJson<VehicleTypesFeed>(typesUrl, { revalidate: METADATA_REVALIDATE_SECONDS }),
+    fetchPricingPlans(pricingUrl, { source: 'hopp' }),
   ]);
   const typesById = typeMap(types.data);
   if (!hasElectricScooter(typesById)) {
@@ -579,7 +720,13 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
   }
 
   return {
-    vehicles: filterVehicles('hopp', rawVehicles(status.data), typesById, query),
+    vehicles: filterVehicles(
+      'hopp',
+      rawVehicles(status.data),
+      typesById,
+      query,
+      pricingByPlanId
+    ),
     stale: discovery.stale || status.stale || types.stale,
   };
 }
@@ -634,9 +781,100 @@ async function fetchPubliBikeFreeFloatingVehicles(
   return { vehicles, stale: result.stale };
 }
 
+async function fetchFrenchSystemVehicles(
+  system: FrenchScooterSystem,
+  query: FeedQuery
+): Promise<SourceVehicles> {
+  const bounds = boundsIntersection(system.bounds, query.bounds);
+  if (!bounds) return { vehicles: [], stale: false, skipped: true };
+
+  const baseUrl = new URL('.', system.discoveryUrl).toString();
+  const discovery = await fetchJson<DiscoveryFeed>(system.discoveryUrl, {
+    revalidate: METADATA_REVALIDATE_SECONDS,
+  });
+  const entries = discoveryFeedEntries(discovery.data);
+  const statusUrl = discoveredFeedUrl(entries, 'vehicle_status', baseUrl) ??
+    discoveredFeedUrl(entries, 'free_bike_status', baseUrl);
+  const typesUrl = discoveredFeedUrl(entries, 'vehicle_types', baseUrl);
+  if (!statusUrl || !typesUrl) {
+    throw new Error(`${system.id} discovery contains no supported scooter feeds`);
+  }
+
+  const types = await fetchJson<VehicleTypesFeed>(typesUrl, {
+    revalidate: METADATA_REVALIDATE_SECONDS,
+  });
+  const typesById = typeMap(types.data);
+  if (!hasElectricScooter(typesById)) {
+    return { vehicles: [], stale: discovery.stale || types.stale, skipped: true };
+  }
+
+  const [status, pricing] = await Promise.all([
+    fetchJson<StatusFeed>(statusUrl, { revalidate: STATUS_REVALIDATE_SECONDS }),
+    fetchPricingPlans(discoveredFeedUrl(entries, 'system_pricing_plans', baseUrl), {
+      source: system.id,
+    }),
+  ]);
+  if (!Array.isArray(status.data.data?.bikes) && !Array.isArray(status.data.data?.vehicles)) {
+    throw new Error(`${system.id} status contains no vehicle array`);
+  }
+  const updatedAt = typeof status.data.last_updated === 'number'
+    ? status.data.last_updated * 1000
+    : Date.parse(status.data.last_updated ?? '');
+  const ageSeconds = (Date.now() - updatedAt) / 1000;
+  // Several published French endpoints still return successful but abandoned
+  // feeds. HTTP 200 alone must not make old locations look live.
+  if (!Number.isFinite(updatedAt) || ageSeconds > 900 || ageSeconds < -300) {
+    throw new Error(`${system.id} status timestamp is missing or out of date`);
+  }
+
+  return {
+    vehicles: filterVehicles(system.id, rawVehicles(status.data), typesById, {
+      ...query,
+      bounds,
+    }, pricing),
+    stale: discovery.stale || types.stale || status.stale || ageSeconds > 300,
+  };
+}
+
+async function fetchFrenchVehicles(query: FeedQuery): Promise<SourceVehicles> {
+  const systems = FRENCH_SCOOTER_SYSTEMS.filter(system => (
+    (!query.providers || query.providers.has(system.provider)) &&
+    coverageIntersects([system.bounds], query.bounds)
+  ));
+  if (systems.length === 0) return { vehicles: [], stale: false, skipped: true };
+
+  const available: SourceVehicles[] = [];
+  const failedSources: string[] = [];
+  // Country-level views should not open dozens of concurrent upstream requests.
+  let nextSystem = 0;
+  await Promise.all(Array.from({ length: Math.min(4, systems.length) }, async () => {
+    while (nextSystem < systems.length) {
+      const system = systems[nextSystem++];
+      try {
+        available.push(await fetchFrenchSystemVehicles(system, query));
+      } catch (error) {
+        failedSources.push(`france:${system.id}`);
+        logFallback(system.id, error);
+      }
+    }
+  }));
+
+  const served = available.filter(result => !result.skipped);
+  if (served.length === 0 && failedSources.length > 0) {
+    throw new ScooterFeedsUnavailableError(failedSources.sort());
+  }
+  return {
+    vehicles: served.flatMap(result => result.vehicles),
+    stale: served.some(result => result.stale),
+    skipped: served.length === 0,
+    failedSources: failedSources.sort(),
+  };
+}
+
 function nationalSourceIsRelevant(query: FeedQuery): boolean {
+  if (!coverageIntersects([SWISS_MOBILITY_BOUNDS], query.bounds)) return false;
   if (!query.providers) return true;
-  return [...query.providers].some(provider => provider !== 'hopp');
+  return [...query.providers].some(provider => provider !== 'hopp' && provider !== 'pony');
 }
 
 function sourceStatus(result: PromiseSettledResult<SourceVehicles>): FeedSourceStatus {
@@ -677,48 +915,57 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
         partial: false,
         stale: false,
         failedSources: [],
-        sources: { national: 'skipped', hopp: 'skipped', publibike: 'skipped' },
+        sources: { national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'skipped' },
       },
     };
   }
 
-  const [nationalResult, hoppResult, publibikeResult] = await Promise.allSettled([
+  const [nationalResult, hoppResult, publibikeResult, franceResult] = await Promise.allSettled([
     nationalSourceIsRelevant(query)
-      ? fetchNationalVehicles(query)
+      ? fetchNationalVehicles({
+        ...query,
+        bounds: boundsIntersection(query.bounds, SWISS_MOBILITY_BOUNDS)!,
+      })
       : Promise.resolve<SourceVehicles>({ vehicles: [], stale: false, skipped: true }),
     fetchHoppVehicles(query),
     fetchPubliBikeFreeFloatingVehicles(query),
+    fetchFrenchVehicles(query),
   ]);
 
   const sourceResults = [
     ['national', nationalResult],
     ['hopp', hoppResult],
     ['publibike', publibikeResult],
+    ['france', franceResult],
   ] as const;
   const failedSources: string[] = [];
+  let rejectedSourceCount = 0;
   for (const [source, result] of sourceResults) {
     if (result.status === 'rejected') {
+      rejectedSourceCount++;
       logSourceFailure(source, result.reason);
-      failedSources.push(source);
+      failedSources.push(...(result.reason instanceof ScooterFeedsUnavailableError
+        ? result.reason.failedSources
+        : [source]));
     }
   }
 
   const attemptedSourceCount = sourceResults.filter(([, result]) => (
     result.status === 'rejected' || !result.value.skipped
   )).length;
-  if (attemptedSourceCount > 0 && failedSources.length === attemptedSourceCount) {
+  if (attemptedSourceCount > 0 && rejectedSourceCount === attemptedSourceCount) {
     throw new ScooterFeedsUnavailableError(failedSources);
   }
 
-  if (nationalResult.status === 'fulfilled') {
-    failedSources.push(...(nationalResult.value.failedSources ?? []));
+  for (const [, result] of sourceResults) {
+    if (result.status === 'fulfilled') {
+      failedSources.push(...(result.value.failedSources ?? []));
+    }
   }
 
-  const vehicles = [
-    ...(nationalResult.status === 'fulfilled' ? nationalResult.value.vehicles : []),
-    ...(hoppResult.status === 'fulfilled' ? hoppResult.value.vehicles : []),
-    ...(publibikeResult.status === 'fulfilled' ? publibikeResult.value.vehicles : []),
-  ];
+  const vehicles = sourceResults.flatMap(([, result]) => (
+    result.status === 'fulfilled' ? result.value.vehicles : []
+  ));
 
   const unique = new Map<string, Vehicle>();
   for (const vehicle of vehicles) {
@@ -739,12 +986,13 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
     national: sourceStatus(nationalResult),
     hopp: sourceStatus(hoppResult),
     publibike: sourceStatus(publibikeResult),
+    france: sourceStatus(franceResult),
   };
   return {
     vehicles: filtered,
     meta: {
       partial: failedSources.length > 0,
-      stale: Object.values(sources).includes('stale'),
+      stale: sourceResults.some(([, result]) => result.status === 'fulfilled' && result.value.stale),
       failedSources,
       sources,
     },

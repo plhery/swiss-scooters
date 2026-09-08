@@ -58,6 +58,29 @@
         }
       }
     },
+    "RidePricing": {
+      "x-swift-name": "ScooterRidePricingPayload",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "unlock_fee_minor_units",
+        "minute_fee_minor_units"
+      ],
+      "properties": {
+        "currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+        "unlock_fee_minor_units": {
+          "x-swift-name": "unlockFeeMinorUnits",
+          "type": "integer",
+          "minimum": 0
+        },
+        "minute_fee_minor_units": {
+          "x-swift-name": "minuteFeeMinorUnits",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "Vehicle": {
       "x-swift-name": "ScooterVehiclePayload",
       "type": "object",
@@ -117,6 +140,7 @@
           "x-swift-name": "rentalURIs",
           "$ref": "#/$defs/RentalUris"
         },
+        "pricing": { "$ref": "#/$defs/RidePricing" },
         "distance_m": {
           "x-swift-name": "distanceMeters",
           "anyOf": [

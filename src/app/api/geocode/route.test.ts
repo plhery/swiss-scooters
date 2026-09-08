@@ -31,6 +31,24 @@ afterEach(() => {
 });
 
 describe('GET /api/geocode', () => {
+  it('includes French scooter cities in searches', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"results":[]}')));
+    const result = await POST(postRequest('Marseille', 'fr'));
+    expect(result.status).toBe(200);
+    await expect(result.json()).resolves.toEqual([
+      { lat: 43.2965, lng: 5.3698, display_name: 'Marseille, France' },
+    ]);
+  });
+
+  it('can still navigate to French cities when Swiss address search fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
+    const result = await GET(request('Lyon'));
+    expect(result.status).toBe(200);
+    await expect(result.json()).resolves.toEqual([
+      { lat: 45.7578, lng: 4.832, display_name: 'Lyon, France' },
+    ]);
+  });
+
   it('validates query length before contacting GeoAdmin', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

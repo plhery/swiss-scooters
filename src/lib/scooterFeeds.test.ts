@@ -41,6 +41,10 @@ function nationalResponse(url: string): Response | null {
               name: 'vehicle_types',
               url: 'https://sharedmobility.ch/v2/gbfs/lime_zurich/vehicle_types',
             },
+            {
+              name: 'system_pricing_plans',
+              url: 'https://sharedmobility.ch/v2/gbfs/lime_zurich/system_pricing_plans',
+            },
           ],
         },
       },
@@ -51,6 +55,7 @@ function nationalResponse(url: string): Response | null {
       data: {
         bikes: [{
           vehicle_type_id: 'lime-scooter',
+          pricing_plan_id: 'lime-standard',
           bike_id: 'lime-1',
           lat: 47.377,
           lon: 8.542,
@@ -78,6 +83,18 @@ function nationalResponse(url: string): Response | null {
       },
     });
   }
+  if (url === 'https://sharedmobility.ch/v2/gbfs/lime_zurich/system_pricing_plans') {
+    return jsonResponse({
+      data: {
+        plans: [{
+          plan_id: 'lime-standard',
+          currency: 'CHF',
+          price: 1,
+          per_min_pricing: [{ start: 0, rate: 0.42, interval: 1 }],
+        }],
+      },
+    });
+  }
   return null;
 }
 
@@ -94,6 +111,10 @@ function hoppResponse(url: string): Response | null {
             name: 'vehicle_types',
             url: 'https://api.hopp.bike/gbfs/ch-zurich/en/vehicle_types.json',
           },
+          {
+            name: 'system_pricing_plans',
+            url: 'https://api.hopp.bike/gbfs/ch-zurich/en/system_pricing_plans.json',
+          },
         ],
       },
     });
@@ -103,6 +124,7 @@ function hoppResponse(url: string): Response | null {
       data: {
         bikes: [{
           vehicle_type_id: 'hopp-scooter',
+          pricing_plan_id: 'hopp-standard',
           bike_id: 'hopp-1',
           lat: 47.3771,
           lon: 8.5421,
@@ -121,6 +143,18 @@ function hoppResponse(url: string): Response | null {
           vehicle_type_id: 'hopp-scooter',
           form_factor: 'scooter',
           propulsion_type: 'electric',
+        }],
+      },
+    });
+  }
+  if (url === 'https://api.hopp.bike/gbfs/ch-zurich/en/system_pricing_plans.json') {
+    return jsonResponse({
+      data: {
+        plans: [{
+          plan_id: 'hopp-standard',
+          currency: 'chf',
+          price: 1,
+          per_min_price: [{ start: 0, rate: 0.8, interval: 2 }],
         }],
       },
     });
@@ -155,18 +189,19 @@ afterEach(() => {
 });
 
 describe('fetchScooters source health', () => {
-  it('does no upstream work for a viewport outside Switzerland', async () => {
+  it('does no upstream work for a viewport outside supported coverage', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await fetchScooters({
       ...query,
-      bounds: { south: 48.80, west: 2.25, north: 48.92, east: 2.45 },
+      bounds: { south: 51.4, west: -0.3, north: 51.6, east: 0.1 },
       outsideCoverage: true,
     });
 
     expect(result.vehicles).toEqual([]);
     expect(result.meta.sources).toEqual({
+      france: 'skipped',
       national: 'skipped',
       hopp: 'skipped',
       publibike: 'skipped',
@@ -197,6 +232,11 @@ describe('fetchScooters source health', () => {
           android: 'https://lime.bike/vehicle/lime-1?platform=android',
           web: 'https://lime.bike/vehicle/lime-1',
         },
+        pricing: {
+          currency: 'CHF',
+          unlock_fee_minor_units: 100,
+          minute_fee_minor_units: 42,
+        },
       }),
       expect.objectContaining({
         provider: 'hopp',
@@ -206,6 +246,11 @@ describe('fetchScooters source health', () => {
           ios: 'https://app.hopp.bike/launch/hopp-1?direct',
           android: 'https://app.hopp.bike/launch/hopp-1?direct',
           web: 'https://app.hopp.bike/launch/hopp-1?direct',
+        },
+        pricing: {
+          currency: 'CHF',
+          unlock_fee_minor_units: 100,
+          minute_fee_minor_units: 40,
         },
       }),
       expect.objectContaining({
@@ -218,8 +263,60 @@ describe('fetchScooters source health', () => {
       partial: false,
       stale: false,
       failedSources: [],
-      sources: { national: 'fresh', hopp: 'fresh', publibike: 'fresh' },
+      sources: { france: 'skipped', national: 'fresh', hopp: 'fresh', publibike: 'fresh' },
     });
+  });
+
+  it('keeps availability fresh when optional pricing cannot be loaded', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/lime_zurich/system_pricing_plans')) {
+        throw new Error('Pricing unavailable');
+      }
+      const response = nationalResponse(url);
+      if (response) return response;
+      throw new Error(`Unexpected URL: ${url}`);
+    }));
+
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+
+    expect(result.vehicles).toHaveLength(1);
+    expect(result.vehicles[0]).not.toHaveProperty('pricing');
+    expect(result.meta).toEqual({
+      partial: false,
+      stale: false,
+      failedSources: [],
+      sources: { france: 'skipped', national: 'fresh', hopp: 'skipped', publibike: 'skipped' },
+    });
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('system_pricing_plans'));
+  });
+
+  it('omits a tariff when its canonical values contradict its description', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/lime_zurich/system_pricing_plans')) {
+        return jsonResponse({
+          data: {
+            plans: [{
+              plan_id: 'lime-standard',
+              currency: 'CHF',
+              price: 0,
+              description: 'Riders pay 0.95 CHF to unlock and 0.41 CHF per minute.',
+              per_min_pricing: [{ start: 1, rate: 0.41, interval: 1 }],
+            }],
+          },
+        });
+      }
+      const response = nationalResponse(url);
+      if (response) return response;
+      throw new Error(`Unexpected URL: ${url}`);
+    }));
+
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+
+    expect(result.vehicles).toHaveLength(1);
+    expect(result.vehicles[0]).not.toHaveProperty('pricing');
+    expect(result.meta.sources.national).toBe('fresh');
   });
 
   it('loads only valid Zürich scooters from the PubliBike app feed', async () => {
@@ -264,7 +361,7 @@ describe('fetchScooters source health', () => {
       partial: false,
       stale: false,
       failedSources: [],
-      sources: { national: 'skipped', hopp: 'skipped', publibike: 'fresh' },
+      sources: { france: 'skipped', national: 'skipped', hopp: 'skipped', publibike: 'fresh' },
     });
   });
 
@@ -282,11 +379,12 @@ describe('fetchScooters source health', () => {
       expect.objectContaining({ provider: 'hopp', battery: 68 }),
     ]);
     expect(result.meta.sources).toEqual({
+      france: 'skipped',
       national: 'skipped',
       hopp: 'fresh',
       publibike: 'skipped',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('sharedmobility.ch'))).toBe(false);
   });
 
@@ -305,7 +403,7 @@ describe('fetchScooters source health', () => {
     expect(result.meta).toMatchObject({
       partial: true,
       failedSources: ['hopp'],
-      sources: { national: 'fresh', hopp: 'failed', publibike: 'fresh' },
+      sources: { france: 'skipped', national: 'fresh', hopp: 'failed', publibike: 'fresh' },
     });
   });
 
@@ -358,7 +456,7 @@ describe('fetchScooters source health', () => {
       partial: true,
       stale: false,
       failedSources: ['national:dott_zurich'],
-      sources: { national: 'partial', hopp: 'skipped', publibike: 'skipped' },
+      sources: { france: 'skipped', national: 'partial', hopp: 'skipped', publibike: 'skipped' },
     });
   });
 
@@ -401,6 +499,7 @@ describe('fetchScooters source health', () => {
 
     expect(result.vehicles).toEqual([]);
     expect(result.meta.sources).toEqual({
+      france: 'skipped',
       national: 'skipped',
       hopp: 'skipped',
       publibike: 'skipped',
@@ -423,7 +522,7 @@ describe('fetchScooters source health', () => {
     const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
 
     expect(result.vehicles).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it('does not load any system feeds outside the requested bounds', async () => {

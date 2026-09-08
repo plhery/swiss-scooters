@@ -45,6 +45,29 @@ enum LocationAuthorizationIssue: Equatable {
     }
 }
 
+enum NearbyOrigin: Equatable, Sendable {
+    case searchedDestination(MapDestination)
+    case userLocation(GeoPoint)
+
+    var point: GeoPoint {
+        switch self {
+        case let .searchedDestination(destination):
+            destination.point
+        case let .userLocation(point):
+            point
+        }
+    }
+
+    var title: String {
+        switch self {
+        case let .searchedDestination(destination):
+            destination.title
+        case .userLocation:
+            String(localized: "Current location")
+        }
+    }
+}
+
 private struct PartialScooterResponseError: LocalizedError {
     let failedSources: [String]
 
@@ -92,9 +115,14 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var lastUpdated: Date?
     private(set) var responseMetadata: ScooterResponseMetadata?
     var userLocation: GeoPoint?
+    private(set) var userHeading: ScooterUserHeading?
     private(set) var locationAuthorizationIssue: LocationAuthorizationIssue?
-    var enabledProviders = Set(ScooterProvider.allCases) {
+    private(set) var enabledProviders = Set(ScooterProvider.allCases) {
         didSet {
+            defaults.set(
+                enabledProviders.map(\.rawValue).sorted(),
+                forKey: Self.enabledProvidersKey
+            )
             rebuildMapScooters()
             rebuildMapClusters()
             rebuildVisibleCounts()
@@ -120,8 +148,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
     }
 
+    private(set) var rideEstimateMinutes: Int
+    private(set) var ridePasses: [ScooterProvider: ProviderRidePass]
+
     @ObservationIgnored private let api: any ScooterAPIClient
     @ObservationIgnored private let locationManager: CLLocationManager
+    @ObservationIgnored private var isTrackingHeading = false
+    @ObservationIgnored private var isSceneActive = true
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var queryBounds: GeoBounds?
     @ObservationIgnored private var queryZoom: Int?
@@ -147,6 +180,9 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     private static let minimumBatteryKey = "minimum-battery"
     private static let mapStyleKey = "apple-map-style"
+    private static let enabledProvidersKey = "enabled-providers"
+    private static let rideEstimateMinutesKey = "ride-estimate-minutes-v1"
+    private static let ridePassesKey = "provider-ride-passes-v1"
     private static let locationTimeout: Duration = .seconds(5)
     private static let userFocusZoomIncrease = 3
     private static let userFocusMeters: CLLocationDistance = 850 / pow(
@@ -154,6 +190,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         Double(userFocusZoomIncrease)
     )
     private static let userFocusZoom = 16 + userFocusZoomIncrease
+    private static let approximateWalkingMetersPerMinute: CLLocationDistance = 80
 
     override convenience init() {
         self.init(api: ScooterAPI(), locationManager: CLLocationManager(), defaults: .standard)
@@ -174,11 +211,25 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         let savedStyle = defaults.string(forKey: Self.mapStyleKey)
         mapStyle = AppleMapStyle(rawValue: savedStyle ?? "") ?? .standard
 
+        let savedEstimateMinutes = defaults.object(
+            forKey: Self.rideEstimateMinutesKey
+        ) as? Int ?? RideEstimateDuration.defaultMinutes
+        rideEstimateMinutes = RideEstimateDuration.normalized(savedEstimateMinutes)
+        ridePasses = Self.loadRidePasses(from: defaults)
+
+        if let savedProviderIDs = defaults.array(forKey: Self.enabledProvidersKey) as? [String] {
+            let savedProviders = Set(savedProviderIDs.compactMap(ScooterProvider.init(rawValue:)))
+            if savedProviders.count == savedProviderIDs.count {
+                enabledProviders = savedProviders
+            }
+        }
+
         super.init()
 
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 20
+        locationManager.headingFilter = 2
     }
 
     var selectedScooter: Scooter? {
@@ -186,7 +237,25 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return vehiclesByID[selectedScooterID]
     }
 
+    var activeOrigin: NearbyOrigin? {
+        if let searchedDestination {
+            return .searchedDestination(searchedDestination)
+        }
+        if let userLocation {
+            return .userLocation(userLocation)
+        }
+        return nil
+    }
+
+    var activeOriginTitle: String? {
+        activeOrigin?.title
+    }
+
     var visibleCount: Int { visibleScooterCount }
+
+    var isShowingClusterSummary: Bool {
+        responseMetadata?.mode == "clusters" && mapScooters.isEmpty && !mapClusters.isEmpty
+    }
 
     var allProvidersSelected: Bool {
         enabledProviders == Set(ScooterProvider.allCases)
@@ -219,16 +288,103 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func count(for provider: ScooterProvider) -> Int {
-        visibleProviderCounts[provider, default: 0]
+        var count = vehicles.lazy.filter {
+            self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude) &&
+                self.passesBatteryFilter($0) &&
+                $0.providerInfo == provider
+        }.count
+
+        if responseMetadata?.mode == "clusters" {
+            count += clusters.lazy.filter {
+                self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude)
+            }.reduce(0) { partialResult, cluster in
+                partialResult + cluster.providers[provider.rawValue, default: 0]
+            }
+        }
+
+        return count
     }
 
     var allProviderCount: Int {
-        visibleProviderCounts.values.reduce(0, +)
+        var count = vehicles.lazy.filter {
+            self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude) &&
+                self.passesBatteryFilter($0)
+        }.count
+
+        if responseMetadata?.mode == "clusters" {
+            count += clusters.lazy.filter {
+                self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude)
+            }.reduce(0) { $0 + $1.count }
+        }
+
+        return count
+    }
+
+    var quickProviderOrder: [ScooterProvider] {
+        let isFilteringProviders = !allProvidersSelected
+
+        return ScooterProvider.allCases.sorted { lhs, rhs in
+            let lhsSelected = isFilteringProviders && self.enabledProviders.contains(lhs)
+            let rhsSelected = isFilteringProviders && self.enabledProviders.contains(rhs)
+            if lhsSelected != rhsSelected {
+                return lhsSelected
+            }
+
+            let lhsCount = self.count(for: lhs)
+            let rhsCount = self.count(for: rhs)
+            if lhsCount != rhsCount {
+                return lhsCount > rhsCount
+            }
+
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
     }
 
     func formattedDistance(for scooter: Scooter) -> String? {
-        guard let userLocation else { return nil }
-        return scooter.formattedDistance(from: userLocation)
+        guard let origin = activeOrigin?.point else { return nil }
+        return scooter.formattedDistance(from: origin)
+    }
+
+    func straightLineDistance(to scooter: Scooter) -> CLLocationDistance? {
+        guard let origin = activeOrigin?.point else { return nil }
+        return scooter.distance(from: origin)
+    }
+
+    func approximateWalkingMinutes(to scooter: Scooter) -> Int? {
+        guard let distance = straightLineDistance(to: scooter), distance.isFinite else { return nil }
+        return max(1, Int(ceil(distance / Self.approximateWalkingMetersPerMinute)))
+    }
+
+    func setRideEstimateMinutes(_ minutes: Int) {
+        let normalizedMinutes = RideEstimateDuration.normalized(minutes)
+        guard normalizedMinutes != rideEstimateMinutes else { return }
+        rideEstimateMinutes = normalizedMinutes
+        defaults.set(normalizedMinutes, forKey: Self.rideEstimateMinutesKey)
+    }
+
+    func ridePass(for provider: ScooterProvider) -> ProviderRidePass {
+        ridePasses[provider] ?? ProviderRidePass()
+    }
+
+    func setRidePass(_ pass: ProviderRidePass, for provider: ScooterProvider) {
+        ridePasses[provider] = pass
+        persistRidePasses()
+    }
+
+    func ridePriceQuote(
+        for scooter: Scooter,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> RidePriceQuote? {
+        guard let pricing = scooter.pricing else { return nil }
+        let pass = scooter.providerInfo.map(ridePass(for:))
+        return RidePriceEstimator.quote(
+            pricing: pricing,
+            durationMinutes: rideEstimateMinutes,
+            pass: pass,
+            now: now,
+            calendar: calendar
+        )
     }
 
     func start() {
@@ -237,6 +393,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
         switch locationManager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
+            startHeadingUpdates()
             if let cachedLocation = locationManager.location,
                ScooterLocationPolicy.isAcceptable(
                    cachedLocation,
@@ -252,7 +409,30 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func becameActive() {
+        isSceneActive = true
+        if hasStarted { startHeadingUpdates() }
         refreshIfStale()
+    }
+
+    func becameInactive() {
+        isSceneActive = false
+        stopHeadingUpdates()
+    }
+
+    private func startHeadingUpdates() {
+        guard isSceneActive, !isTrackingHeading, CLLocationManager.headingAvailable(),
+              locationManager.authorizationStatus == .authorizedWhenInUse ||
+                locationManager.authorizationStatus == .authorizedAlways else { return }
+        isTrackingHeading = true
+        // Location updates let Core Location resolve true north for the map.
+        locationManager.startUpdatingLocation()
+        locationManager.startUpdatingHeading()
+    }
+
+    private func stopHeadingUpdates() {
+        locationManager.stopUpdatingHeading()
+        isTrackingHeading = false
+        userHeading = nil
     }
 
     func autoRefreshIfNeeded() {
@@ -290,6 +470,20 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         enabledProviders = Set(ScooterProvider.allCases)
     }
 
+    func showProviders(_ providers: Set<ScooterProvider>) {
+        enabledProviders = providers
+    }
+
+    func toggleQuickProvider(_ provider: ScooterProvider) {
+        if allProvidersSelected {
+            showProviders([provider])
+        } else if enabledProviders == [provider] {
+            showAllProviders()
+        } else {
+            toggle(provider: provider)
+        }
+    }
+
     func toggle(provider: ScooterProvider) {
         if enabledProviders.contains(provider) {
             enabledProviders.remove(provider)
@@ -319,6 +513,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func focusOnUser() {
+        searchedDestination = nil
         if let userLocation {
             requestUserFocus(at: userLocation)
         } else {
@@ -551,6 +746,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             locationAuthorizationIssue = nil
             isLocating = true
             locationManager.startUpdatingLocation()
+            startHeadingUpdates()
             if userLocation == nil {
                 beginLocationTimeout()
             }
@@ -569,11 +765,21 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if manager.authorizationStatus != .authorizedAlways &&
+            manager.authorizationStatus != .authorizedWhenInUse {
+            stopHeadingUpdates()
+        }
+        // CLLocationManager can deliver the current authorization state as soon as
+        // its delegate is assigned. Wait until the app has actually requested a
+        // location so model initialization cannot unexpectedly recenter the map.
+        guard hasStarted || isLocating else { return }
+
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             locationAuthorizationIssue = nil
             isLocating = true
             manager.startUpdatingLocation()
+            startHeadingUpdates()
             if userLocation == nil {
                 beginLocationTimeout()
             }
@@ -603,6 +809,23 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
         guard location.horizontalAccuracy <= ScooterLocationPolicy.preferredAccuracy else { return }
         acceptLocation(location)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        guard isTrackingHeading else { return }
+        guard abs(newHeading.timestamp.timeIntervalSinceNow) <= 10 else {
+            userHeading = nil
+            return
+        }
+        userHeading = ScooterUserHeading(
+            trueHeading: newHeading.trueHeading,
+            magneticHeading: newHeading.magneticHeading,
+            accuracy: newHeading.headingAccuracy
+        )
+    }
+
+    func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool {
+        false
     }
 
     private func acceptLocation(_ location: CLLocation) {
@@ -682,6 +905,32 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         locationTimeoutTask = nil
         bestLocationCandidate = nil
         fetchIfNeeded(for: viewport)
+    }
+
+    private func persistRidePasses() {
+        let storedPasses = Dictionary(
+            uniqueKeysWithValues: ridePasses.map { provider, pass in
+                (provider.rawValue, pass)
+            }
+        )
+        guard let encodedPasses = try? JSONEncoder().encode(storedPasses) else { return }
+        defaults.set(encodedPasses, forKey: Self.ridePassesKey)
+    }
+
+    private static func loadRidePasses(
+        from defaults: UserDefaults
+    ) -> [ScooterProvider: ProviderRidePass] {
+        guard let encodedPasses = defaults.data(forKey: ridePassesKey),
+              let storedPasses = try? JSONDecoder().decode(
+                  [String: ProviderRidePass].self,
+                  from: encodedPasses
+              ) else { return [:] }
+
+        return Dictionary(
+            uniqueKeysWithValues: storedPasses.compactMap { providerID, pass in
+                ScooterProvider(rawValue: providerID).map { ($0, pass) }
+            }
+        )
     }
 
     private static func distance(from start: GeoPoint, to end: GeoPoint) -> CLLocationDistance {

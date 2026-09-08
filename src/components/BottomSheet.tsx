@@ -492,6 +492,10 @@ export default function BottomSheet({
                 Mobility data
               </a>
               <span aria-hidden="true">·</span>
+              <a href="https://transport.data.gouv.fr/datasets?type=vehicles-sharing" target="_blank" rel="noreferrer">
+                France: Dott, Bird, Lime, Voi, Pony
+              </a>
+              <span aria-hidden="true">·</span>
               <a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api" target="_blank" rel="noreferrer">
                 Address data © swisstopo
               </a>

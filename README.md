@@ -5,7 +5,7 @@
 <h1 align="center">Swiss Scooters</h1>
 
 <p align="center">
-  A friendly map for finding shared e-scooters across Switzerland.
+  A friendly map for finding shared e-scooters in Switzerland and selected French cities.
 </p>
 
 <p align="center">
@@ -28,7 +28,11 @@ provider and battery filters, and light/dark maps into one installable web app.
 It speaks German, French, Italian, and English. There is also a native SwiftUI
 app for iPhone.
 
-**Supported providers:** Bolt, Bird, Dott, Hopp, Lime, Voi, and PubliBike / Velospot.
+**Supported providers:** Bolt, Bird, Dott, Hopp, Lime, Voi, Pony, and PubliBike / Velospot.
+
+French coverage includes 27 verified feeds across 25 cities or operating areas,
+with city-name search. See the [French feed investigation](docs/french-scooter-feeds.md)
+for the city list, live-check command, and source terms to review before deployment.
 
 ## Run it locally
 

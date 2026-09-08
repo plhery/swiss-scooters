@@ -1,0 +1,438 @@
+{
+  "verifiedOn": "2026-09-08",
+  "catalogSource": "https://github.com/MobilityData/gbfs/blob/master/systems.csv",
+  "systems": [
+    {
+      "id": "bird_fr_ajaccio",
+      "provider": "bird",
+      "city": "Ajaccio",
+      "center": [
+        41.9192,
+        8.7386
+      ],
+      "bounds": {
+        "south": 41.81,
+        "west": 8.53,
+        "north": 42.03,
+        "east": 8.87
+      },
+      "discoveryUrl": "https://mds.bird.co/gbfs/v2/public/ajaccio/gbfs.json"
+    },
+    {
+      "id": "bird_fr_blois-france",
+      "provider": "bird",
+      "city": "Blois",
+      "center": [
+        47.5861,
+        1.3359
+      ],
+      "bounds": {
+        "south": 47.46,
+        "west": 1.2,
+        "north": 47.71,
+        "east": 1.44
+      },
+      "discoveryUrl": "https://mds.bird.co/gbfs/v2/public/provider/bird/blois-france/gbfs.json"
+    },
+    {
+      "id": "bird_fr_chalonsenchampagne",
+      "provider": "bird",
+      "city": "Châlons-en-Champagne",
+      "center": [
+        48.9566,
+        4.3523
+      ],
+      "bounds": {
+        "south": 48.85,
+        "west": 4.22,
+        "north": 49.07,
+        "east": 4.49
+      },
+      "discoveryUrl": "https://mds.bird.co/gbfs/v2/public/chalonsenchampagne/gbfs.json"
+    },
+    {
+      "id": "bird_fr_laval",
+      "provider": "bird",
+      "city": "Laval",
+      "center": [
+        48.0706,
+        -0.7733
+      ],
+      "bounds": {
+        "south": 47.95,
+        "west": -0.94,
+        "north": 48.19,
+        "east": -0.65
+      },
+      "discoveryUrl": "https://mds.bird.co/gbfs/v2/public/laval/gbfs.json"
+    },
+    {
+      "id": "bird_fr_vichy",
+      "provider": "bird",
+      "city": "Vichy",
+      "center": [
+        46.1278,
+        3.4266
+      ],
+      "bounds": {
+        "south": 46.0,
+        "west": 3.28,
+        "north": 46.27,
+        "east": 3.62
+      },
+      "discoveryUrl": "https://mds.bird.co/gbfs/v2/public/vichy/gbfs.json"
+    },
+    {
+      "id": "dott_fr_bordeaux",
+      "provider": "dott",
+      "city": "Bordeaux",
+      "center": [
+        44.8378,
+        -0.5792
+      ],
+      "bounds": {
+        "south": 44.66,
+        "west": -0.86,
+        "north": 45.07,
+        "east": -0.32
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bordeaux/gbfs.json"
+    },
+    {
+      "id": "dott_fr_bourgoin-jallieu",
+      "provider": "dott",
+      "city": "Bourgoin-Jallieu",
+      "center": [
+        45.5864,
+        5.2736
+      ],
+      "bounds": {
+        "south": 45.49,
+        "west": 5.14,
+        "north": 45.7,
+        "east": 5.39
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/bourgoin-jallieu/gbfs.json"
+    },
+    {
+      "id": "dott_fr_lyon",
+      "provider": "dott",
+      "city": "Lyon",
+      "center": [
+        45.7578,
+        4.832
+      ],
+      "bounds": {
+        "south": 45.63,
+        "west": 4.68,
+        "north": 45.92,
+        "east": 5.0
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/lyon/gbfs.json"
+    },
+    {
+      "id": "dott_fr_siemu",
+      "provider": "dott",
+      "city": "Marne-la-Vallée (SIEMU)",
+      "center": [
+        48.855,
+        2.7067
+      ],
+      "bounds": {
+        "south": 48.73,
+        "west": 2.58,
+        "north": 48.97,
+        "east": 2.86
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/siemu/gbfs.json"
+    },
+    {
+      "id": "dott_fr_tignes",
+      "provider": "dott",
+      "city": "Tignes",
+      "center": [
+        45.4687,
+        6.9063
+      ],
+      "bounds": {
+        "south": 45.36,
+        "west": 6.81,
+        "north": 45.56,
+        "east": 7.0
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/tignes/gbfs.json"
+    },
+    {
+      "id": "dott_fr_versailles-grand-parc",
+      "provider": "dott",
+      "city": "Versailles Grand Parc",
+      "center": [
+        48.8049,
+        2.1204
+      ],
+      "bounds": {
+        "south": 48.73,
+        "west": 2.02,
+        "north": 48.96,
+        "east": 2.24
+      },
+      "discoveryUrl": "https://gbfs.api.ridedott.com/public/v2/versailles-grand-parc/gbfs.json"
+    },
+    {
+      "id": "lime_fr_lille",
+      "provider": "lime",
+      "city": "Lille Métropole",
+      "center": [
+        50.6292,
+        3.0573
+      ],
+      "bounds": {
+        "south": 50.4,
+        "west": 2.75,
+        "north": 50.9,
+        "east": 3.4
+      },
+      "discoveryUrl": "https://data.lime.bike/api/partners/v2/gbfs/lille/gbfs.json"
+    },
+    {
+      "id": "lime_fr_marseille",
+      "provider": "lime",
+      "city": "Marseille",
+      "center": [
+        43.2965,
+        5.3698
+      ],
+      "bounds": {
+        "south": 43.12,
+        "west": 5.22,
+        "north": 43.49,
+        "east": 5.65
+      },
+      "discoveryUrl": "https://data.lime.bike/api/partners/v2/gbfs/marseille/gbfs.json"
+    },
+    {
+      "id": "pony_fr_angers",
+      "provider": "pony",
+      "city": "Angers",
+      "center": [
+        47.4784,
+        -0.5632
+      ],
+      "bounds": {
+        "south": 47.33,
+        "west": -0.73,
+        "north": 47.62,
+        "east": -0.38
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-angers-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_beauvais",
+      "provider": "pony",
+      "city": "Beauvais",
+      "center": [
+        49.4295,
+        2.0807
+      ],
+      "bounds": {
+        "south": 49.16,
+        "west": 1.67,
+        "north": 49.75,
+        "east": 2.55
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-beauvais-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_bordeaux",
+      "provider": "pony",
+      "city": "Bordeaux",
+      "center": [
+        44.8378,
+        -0.5792
+      ],
+      "bounds": {
+        "south": 44.67,
+        "west": -0.86,
+        "north": 45.05,
+        "east": -0.39
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-bordeaux-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_bourges",
+      "provider": "pony",
+      "city": "Bourges",
+      "center": [
+        47.081,
+        2.3988
+      ],
+      "bounds": {
+        "south": 46.96,
+        "west": 2.28,
+        "north": 47.21,
+        "east": 2.53
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-bourges-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_evry",
+      "provider": "pony",
+      "city": "Évry-Courcouronnes",
+      "center": [
+        48.624,
+        2.429
+      ],
+      "bounds": {
+        "south": 48.52,
+        "west": 2.31,
+        "north": 48.73,
+        "east": 2.55
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-evry-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_herouville",
+      "provider": "pony",
+      "city": "Hérouville-Saint-Clair",
+      "center": [
+        49.2032,
+        -0.3261
+      ],
+      "bounds": {
+        "south": 48.89,
+        "west": -0.76,
+        "north": 49.49,
+        "east": 0.09
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-herouville-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_lorient",
+      "provider": "pony",
+      "city": "Lorient",
+      "center": [
+        47.7483,
+        -3.3702
+      ],
+      "bounds": {
+        "south": 47.59,
+        "west": -3.58,
+        "north": 47.89,
+        "east": -3.21
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-lorient-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_perpignan",
+      "provider": "pony",
+      "city": "Perpignan",
+      "center": [
+        42.6887,
+        2.8948
+      ],
+      "bounds": {
+        "south": 42.52,
+        "west": 2.63,
+        "north": 43.03,
+        "east": 3.2
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-perpignan-gbfs/gbfs.json"
+    },
+    {
+      "id": "pony_fr_poitiers",
+      "provider": "pony",
+      "city": "Poitiers",
+      "center": [
+        46.5802,
+        0.3404
+      ],
+      "bounds": {
+        "south": 46.32,
+        "west": -0.09,
+        "north": 46.91,
+        "east": 0.81
+      },
+      "discoveryUrl": "https://proxy.transport.data.gouv.fr/resource/pony-poitiers-gbfs/gbfs.json"
+    },
+    {
+      "id": "voi_fr_422",
+      "provider": "voi",
+      "city": "Grand Paris Seine et Oise",
+      "center": [
+        48.9975,
+        1.9093
+      ],
+      "bounds": {
+        "south": 48.77,
+        "west": 1.47,
+        "north": 49.16,
+        "east": 2.3
+      },
+      "discoveryUrl": "https://api.voiapp.io/gbfs/fr/6bb6b5dc-1cda-4da7-9216-d3023a0bc54a/v2/422/gbfs.json"
+    },
+    {
+      "id": "voi_fr_358",
+      "provider": "voi",
+      "city": "Grenoble",
+      "center": [
+        45.1885,
+        5.7245
+      ],
+      "bounds": {
+        "south": 45.01,
+        "west": 5.47,
+        "north": 45.37,
+        "east": 5.98
+      },
+      "discoveryUrl": "https://api.voiapp.io/gbfs/fr/6bb6b5dc-1cda-4da7-9216-d3023a0bc54a/v2/358/gbfs.json"
+    },
+    {
+      "id": "voi_fr_336",
+      "provider": "voi",
+      "city": "Le Havre",
+      "center": [
+        49.4944,
+        0.1079
+      ],
+      "bounds": {
+        "south": 49.35,
+        "west": -0.05,
+        "north": 49.73,
+        "east": 0.38
+      },
+      "discoveryUrl": "https://api.voiapp.io/gbfs/fr/6bb6b5dc-1cda-4da7-9216-d3023a0bc54a/v2/336/gbfs.json"
+    },
+    {
+      "id": "voi_fr_66",
+      "provider": "voi",
+      "city": "Marseille",
+      "center": [
+        43.2965,
+        5.3698
+      ],
+      "bounds": {
+        "south": 43.11,
+        "west": 5.18,
+        "north": 43.49,
+        "east": 5.65
+      },
+      "discoveryUrl": "https://api.voiapp.io/gbfs/fr/6bb6b5dc-1cda-4da7-9216-d3023a0bc54a/v2/66/gbfs.json"
+    },
+    {
+      "id": "voi_fr_355",
+      "provider": "voi",
+      "city": "Saint-Quentin-en-Yvelines",
+      "center": [
+        48.787,
+        2.0446
+      ],
+      "bounds": {
+        "south": 48.6,
+        "west": 1.77,
+        "north": 48.95,
+        "east": 2.24
+      },
+      "discoveryUrl": "https://api.voiapp.io/gbfs/fr/6bb6b5dc-1cda-4da7-9216-d3023a0bc54a/v2/355/gbfs.json"
+    }
+  ]
+}

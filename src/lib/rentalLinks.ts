@@ -36,6 +36,10 @@ const PROVIDER_LINK_POLICIES: Record<string, ProviderRentalLinkPolicy> = {
     schemes: ['publibike', 'velospot'],
     httpsHosts: ['publibike.ch', 'velospot.info'],
   },
+  pony: {
+    schemes: ['co.ponybikes.mercury', 'co.ponybikes.venus'],
+    httpsHosts: ['getapony.com'],
+  },
 };
 
 const UNSAFE_CHARACTERS = /[\u0000-\u001f\u007f]/;

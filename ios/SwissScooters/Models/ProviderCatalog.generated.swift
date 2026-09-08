@@ -10,6 +10,7 @@ enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {
     case hopp
     case lime
     case voi
+    case pony
     case publibike
 
     var id: String { rawValue }
@@ -22,6 +23,7 @@ enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {
         case .hopp: "Hopp"
         case .lime: "Lime"
         case .voi: "Voi"
+        case .pony: "Pony"
         case .publibike: "PubliBike / Velospot"
         }
     }
@@ -34,6 +36,7 @@ enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {
         case .hopp: "H"
         case .lime: "L"
         case .voi: "V"
+        case .pony: "P"
         case .publibike: "PB"
         }
     }
@@ -48,6 +51,7 @@ enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {
         case .hopp: UIColor(red: 0.000000, green: 0.737255, blue: 0.831373, alpha: 1)
         case .lime: UIColor(red: 0.196078, green: 0.803922, blue: 0.196078, alpha: 1)
         case .voi: UIColor(red: 1.000000, green: 0.078431, blue: 0.576471, alpha: 1)
+        case .pony: UIColor(red: 0.000000, green: 0.654902, blue: 0.627451, alpha: 1)
         case .publibike: UIColor(red: 0.607843, green: 0.349020, blue: 0.713725, alpha: 1)
         }
     }

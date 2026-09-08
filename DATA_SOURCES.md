@@ -28,11 +28,34 @@ documenting the time window, so the app caches it for 30 seconds.
 Provider names remain trademarks of their respective owners. Their appearance
 does not imply endorsement.
 
+### French cities
+
+The app also reads 27 reviewed public GBFS feeds from Dott, Bird, Lime, Voi and
+Pony across 25 French cities or operating areas. The catalog is checked into
+[`data/french-scooter-feeds.json`](data/french-scooter-feeds.json), using the
+[MobilityData registry](https://github.com/MobilityData/gbfs/blob/master/systems.csv)
+and [transport.data.gouv.fr](https://transport.data.gouv.fr/datasets?format=gbfs&subtype=scooter)
+as discovery sources. Pony is accessed through the National Access Point's proxy;
+the other feeds are served directly by their operators.
+
+Only systems intersecting the viewport are requested, with four concurrent
+French systems at most. Availability uses the existing 30-second cache and
+five-minute stale-on-error window. French feed timestamps older than five minutes
+are marked stale; timestamps older than fifteen minutes are rejected.
+
+These endpoints are publicly accessible but do not share one universal license.
+In particular, [Dott's API terms](https://ridedott.com/api-licence/) contain
+development and commercial/distribution restrictions that need review before
+public deployment. See the [investigation and source terms](docs/french-scooter-feeds.md)
+for the verified cities, sample counts, excluded feeds, and recheck command.
+
 ## Address data
 
 Search uses the federal `geo.admin.ch` SearchServer operated by swisstopo. Its
 services are available without registration under FSDI fair-use and attribution
 conditions. The app limits and caches requests and displays `© swisstopo`.
+Supported French city names are supplied by the local, reviewed scooter-city
+catalog. French street-address geocoding is not provided.
 
 ## Map tiles
 

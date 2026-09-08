@@ -53,7 +53,7 @@ const TILE_URLS: Record<string, string> = {
 };
 
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>';
-const MOBILITY_ATTRIBUTION = '<a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">Mobility data</a>';
+const MOBILITY_ATTRIBUTION = '<a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">Mobility data CH</a> · <a href="https://transport.data.gouv.fr/datasets?type=vehicles-sharing">FR: Dott, Bird, Lime, Voi, Pony</a>';
 const ADDRESS_ATTRIBUTION = '<a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api">&copy; swisstopo</a>';
 const TILE_ATTRIBUTIONS: Record<string, string> = {
   osm: `${OSM_ATTRIBUTION} · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`,

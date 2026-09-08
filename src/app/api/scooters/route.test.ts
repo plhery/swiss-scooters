@@ -65,7 +65,7 @@ describe('GET /api/scooters', () => {
     expect(mocks.fetchScooters).not.toHaveBeenCalled();
   });
 
-  it('accepts oversized bounds and clamps feed work to Switzerland', async () => {
+  it('accepts oversized bounds and clamps feed work to supported countries', async () => {
     mocks.fetchScooters.mockResolvedValue({
       vehicles: [],
       meta: {
@@ -81,9 +81,9 @@ describe('GET /api/scooters', () => {
     expect(response.status).toBe(200);
     expect(mocks.fetchScooters).toHaveBeenCalledWith(expect.objectContaining({
       bounds: {
-        south: 45.7,
-        west: 5.7,
-        north: 47.95,
+        south: 41.81,
+        west: -3.58,
+        north: 50.9,
         east: 10.75,
       },
       outsideCoverage: false,

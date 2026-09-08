@@ -3,6 +3,37 @@ import XCTest
 @testable import SwissScooters
 
 final class ScooterModelsTests: XCTestCase {
+    func testFrenchPonyScooterKeepsItsProviderEuroPricingAndRentalLink() throws {
+        let data = Data(#"""
+        {
+          "provider": "pony",
+          "lat": 47.4784,
+          "lng": -0.5632,
+          "battery": 75,
+          "range_m": 32620,
+          "vehicle_id": "pony_fr_angers:vehicle-1",
+          "deep_link": null,
+          "rental_uris": {
+            "ios": "https://getapony.com/app/scan",
+            "android": "https://getapony.com/app/scan",
+            "web": null
+          },
+          "pricing": {
+            "currency": "EUR",
+            "unlock_fee_minor_units": 100,
+            "minute_fee_minor_units": 26
+          },
+          "distance_m": null
+        }
+        """#.utf8)
+        let scooter = try JSONDecoder().decode(ScooterVehiclePayload.self, from: data).model
+        XCTAssertEqual(scooter.providerInfo, .pony)
+        XCTAssertEqual(scooter.coordinate.latitude, 47.4784)
+        XCTAssertEqual(scooter.coordinate.longitude, -0.5632)
+        XCTAssertEqual(scooter.pricing?.currency, "EUR")
+        XCTAssertEqual(scooter.rentalURL?.absoluteString, "https://getapony.com/app/scan")
+    }
+
     func testDecodingAndStableProviderIdentity() throws {
         let data = Data(#"""
         {
@@ -18,6 +49,11 @@ final class ScooterModelsTests: XCTestCase {
               "ios": "limebike://vehicle/abc-123",
               "android": "https://lime.bike/vehicle/abc-123?platform=android",
               "web": "https://lime.bike/vehicle/abc-123"
+            },
+            "pricing": {
+              "currency": "CHF",
+              "unlock_fee_minor_units": 100,
+              "minute_fee_minor_units": 42
             },
             "distance_m": 250.5
           }],
@@ -46,11 +82,61 @@ final class ScooterModelsTests: XCTestCase {
         XCTAssertEqual(scooter.rangeMeters, 12_345)
         XCTAssertEqual(scooter.deepLink, "https://lime.bike/vehicle/abc-123")
         XCTAssertEqual(scooter.rentalURL?.absoluteString, "limebike://vehicle/abc-123")
+        XCTAssertEqual(
+            scooter.pricing,
+            ScooterRidePricing(
+                currency: "CHF",
+                unlockFeeMinorUnits: 100,
+                minuteFeeMinorUnits: 42
+            )
+        )
     }
 
     func testCoordinateIdentityIsUsedWhenVehicleIDIsMissing() throws {
         let scooter = try makeScooter(provider: "bird", latitude: 47.1, longitude: 8.2, vehicleID: nil)
         XCTAssertEqual(scooter.id, "bird:47.1:8.2")
+    }
+
+    func testVehiclePricingIsOptionalAndMalformedPricingIsDiscarded() throws {
+        let missingPricingData = Data(#"""
+        {
+          "provider": "bird",
+          "lat": 47.1,
+          "lng": 8.2,
+          "battery": null,
+          "range_m": null,
+          "vehicle_id": "without-pricing",
+          "deep_link": null,
+          "distance_m": null
+        }
+        """#.utf8)
+        let malformedPricingData = Data(#"""
+        {
+          "provider": "lime",
+          "lat": 47.1,
+          "lng": 8.2,
+          "battery": null,
+          "range_m": null,
+          "vehicle_id": "bad-pricing",
+          "deep_link": null,
+          "pricing": {
+            "currency": "CHF",
+            "unlock_fee_minor_units": -1,
+            "minute_fee_minor_units": 42
+          },
+          "distance_m": null
+        }
+        """#.utf8)
+
+        let missingPricing = try JSONDecoder()
+            .decode(ScooterVehiclePayload.self, from: missingPricingData)
+            .model
+        let malformedPricing = try JSONDecoder()
+            .decode(ScooterVehiclePayload.self, from: malformedPricingData)
+            .model
+
+        XCTAssertNil(missingPricing.pricing)
+        XCTAssertNil(malformedPricing.pricing)
     }
 
     func testDistanceUsesCoordinatesRatherThanServerDistance() throws {
@@ -119,6 +205,201 @@ final class ScooterModelsTests: XCTestCase {
             provider: "hopp",
             value: "https://user@app.hopp.bike/launch/1"
         ))
+    }
+
+    func testRideEstimateDurationPolicyAcceptsOnlyMenuDurations() {
+        XCTAssertEqual(RideEstimateDuration.allowedMinutes, [5, 10, 15, 20, 30])
+        XCTAssertEqual(RideEstimateDuration.defaultMinutes, 10)
+
+        for duration in RideEstimateDuration.allowedMinutes {
+            XCTAssertEqual(RideEstimateDuration.normalized(duration), duration)
+        }
+        XCTAssertEqual(RideEstimateDuration.normalized(0), 10)
+        XCTAssertEqual(RideEstimateDuration.normalized(12), 10)
+        XCTAssertEqual(RideEstimateDuration.normalized(-5), 10)
+    }
+
+    func testRidePriceEstimateUsesExactMinorUnitArithmetic() {
+        let quote = RidePriceEstimator.quote(
+            pricing: ScooterRidePricing(
+                currency: "CHF",
+                unlockFeeMinorUnits: 95,
+                minuteFeeMinorUnits: 41
+            ),
+            durationMinutes: 30
+        )
+
+        XCTAssertEqual(quote.currency, "CHF")
+        XCTAssertEqual(quote.durationMinutes, 30)
+        XCTAssertEqual(quote.grossMinorUnits, 1_325)
+        XCTAssertEqual(quote.totalMinorUnits, 1_325)
+        XCTAssertEqual(quote.chargedUnlockFeeMinorUnits, 95)
+        XCTAssertEqual(quote.billedMinutes, 30)
+        XCTAssertEqual(quote.freeMinutesApplied, 0)
+        XCTAssertFalse(quote.passApplied)
+    }
+
+    func testActivePassCanRemoveOnlyTheUnlockFee() {
+        let quote = RidePriceEstimator.quote(
+            pricing: standardPricing,
+            durationMinutes: 10,
+            pass: ProviderRidePass(enabled: true, freeUnlock: true)
+        )
+
+        XCTAssertEqual(quote.grossMinorUnits, 520)
+        XCTAssertEqual(quote.totalMinorUnits, 420)
+        XCTAssertEqual(quote.chargedUnlockFeeMinorUnits, 0)
+        XCTAssertEqual(quote.billedMinutes, 10)
+        XCTAssertEqual(quote.freeMinutesApplied, 0)
+        XCTAssertTrue(quote.passApplied)
+    }
+
+    func testActivePassSubtractsFreeMinutesWithoutGoingBelowZero() {
+        let partialQuote = RidePriceEstimator.quote(
+            pricing: standardPricing,
+            durationMinutes: 10,
+            pass: ProviderRidePass(enabled: true, freeMinutes: 4)
+        )
+        let fullyCoveredQuote = RidePriceEstimator.quote(
+            pricing: standardPricing,
+            durationMinutes: 10,
+            pass: ProviderRidePass(enabled: true, freeUnlock: true, freeMinutes: 30)
+        )
+
+        XCTAssertEqual(partialQuote.totalMinorUnits, 352)
+        XCTAssertEqual(partialQuote.chargedUnlockFeeMinorUnits, 100)
+        XCTAssertEqual(partialQuote.billedMinutes, 6)
+        XCTAssertEqual(partialQuote.freeMinutesApplied, 4)
+        XCTAssertTrue(partialQuote.passApplied)
+        XCTAssertEqual(fullyCoveredQuote.totalMinorUnits, 0)
+        XCTAssertEqual(fullyCoveredQuote.chargedUnlockFeeMinorUnits, 0)
+        XCTAssertEqual(fullyCoveredQuote.billedMinutes, 0)
+        XCTAssertEqual(fullyCoveredQuote.freeMinutesApplied, 10)
+        XCTAssertTrue(fullyCoveredQuote.passApplied)
+    }
+
+    func testDisabledPassDoesNotAffectEstimate() {
+        let quote = RidePriceEstimator.quote(
+            pricing: standardPricing,
+            durationMinutes: 10,
+            pass: ProviderRidePass(
+                enabled: false,
+                freeUnlock: true,
+                freeMinutes: 10
+            )
+        )
+
+        XCTAssertEqual(quote.totalMinorUnits, 520)
+        XCTAssertEqual(quote.billedMinutes, 10)
+        XCTAssertFalse(quote.passApplied)
+    }
+
+    func testPassExpiryIncludesTheWholeLocalExpiryDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/Zurich"))
+        let expiryDate = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 30,
+            hour: 8
+        )))
+        let pass = ProviderRidePass(
+            enabled: true,
+            freeUnlock: true,
+            freeMinutes: 10,
+            expiryDate: expiryDate
+        )
+        let finalMinute = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 30,
+            hour: 23,
+            minute: 59
+        )))
+        let nextDay = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 31
+        )))
+
+        XCTAssertTrue(pass.isActive(on: finalMinute, calendar: calendar))
+        XCTAssertFalse(pass.isActive(on: nextDay, calendar: calendar))
+        XCTAssertEqual(
+            RidePriceEstimator.quote(
+                pricing: standardPricing,
+                durationMinutes: 10,
+                pass: pass,
+                now: finalMinute,
+                calendar: calendar
+            ).totalMinorUnits,
+            0
+        )
+        XCTAssertEqual(
+            RidePriceEstimator.quote(
+                pricing: standardPricing,
+                durationMinutes: 10,
+                pass: pass,
+                now: nextDay,
+                calendar: calendar
+            ).totalMinorUnits,
+            520
+        )
+    }
+
+    func testEnabledPassWithoutExpiryDoesNotExpire() {
+        let pass = ProviderRidePass(enabled: true, freeMinutes: 5)
+        XCTAssertTrue(pass.isActive(on: .distantFuture))
+    }
+
+    func testPassInitializerClampsNegativeFreeMinutes() {
+        let pass = ProviderRidePass(enabled: true, freeMinutes: -12)
+        let quote = RidePriceEstimator.quote(
+            pricing: standardPricing,
+            durationMinutes: 10,
+            pass: pass
+        )
+
+        XCTAssertEqual(pass.freeMinutes, 0)
+        XCTAssertEqual(quote.totalMinorUnits, 520)
+        XCTAssertFalse(quote.passApplied)
+    }
+
+    func testProviderRidePassCodableRoundTripPreservesExpiry() throws {
+        let expiryDate = Date(timeIntervalSince1970: 1_788_044_400)
+        let pass = ProviderRidePass(
+            enabled: true,
+            freeUnlock: true,
+            freeMinutes: 25,
+            expiryDate: expiryDate
+        )
+
+        let data = try JSONEncoder().encode(pass)
+        let decoded = try JSONDecoder().decode(ProviderRidePass.self, from: data)
+
+        XCTAssertEqual(decoded, pass)
+    }
+
+    func testRidePriceEstimateSaturatesInsteadOfOverflowing() {
+        let quote = RidePriceEstimator.quote(
+            pricing: ScooterRidePricing(
+                currency: "CHF",
+                unlockFeeMinorUnits: Int.max,
+                minuteFeeMinorUnits: Int.max
+            ),
+            durationMinutes: 30
+        )
+
+        XCTAssertEqual(quote.grossMinorUnits, Int.max)
+        XCTAssertEqual(quote.totalMinorUnits, Int.max)
+        XCTAssertFalse(quote.passApplied)
+    }
+
+    private var standardPricing: ScooterRidePricing {
+        ScooterRidePricing(
+            currency: "CHF",
+            unlockFeeMinorUnits: 100,
+            minuteFeeMinorUnits: 42
+        )
     }
 
     private func makeScooter(

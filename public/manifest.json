@@ -1,7 +1,7 @@
 {
   "name": "Swiss Scooters",
   "short_name": "Swiss Scooters",
-  "description": "Find nearby shared e-scooters across Switzerland",
+  "description": "Find shared e-scooters in Switzerland and selected French cities",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#e0ddd8",

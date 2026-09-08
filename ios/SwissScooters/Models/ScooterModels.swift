@@ -1,4 +1,5 @@
 import CoreLocation
+import Foundation
 import MapKit
 import SwiftUI
 import UIKit
@@ -13,6 +14,31 @@ struct Scooter: Identifiable, Hashable, Sendable {
     let deepLink: String?
     let rentalURIs: ScooterRentalURIs?
     let distanceMeters: Double?
+    let pricing: ScooterRidePricing?
+
+    init(
+        provider: String,
+        latitude: Double,
+        longitude: Double,
+        battery: Int?,
+        rangeMeters: Int?,
+        vehicleID: String?,
+        deepLink: String?,
+        rentalURIs: ScooterRentalURIs?,
+        distanceMeters: Double?,
+        pricing: ScooterRidePricing? = nil
+    ) {
+        self.provider = provider
+        self.latitude = latitude
+        self.longitude = longitude
+        self.battery = battery
+        self.rangeMeters = rangeMeters
+        self.vehicleID = vehicleID
+        self.deepLink = deepLink
+        self.rentalURIs = rentalURIs
+        self.distanceMeters = distanceMeters
+        self.pricing = pricing
+    }
 
     var id: String {
         if let vehicleID {
@@ -68,6 +94,120 @@ struct ScooterRentalURIs: Hashable, Sendable {
     let web: String?
 }
 
+struct ScooterRidePricing: Hashable, Sendable {
+    let currency: String
+    let unlockFeeMinorUnits: Int
+    let minuteFeeMinorUnits: Int
+}
+
+struct ProviderRidePass: Codable, Hashable, Sendable {
+    var enabled: Bool
+    var freeUnlock: Bool
+    var freeMinutes: Int
+    var expiryDate: Date?
+
+    init(
+        enabled: Bool = false,
+        freeUnlock: Bool = false,
+        freeMinutes: Int = 0,
+        expiryDate: Date? = nil
+    ) {
+        self.enabled = enabled
+        self.freeUnlock = freeUnlock
+        self.freeMinutes = max(0, freeMinutes)
+        self.expiryDate = expiryDate
+    }
+
+    func isActive(on date: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard enabled else { return false }
+        guard let expiryDate else { return true }
+
+        let expiryDay = calendar.startOfDay(for: expiryDate)
+        guard let firstMomentAfterExpiryDay = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: expiryDay
+        ) else { return false }
+
+        return date < firstMomentAfterExpiryDay
+    }
+}
+
+enum RideEstimateDuration {
+    static let allowedMinutes = [5, 10, 15, 20, 30]
+    static let defaultMinutes = 10
+
+    static func normalized(_ minutes: Int) -> Int {
+        allowedMinutes.contains(minutes) ? minutes : defaultMinutes
+    }
+}
+
+struct RidePriceQuote: Hashable, Sendable {
+    let currency: String
+    let durationMinutes: Int
+    let grossMinorUnits: Int
+    let totalMinorUnits: Int
+    let chargedUnlockFeeMinorUnits: Int
+    let billedMinutes: Int
+    let freeMinutesApplied: Int
+    let passApplied: Bool
+}
+
+enum RidePriceEstimator {
+    static func quote(
+        pricing: ScooterRidePricing,
+        durationMinutes: Int,
+        pass: ProviderRidePass? = nil,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> RidePriceQuote {
+        let durationMinutes = max(0, durationMinutes)
+        let unlockFee = max(0, pricing.unlockFeeMinorUnits)
+        let minuteFee = max(0, pricing.minuteFeeMinorUnits)
+        let grossMinorUnits = totalMinorUnits(
+            unlockFee: unlockFee,
+            minuteFee: minuteFee,
+            billedMinutes: durationMinutes
+        )
+
+        let activePass = pass.flatMap { candidate in
+            candidate.isActive(on: now, calendar: calendar) ? candidate : nil
+        }
+        let billedMinutes = max(0, durationMinutes - max(0, activePass?.freeMinutes ?? 0))
+        let chargedUnlockFee = activePass?.freeUnlock == true ? 0 : unlockFee
+        let totalMinorUnits = totalMinorUnits(
+            unlockFee: chargedUnlockFee,
+            minuteFee: minuteFee,
+            billedMinutes: billedMinutes
+        )
+
+        return RidePriceQuote(
+            currency: pricing.currency,
+            durationMinutes: durationMinutes,
+            grossMinorUnits: grossMinorUnits,
+            totalMinorUnits: totalMinorUnits,
+            chargedUnlockFeeMinorUnits: chargedUnlockFee,
+            billedMinutes: billedMinutes,
+            freeMinutesApplied: durationMinutes - billedMinutes,
+            passApplied: totalMinorUnits < grossMinorUnits
+        )
+    }
+
+    private static func totalMinorUnits(
+        unlockFee: Int,
+        minuteFee: Int,
+        billedMinutes: Int
+    ) -> Int {
+        let (minuteTotal, multiplicationOverflowed) = minuteFee.multipliedReportingOverflow(
+            by: billedMinutes
+        )
+        guard !multiplicationOverflowed else { return Int.max }
+
+        let (total, additionOverflowed) = unlockFee.addingReportingOverflow(minuteTotal)
+        return additionOverflowed ? Int.max : total
+    }
+}
+
 enum ScooterRentalLinkPolicy {
     private struct ProviderPolicy {
         let schemes: Set<String>
@@ -98,6 +238,10 @@ enum ScooterRentalLinkPolicy {
         "voi": ProviderPolicy(
             schemes: ["voiapp"],
             httpsHosts: ["voi.com", "voiscooters.com", "lqfa.adj.st"]
+        ),
+        "pony": ProviderPolicy(
+            schemes: ["co.ponybikes.mercury", "co.ponybikes.venus"],
+            httpsHosts: ["getapony.com"]
         ),
         "publibike": ProviderPolicy(
             schemes: ["publibike", "velospot"],
@@ -261,7 +405,19 @@ extension ScooterVehiclePayload {
             rentalURIs: rentalURIs.map {
                 ScooterRentalURIs(ios: $0.ios, android: $0.android, web: $0.web)
             },
-            distanceMeters: distanceMeters
+            distanceMeters: distanceMeters,
+            pricing: pricing.flatMap { payload in
+                let currency = payload.currency.uppercased()
+                guard currency.utf8.count == 3,
+                      currency.utf8.allSatisfy({ $0 >= 65 && $0 <= 90 }),
+                      payload.unlockFeeMinorUnits >= 0,
+                      payload.minuteFeeMinorUnits >= 0 else { return nil }
+                return ScooterRidePricing(
+                    currency: currency,
+                    unlockFeeMinorUnits: payload.unlockFeeMinorUnits,
+                    minuteFeeMinorUnits: payload.minuteFeeMinorUnits
+                )
+            }
         )
     }
 }

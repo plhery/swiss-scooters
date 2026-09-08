@@ -1,14 +1,26 @@
 import { boundsIntersect } from '@/lib/geo';
 import type { MapBounds } from '@/lib/types';
+import { FRENCH_SCOOTER_SYSTEMS } from '@/lib/frenchScooterSystems';
 
-// All upstream systems in this application are Swiss. Clamp very wide map
-// views to this padded national envelope so country and Europe-level zooms do
-// bounded work without rejecting a legitimate whole-Switzerland request.
+// The Swiss registry is queried only within this padded national envelope.
 export const SWISS_MOBILITY_BOUNDS: MapBounds = {
   south: 45.70,
   west: 5.70,
   north: 47.95,
   east: 10.75,
+};
+
+export const MOBILITY_COVERAGE = [
+  SWISS_MOBILITY_BOUNDS,
+  ...FRENCH_SCOOTER_SYSTEMS.map(system => system.bounds),
+];
+
+// Bound world-level queries while retaining both Swiss and French systems.
+export const SUPPORTED_MOBILITY_BOUNDS: MapBounds = {
+  south: Math.min(...MOBILITY_COVERAGE.map(bounds => bounds.south)),
+  west: Math.min(...MOBILITY_COVERAGE.map(bounds => bounds.west)),
+  north: Math.max(...MOBILITY_COVERAGE.map(bounds => bounds.north)),
+  east: Math.max(...MOBILITY_COVERAGE.map(bounds => bounds.east)),
 };
 
 /**

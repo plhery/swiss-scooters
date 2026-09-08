@@ -11,6 +11,12 @@ export interface RentalUris {
   web: string | null;
 }
 
+export interface RidePricing {
+  currency: string;
+  unlock_fee_minor_units: number;
+  minute_fee_minor_units: number;
+}
+
 export interface Vehicle {
   provider: string;
   lat: number;
@@ -20,6 +26,7 @@ export interface Vehicle {
   vehicle_id: string | null;
   deep_link: string | null;
   rental_uris?: RentalUris;
+  pricing?: RidePricing;
   distance_m: number | null;
 }
 

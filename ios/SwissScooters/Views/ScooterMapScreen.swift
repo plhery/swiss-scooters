@@ -3,8 +3,11 @@ import UIKit
 
 struct ScooterMapScreen: View {
     @State private var model = ScooterMapModel()
-    @State private var controlsExpanded = false
-    @State private var collapsedDockHeight: CGFloat = 145
+    @State private var searchIsExpanded = false
+    @State private var filtersPresented = false
+    @State private var settingsPresented = false
+    @State private var collapsedDockHeight: CGFloat = 128
+    @State private var topChromeFrame = CGRect.null
     @State private var showLocationIntro = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -12,7 +15,7 @@ struct ScooterMapScreen: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ZStack(alignment: .bottom) {
+            ZStack {
                 ScooterMapView(
                     scooters: model.mapScooters,
                     scooterRevision: model.mapScootersRevision,
@@ -24,12 +27,50 @@ struct ScooterMapScreen: View {
                     focusRequest: model.focusRequest,
                     destination: model.searchedDestination,
                     selectedScooterID: model.selectedScooterID,
+                    interactionExclusionFrame: topChromeFrame,
                     onRegionChange: model.updateViewport,
-                    onSelectionChange: handleSelection
+                    onSelectionChange: handleSelection,
+                    userHeading: model.userHeading,
+                    showsMapCompass: !searchIsExpanded
                 )
                 .ignoresSafeArea()
 
-                statusOverlay(safeAreaTop: proxy.safeAreaInsets.top)
+                VStack(spacing: 8) {
+                    OriginSearchIsland(
+                        title: model.activeOriginTitle ?? String(localized: "Choose an origin"),
+                        isSearching: $searchIsExpanded,
+                        hasActiveFilters: model.hasActiveFilters,
+                        onSelect: { destination in
+                            showLocationIntro = false
+                            model.focusOnAddress(destination)
+                        },
+                        onClear: model.clearAddressSearch,
+                        onUseCurrentLocation: {
+                            showLocationIntro = false
+                            model.focusOnUser()
+                        },
+                        onShowFilters: {
+                            searchIsExpanded = false
+                            filtersPresented = true
+                        },
+                        onShowSettings: {
+                            searchIsExpanded = false
+                            settingsPresented = true
+                        }
+                    )
+                    .onGeometryChange(for: CGRect.self) { geometry in
+                        geometry.frame(in: .global)
+                    } action: { frame in
+                        topChromeFrame = frame
+                    }
+
+                    statusBanner
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 8)
+                .padding(.horizontal, 12)
+                .zIndex(20)
 
                 VStack {
                     Spacer()
@@ -43,36 +84,54 @@ struct ScooterMapScreen: View {
                     .padding(.trailing, 12)
                     .padding(
                         .bottom,
-                        collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 8
+                        collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 10
                     )
                 }
-                .opacity(controlsExpanded ? 0 : 1)
-                .scaleEffect(controlsExpanded ? 0.92 : 1, anchor: .bottomTrailing)
-                .allowsHitTesting(!controlsExpanded)
-                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: controlsExpanded)
+                .opacity(searchIsExpanded ? 0 : 1)
+                .scaleEffect(searchIsExpanded ? 0.92 : 1, anchor: .bottomTrailing)
+                .allowsHitTesting(!searchIsExpanded)
+                .accessibilityHidden(searchIsExpanded)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: searchIsExpanded)
 
-                if showLocationIntro && model.userLocation == nil && model.searchedDestination == nil {
+                if showLocationIntro,
+                   model.userLocation == nil,
+                   model.searchedDestination == nil,
+                   !searchIsExpanded {
                     VStack {
                         Spacer()
                         locationIntroCard
                             .padding(.horizontal, 16)
                             .padding(
                                 .bottom,
-                                collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 16
+                                collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 18
                             )
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                ScooterControlDock(
-                    model: model,
-                    isExpanded: $controlsExpanded,
-                    onCollapsedHeightChange: { collapsedDockHeight = $0 }
-                )
+                VStack {
+                    Spacer()
+                    ScooterControlDock(
+                        model: model,
+                        maximumBriefingHeight: max(
+                            ScooterDetailLayout.minimumHeight,
+                            proxy.size.height - (dynamicTypeSize.isAccessibilitySize ? 300 : 220)
+                        ),
+                        onCollapsedHeightChange: { collapsedDockHeight = $0 }
+                    )
                     .padding(.horizontal, 10)
                     .padding(.bottom, max(proxy.safeAreaInsets.bottom, 8))
+                }
+                .opacity(searchIsExpanded ? 0 : 1)
+                .scaleEffect(searchIsExpanded ? 0.96 : 1, anchor: .bottom)
+                .allowsHitTesting(!searchIsExpanded)
+                .accessibilityHidden(searchIsExpanded)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: searchIsExpanded)
             }
         }
+        // Keep the dock anchored to the screen while search dismisses. Otherwise
+        // it fades back in within the keyboard's shrinking safe area and jumps.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .background(Color(.systemBackground))
         .task { model.start() }
         .task(id: scenePhase) {
@@ -89,60 +148,70 @@ struct ScooterMapScreen: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.becameActive()
+            } else {
+                model.becameInactive()
             }
         }
-        .onChange(of: controlsExpanded) { _, expanded in
+        .onDisappear { model.becameInactive() }
+        .onChange(of: searchIsExpanded) { _, expanded in
             if expanded {
                 showLocationIntro = false
             }
+        }
+        .sheet(isPresented: $filtersPresented) {
+            ScooterFilterSheet(model: model)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $settingsPresented) {
+            ScooterSettingsSheet(
+                model: model,
+                onUseCurrentLocation: {
+                    showLocationIntro = false
+                    model.focusOnUser()
+                }
+            )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .sensoryFeedback(.selection, trigger: model.selectedScooterID)
     }
 
     @ViewBuilder
-    private func statusOverlay(safeAreaTop: CGFloat) -> some View {
-        VStack {
-            if let errorMessage = model.errorMessage {
-                MapStatusBanner(
-                    message: errorMessage,
-                    style: .error,
-                    actionTitle: String(localized: "Retry"),
-                    action: model.refresh
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            } else if model.locationAuthorizationIssue == .denied {
-                MapStatusBanner(
-                    message: LocationAuthorizationIssue.denied.message,
-                    style: .location,
-                    actionTitle: String(localized: "Settings"),
-                    action: openLocationSettings
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            } else if model.locationAuthorizationIssue == .restricted {
-                MapStatusBanner(
-                    message: LocationAuthorizationIssue.restricted.message,
-                    style: .location,
-                    actionTitle: nil,
-                    action: nil
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            } else if model.isLocating {
-                MapStatusBanner(
-                    message: String(localized: "Finding your location…"),
-                    style: .progress,
-                    actionTitle: nil,
-                    action: nil
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-            Spacer()
+    private var statusBanner: some View {
+        if let errorMessage = model.errorMessage {
+            MapStatusBanner(
+                message: errorMessage,
+                style: .error,
+                actionTitle: String(localized: "Retry"),
+                action: model.refresh
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+        } else if model.locationAuthorizationIssue == .denied {
+            MapStatusBanner(
+                message: LocationAuthorizationIssue.denied.message,
+                style: .location,
+                actionTitle: String(localized: "Settings"),
+                action: openLocationSettings
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+        } else if model.locationAuthorizationIssue == .restricted {
+            MapStatusBanner(
+                message: LocationAuthorizationIssue.restricted.message,
+                style: .location,
+                actionTitle: nil,
+                action: nil
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+        } else if model.isLocating {
+            MapStatusBanner(
+                message: String(localized: "Finding your location…"),
+                style: .progress,
+                actionTitle: nil,
+                action: nil
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
-        .padding(.top, max(safeAreaTop + 6, 12))
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.errorMessage)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.locationAuthorizationIssue)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.isLocating)
     }
 
     private var locationIntroCard: some View {
@@ -150,7 +219,7 @@ struct ScooterMapScreen: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Find a scooter nearby")
                     .font(.headline)
-                Text("Use your location for nearby distances, or search any Swiss address.")
+                Text("Use your location for nearby distances, or search a Swiss address or French city.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -168,8 +237,8 @@ struct ScooterMapScreen: View {
         }
         .padding(16)
         .frame(maxWidth: 390, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.14), radius: 12, y: 6)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
     }
 
     @ViewBuilder
@@ -182,7 +251,7 @@ struct ScooterMapScreen: View {
         .font(.caption.weight(.semibold))
         .frame(minHeight: 44)
 
-        Button("Browse Switzerland") {
+        Button("Browse the map") {
             showLocationIntro = false
             model.focusOnSwitzerland()
         }

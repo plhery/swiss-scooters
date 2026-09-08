@@ -56,6 +56,20 @@ for (const [index, vehicle] of body.vehicles.entries()) {
   if (vehicle.distance_m !== null && typeof vehicle.distance_m !== 'number') {
     throw new Error(`Live scooter API vehicle ${index} has an invalid distance_m`);
   }
+  if ('pricing' in vehicle) {
+    const pricing = vehicle.pricing;
+    if (
+      !pricing ||
+      typeof pricing.currency !== 'string' ||
+      !/^[A-Z]{3}$/.test(pricing.currency) ||
+      !Number.isInteger(pricing.unlock_fee_minor_units) ||
+      pricing.unlock_fee_minor_units < 0 ||
+      !Number.isInteger(pricing.minute_fee_minor_units) ||
+      pricing.minute_fee_minor_units < 0
+    ) {
+      throw new Error(`Live scooter API vehicle ${index} has invalid pricing`);
+    }
+  }
 }
 
 for (const [index, cluster] of body.clusters.entries()) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimitAllows } from '@/lib/rateLimit';
+import { searchFrenchScooterCities } from '@/lib/frenchScooterSystems';
 
 const MAX_QUERY_LENGTH = 160;
 const GEOCODE_TIMEOUT_MS = 10_000;
@@ -66,6 +67,13 @@ async function geocode(request: NextRequest, input: GeocodeInput) {
 
   const requestedLanguage = input.requestedLanguage.toLowerCase();
   const language = SUPPORTED_LANGUAGES.has(requestedLanguage) ? requestedLanguage : 'en';
+  const frenchCities = searchFrenchScooterCities(query);
+  const cityResponse = () => NextResponse.json(frenchCities, {
+    headers: {
+      'Cache-Control': 'private, no-store',
+      'X-Geocoding-Data-Source': 'Verified French scooter city catalog',
+    },
+  });
 
   const url = new URL(GEOADMIN_SEARCH_URL);
   url.search = new URLSearchParams({
@@ -87,14 +95,17 @@ async function geocode(request: NextRequest, input: GeocodeInput) {
     });
 
     if (response.status === 429) {
+      if (frenchCities.length) return cityResponse();
       return errorResponse('Address search is temporarily rate limited upstream.', 503, '60');
     }
     if (!response.ok) {
+      if (frenchCities.length) return cityResponse();
       return errorResponse('Address search is temporarily unavailable.', 502, '30');
     }
 
     const raw = await response.json() as GeoAdminResponse;
     if (!Array.isArray(raw.results)) {
+      if (frenchCities.length) return cityResponse();
       return errorResponse('Address search returned an invalid response.', 502);
     }
 
@@ -106,13 +117,16 @@ async function geocode(request: NextRequest, input: GeocodeInput) {
       return [{ lat, lng, display_name: displayName }];
     });
 
-    return NextResponse.json(results, {
+    return NextResponse.json([...frenchCities, ...results].slice(0, 5), {
       headers: {
         'Cache-Control': 'private, no-store',
-        'X-Geocoding-Data-Source': 'swisstopo geo.admin.ch',
+        'X-Geocoding-Data-Source': frenchCities.length
+          ? 'swisstopo geo.admin.ch; Verified French scooter city catalog'
+          : 'swisstopo geo.admin.ch',
       },
     });
   } catch (error) {
+    if (frenchCities.length) return cityResponse();
     const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
     return errorResponse(
       timedOut ? 'Address search timed out.' : 'Address search is temporarily unavailable.',

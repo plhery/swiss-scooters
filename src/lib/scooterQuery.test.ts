@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SWISS_MOBILITY_BOUNDS } from '@/lib/feedCoverage';
+import { SUPPORTED_MOBILITY_BOUNDS } from '@/lib/feedCoverage';
 import { parseScooterQuery } from '@/lib/scooterQuery';
 
 describe('parseScooterQuery', () => {
@@ -24,7 +24,7 @@ describe('parseScooterQuery', () => {
     expect(result.zoom).toBe(15);
   });
 
-  it('clamps world-sized requests to the Swiss service envelope', () => {
+  it('clamps world-sized requests to the supported service envelope', () => {
     const result = parseScooterQuery(new URLSearchParams({
       south: '-90',
       north: '90',
@@ -34,19 +34,19 @@ describe('parseScooterQuery', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.query.bounds).toEqual(SWISS_MOBILITY_BOUNDS);
+    expect(result.query.bounds).toEqual(SUPPORTED_MOBILITY_BOUNDS);
     expect(result.query.outsideCoverage).toBe(false);
     expect(result.query.origin).toBeNull();
   });
 
-  it('marks views outside Switzerland so feeds can be skipped', () => {
+  it('marks views outside supported coverage so feeds can be skipped', () => {
     const result = parseScooterQuery(new URLSearchParams({
-      lat: '48.86',
-      lng: '2.35',
-      south: '48.80',
-      north: '48.92',
-      west: '2.25',
-      east: '2.45',
+      lat: '51.5',
+      lng: '-0.1',
+      south: '51.4',
+      north: '51.6',
+      west: '-0.3',
+      east: '0.1',
     }));
 
     expect(result.ok).toBe(true);

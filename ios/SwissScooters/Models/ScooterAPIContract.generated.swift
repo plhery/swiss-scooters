@@ -22,6 +22,18 @@ struct ScooterRentalURIsPayload: Decodable, Sendable {
     let web: String?
 }
 
+struct ScooterRidePricingPayload: Decodable, Sendable {
+    let currency: String
+    let unlockFeeMinorUnits: Int
+    let minuteFeeMinorUnits: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case currency
+        case unlockFeeMinorUnits = "unlock_fee_minor_units"
+        case minuteFeeMinorUnits = "minute_fee_minor_units"
+    }
+}
+
 struct ScooterVehiclePayload: Decodable, Sendable {
     let provider: String
     let latitude: Double
@@ -31,6 +43,7 @@ struct ScooterVehiclePayload: Decodable, Sendable {
     let vehicleID: String?
     let deepLink: String?
     let rentalURIs: ScooterRentalURIsPayload?
+    let pricing: ScooterRidePricingPayload?
     let distanceMeters: Double?
 
     private enum CodingKeys: String, CodingKey {
@@ -42,6 +55,7 @@ struct ScooterVehiclePayload: Decodable, Sendable {
         case vehicleID = "vehicle_id"
         case deepLink = "deep_link"
         case rentalURIs = "rental_uris"
+        case pricing
         case distanceMeters = "distance_m"
     }
 }

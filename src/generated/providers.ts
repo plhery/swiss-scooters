@@ -13,6 +13,7 @@ const PROVIDER_DEFINITIONS = {
   hopp: { name: "Hopp", color: "#00bcd4", initial: "H" },
   lime: { name: "Lime", color: "#32cd32", initial: "L" },
   voi: { name: "Voi", color: "#ff1493", initial: "V" },
+  pony: { name: "Pony", color: "#00a7a0", initial: "P" },
   publibike: { name: "PubliBike / Velospot", color: "#9b59b6", initial: "PB" },
 } as const;
 
@@ -29,6 +30,7 @@ const SYSTEM_ID_MATCHERS: Record<ProviderKey, { exact?: string[]; prefixes?: str
   hopp: {"prefixes":["hopp"]},
   lime: {"prefixes":["lime"]},
   voi: {"prefixes":["voi"]},
+  pony: {"prefixes":["pony"]},
   publibike: {"exact":["velospot"],"prefixes":["publibike"]},
 };
 

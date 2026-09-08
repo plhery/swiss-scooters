@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import MapKit
 import XCTest
 @testable import SwissScooters
 
@@ -108,6 +109,7 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertEqual(model.mapClusters.count, 1)
         XCTAssertEqual(model.mapScooters.count + model.mapClusters.count, 1)
         XCTAssertEqual(model.visibleCount, 9_000)
+        XCTAssertTrue(model.isShowingClusterSummary)
         let snapshot = await api.snapshot()
         XCTAssertEqual(snapshot.lastZoom, 8)
         XCTAssertEqual(snapshot.lastMinimumBattery, 0)
@@ -205,6 +207,22 @@ final class ScooterMapModelTests: XCTestCase {
 
         XCTAssertEqual(Set(model.mapScooters.map(\.provider)), Set(["lime", "bird", "voi"]))
         XCTAssertFalse(model.hasActiveFilters)
+    }
+
+    func testQuickProviderTogglesBuildAnyCombinationAndReturnToAll() {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+
+        model.toggleQuickProvider(.bird)
+        XCTAssertEqual(model.enabledProviders, [.bird])
+
+        model.toggleQuickProvider(.dott)
+        XCTAssertEqual(model.enabledProviders, [.bird, .dott])
+
+        model.toggleQuickProvider(.bird)
+        XCTAssertEqual(model.enabledProviders, [.dott])
+
+        model.toggleQuickProvider(.dott)
+        XCTAssertTrue(model.allProvidersSelected)
     }
 
     func testSelectionUsesLatestVehicleIndexAndMapRevisionOnlyChangesWithData() async throws {
@@ -342,6 +360,248 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertNil(model.searchedDestination)
     }
 
+    func testActiveOriginPrefersSearchedDestinationAndDistanceUsesIt() throws {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        let userLocation = GeoPoint(latitude: 47.3769, longitude: 8.5417)
+        let destination = MapDestination(
+            title: "Zürich HB",
+            point: GeoPoint(latitude: 47.3782, longitude: 8.5402)
+        )
+        let candidate = scooter(
+            id: "candidate",
+            provider: "lime",
+            latitude: 47.3790,
+            longitude: 8.5402
+        )
+        model.userLocation = userLocation
+
+        XCTAssertEqual(model.activeOrigin, .userLocation(userLocation))
+        XCTAssertEqual(model.activeOriginTitle, String(localized: "Current location"))
+
+        model.focusOnAddress(destination)
+
+        XCTAssertEqual(model.activeOrigin, .searchedDestination(destination))
+        XCTAssertEqual(model.activeOriginTitle, destination.title)
+        XCTAssertEqual(
+            model.formattedDistance(for: candidate),
+            candidate.formattedDistance(from: destination.point)
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(model.straightLineDistance(to: candidate)),
+            candidate.distance(from: destination.point),
+            accuracy: 0.001
+        )
+
+        model.clearAddressSearch()
+
+        XCTAssertEqual(model.activeOrigin, .userLocation(userLocation))
+        XCTAssertEqual(
+            model.formattedDistance(for: candidate),
+            candidate.formattedDistance(from: userLocation)
+        )
+    }
+
+    func testApproximateWalkingMinutesUseStraightLineDistanceAtEightyMetersPerMinute() throws {
+        let origin = GeoPoint(latitude: 47.3769, longitude: 8.5417)
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        model.userLocation = origin
+        let samePlace = scooter(
+            id: "same-place",
+            provider: "lime",
+            latitude: origin.latitude,
+            longitude: origin.longitude
+        )
+        let aboutOneHundredElevenMetersAway = scooter(
+            id: "two-minutes",
+            provider: "lime",
+            latitude: origin.latitude + 0.001,
+            longitude: origin.longitude
+        )
+
+        XCTAssertEqual(model.approximateWalkingMinutes(to: samePlace), 1)
+        XCTAssertEqual(model.approximateWalkingMinutes(to: aboutOneHundredElevenMetersAway), 2)
+        XCTAssertGreaterThan(
+            try XCTUnwrap(model.straightLineDistance(to: aboutOneHundredElevenMetersAway)),
+            80
+        )
+
+        model.userLocation = nil
+
+        XCTAssertNil(model.straightLineDistance(to: samePlace))
+        XCTAssertNil(model.approximateWalkingMinutes(to: samePlace))
+        XCTAssertNil(model.formattedDistance(for: samePlace))
+    }
+
+    func testQuickProviderChoicesKeepReliableCountsForHiddenProviders() async {
+        let origin = GeoPoint(latitude: 47.3769, longitude: 8.5417)
+        let model = await loadedModel(
+            vehicles: [
+                scooter(id: "bird", provider: "bird"),
+                scooter(id: "dott", provider: "dott"),
+                scooter(id: "lime", provider: "lime")
+            ],
+            origin: origin
+        )
+
+        model.showProviders([.bird, .dott])
+
+        XCTAssertEqual(Set(model.mapScooters.compactMap(\.providerInfo)), [.bird, .dott])
+        XCTAssertEqual(model.visibleCount, 2)
+        XCTAssertEqual(model.count(for: .bird), 1)
+        XCTAssertEqual(model.count(for: .dott), 1)
+        XCTAssertEqual(model.count(for: .lime), 1)
+        XCTAssertEqual(model.allProviderCount, 3)
+
+        model.showProviders([.bird])
+
+        XCTAssertEqual(model.mapScooters.compactMap(\.providerInfo), [.bird])
+        XCTAssertEqual(model.visibleCount, 1)
+        XCTAssertEqual(model.count(for: .dott), 1)
+    }
+
+    func testQuickProviderOrderSurfacesSelectionsThenAvailableProviders() async {
+        let origin = GeoPoint(latitude: 47.3769, longitude: 8.5417)
+        let model = await loadedModel(
+            vehicles: [
+                scooter(id: "bird-one", provider: "bird"),
+                scooter(id: "bird-two", provider: "bird"),
+                scooter(id: "bolt-one", provider: "bolt"),
+                scooter(id: "bolt-two", provider: "bolt"),
+                scooter(id: "dott", provider: "dott"),
+                scooter(id: "lime", provider: "lime")
+            ],
+            origin: origin
+        )
+
+        XCTAssertEqual(Array(model.quickProviderOrder.prefix(4)), [.bird, .bolt, .dott, .lime])
+
+        model.showProviders([.lime, .voi])
+
+        XCTAssertEqual(
+            Array(model.quickProviderOrder.prefix(5)),
+            [.lime, .voi, .bird, .bolt, .dott]
+        )
+    }
+
+    func testProviderChoicePersistsAcrossModelInstances() {
+        let defaults = isolatedDefaults()
+        let firstModel = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: CLLocationManager(),
+            defaults: defaults
+        )
+
+        firstModel.showProviders([.hopp, .publibike])
+
+        let restoredModel = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: CLLocationManager(),
+            defaults: defaults
+        )
+
+        XCTAssertEqual(restoredModel.enabledProviders, [.hopp, .publibike])
+    }
+
+    func testRideDurationAndProviderPassesPersistIndependently() {
+        let defaults = isolatedDefaults()
+        let firstModel = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: CLLocationManager(),
+            defaults: defaults
+        )
+        let expiryDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let boltPass = ProviderRidePass(
+            enabled: true,
+            freeUnlock: true,
+            freeMinutes: 15,
+            expiryDate: expiryDate
+        )
+        let voiPass = ProviderRidePass(enabled: true, freeMinutes: 5)
+
+        firstModel.setRideEstimateMinutes(20)
+        firstModel.setRidePass(boltPass, for: .bolt)
+        firstModel.setRidePass(voiPass, for: .voi)
+
+        let restoredModel = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: CLLocationManager(),
+            defaults: defaults
+        )
+
+        XCTAssertEqual(restoredModel.rideEstimateMinutes, 20)
+        XCTAssertEqual(restoredModel.ridePass(for: .bolt), boltPass)
+        XCTAssertEqual(restoredModel.ridePass(for: .voi), voiPass)
+        XCTAssertEqual(restoredModel.ridePass(for: .lime), ProviderRidePass())
+    }
+
+    func testInvalidStoredRideDurationFallsBackToTenMinutes() {
+        let defaults = isolatedDefaults()
+        defaults.set(17, forKey: "ride-estimate-minutes-v1")
+
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: CLLocationManager(),
+            defaults: defaults
+        )
+
+        XCTAssertEqual(model.rideEstimateMinutes, RideEstimateDuration.defaultMinutes)
+    }
+
+    func testRidePriceQuoteUsesTheSelectedScootersProviderPass() throws {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        model.setRideEstimateMinutes(10)
+        model.setRidePass(
+            ProviderRidePass(enabled: true, freeUnlock: true, freeMinutes: 5),
+            for: .bolt
+        )
+        model.setRidePass(
+            ProviderRidePass(enabled: true, freeUnlock: true, freeMinutes: 10),
+            for: .voi
+        )
+        let bolt = Scooter(
+            provider: "bolt",
+            latitude: 47.3769,
+            longitude: 8.5417,
+            battery: 90,
+            rangeMeters: nil,
+            vehicleID: "priced",
+            deepLink: nil,
+            rentalURIs: nil,
+            distanceMeters: 0,
+            pricing: ScooterRidePricing(
+                currency: "CHF",
+                unlockFeeMinorUnits: 100,
+                minuteFeeMinorUnits: 42
+            )
+        )
+
+        let quote = try XCTUnwrap(model.ridePriceQuote(for: bolt))
+
+        XCTAssertEqual(quote.grossMinorUnits, 520)
+        XCTAssertEqual(quote.totalMinorUnits, 210)
+        XCTAssertEqual(quote.chargedUnlockFeeMinorUnits, 0)
+        XCTAssertEqual(quote.billedMinutes, 5)
+        XCTAssertEqual(quote.freeMinutesApplied, 5)
+        XCTAssertTrue(quote.passApplied)
+    }
+
+    func testFocusingOnUserClearsSearchedDestinationAndRestoresUserOrigin() {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        let userLocation = GeoPoint(latitude: 47.3769, longitude: 8.5417)
+        let destination = MapDestination(
+            title: "Bellevue",
+            point: GeoPoint(latitude: 47.3665, longitude: 8.5451)
+        )
+        model.userLocation = userLocation
+        model.focusOnAddress(destination)
+
+        model.focusOnUser()
+
+        XCTAssertNil(model.searchedDestination)
+        XCTAssertEqual(model.activeOrigin, .userLocation(userLocation))
+        XCTAssertEqual(model.focusRequest?.point, userLocation)
+    }
+
     private func makeModel(api: any ScooterAPIClient) -> ScooterMapModel {
         ScooterMapModel(
             api: api,
@@ -350,16 +610,36 @@ final class ScooterMapModelTests: XCTestCase {
         )
     }
 
-    private func scooter(id: String, provider: String) -> Scooter {
+    private func loadedModel(
+        vehicles: [Scooter],
+        origin: GeoPoint
+    ) async -> ScooterMapModel {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: vehicles)))
+        model.userLocation = origin
+        model.refresh()
+        let loadingFinished = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loadingFinished)
+        return model
+    }
+
+    private func scooter(
+        id: String,
+        provider: String,
+        latitude: Double = 47.3769,
+        longitude: Double = 8.5417,
+        battery: Int? = 80,
+        rangeMeters: Int? = nil,
+        rentalURIs: ScooterRentalURIs? = nil
+    ) -> Scooter {
         Scooter(
             provider: provider,
-            latitude: 47.3769,
-            longitude: 8.5417,
-            battery: 80,
-            rangeMeters: nil,
+            latitude: latitude,
+            longitude: longitude,
+            battery: battery,
+            rangeMeters: rangeMeters,
             vehicleID: id,
             deepLink: nil,
-            rentalURIs: nil,
+            rentalURIs: rentalURIs,
             distanceMeters: 0
         )
     }

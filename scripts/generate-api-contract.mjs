@@ -4,7 +4,9 @@ import { dirname, resolve } from 'node:path';
 const root = process.cwd();
 const sourcePath = resolve(root, 'data/scooter-api.schema.json');
 const typescriptPath = resolve(root, 'src/generated/scooterApi.ts');
-const swiftPath = resolve(root, 'ios/SwissScooters/Models/ScooterAPIContract.generated.swift');
+const swiftPaths = [
+  resolve(root, 'ios/SwissScooters/Models/ScooterAPIContract.generated.swift'),
+];
 const checkOnly = process.argv.includes('--check');
 const schema = JSON.parse(readFileSync(sourcePath, 'utf8'));
 
@@ -208,4 +210,4 @@ function writeOrCheck(path, expected) {
 
 validateSchema();
 writeOrCheck(typescriptPath, typescriptContract());
-writeOrCheck(swiftPath, swiftContract());
+for (const swiftPath of swiftPaths) writeOrCheck(swiftPath, swiftContract());

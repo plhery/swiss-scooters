@@ -42,6 +42,13 @@
     "systemIds": { "prefixes": ["voi"] }
   },
   {
+    "key": "pony",
+    "name": "Pony",
+    "color": "#00a7a0",
+    "initial": "P",
+    "systemIds": { "prefixes": ["pony"] }
+  },
+  {
     "key": "publibike",
     "name": "PubliBike / Velospot",
     "color": "#9b59b6",
