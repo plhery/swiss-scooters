@@ -34,8 +34,9 @@ export async function proxyScooterSnapshot(request: Request, env: SnapshotProxyE
     const upstream = new URL('/api/scooters', env.SCOOTER_SNAPSHOT_API_URL);
     upstream.search = url.search;
     const response = await fetch(upstream, { headers: { Accept: 'application/json', Authorization: `Bearer ${env.SCOOTER_SNAPSHOT_API_TOKEN}`,
-      'X-Scooter-Client-IP': request.headers.get('cf-connecting-ip') ?? 'unknown' }, redirect: 'error', signal: AbortSignal.timeout(5000) });
-    if (response.status >= 500 || response.status === 401 || response.status === 403) return Response.json({ error: 'Scooter data is temporarily unavailable. Please try again shortly.' },
+      'X-Scooter-Client-IP': request.headers.get('cf-connecting-ip') ?? 'unknown' }, redirect: 'manual', signal: AbortSignal.timeout(5000) });
+    // Workers support manual redirects; never forward the service credential to a redirect target.
+    if ((response.status >= 300 && response.status < 400) || response.status >= 500 || response.status === 401 || response.status === 403) return Response.json({ error: 'Scooter data is temporarily unavailable. Please try again shortly.' },
       { status: 503, headers: { ...headers, 'Retry-After': '30' } });
     const result = new Response(response.body, response);
     result.headers.set('Cache-Control', response.headers.get('X-Scooter-Public-Cache-Control') ?? 'private, no-store');

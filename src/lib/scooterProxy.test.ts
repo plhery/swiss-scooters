@@ -45,6 +45,17 @@ it('fails closed without an origin credential and forwards only a trusted client
   const req = new Request(request(), { headers: { 'cf-connecting-ip': '192.0.2.1', 'X-Scooter-Client-IP': 'spoofed' } });
   await proxyScooterSnapshot(req, env);
   expect(fetcher).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({
-    redirect: 'error', headers: { Accept: 'application/json', Authorization: 'Bearer test-service-token', 'X-Scooter-Client-IP': '192.0.2.1' },
+    redirect: 'manual', headers: { Accept: 'application/json', Authorization: 'Bearer test-service-token', 'X-Scooter-Client-IP': '192.0.2.1' },
   }));
+});
+
+it('rejects an origin redirect without forwarding it to clients or following it with the credential', async () => {
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, {
+    status: 302, headers: { Location: 'https://unexpected.example' },
+  }));
+  const response = await proxyScooterSnapshot(request(), env);
+  expect(response.status).toBe(503);
+  expect(response.headers.has('Location')).toBe(false);
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(fetcher).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ redirect: 'manual' }));
 });
