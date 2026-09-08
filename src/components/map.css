@@ -46,6 +46,7 @@
 
 .parking-popup { max-width: 260px; }
 .parking-popup p { margin: 8px 0; }
+.parking-popup .popup-cta { background: #2166c2; color: #fff !important; }
 
 .leaflet-top {
   top: calc(var(--sat) + 8px);

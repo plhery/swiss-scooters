@@ -289,6 +289,8 @@ test('parking markers appear at street zoom, follow provider filters and keep sc
   await marker.click();
   await expect(page.getByText('Designated parking is required in this zone.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Directions to parking' })).toHaveAttribute('href', /destination=45.75,4.85/);
+  const accessibility = await new AxeBuilder({ page }).include('.parking-popup').analyze();
+  expect(accessibility.violations).toEqual([]);
   await page.locator('.leaflet-popup-close-button').click();
   await page.getByRole('button', { name: /^Dott, 0/ }).click();
   await expect(marker).toHaveCount(0);
