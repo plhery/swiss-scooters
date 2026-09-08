@@ -324,6 +324,9 @@ test('centers the location prompt and keeps map credits compact and accessible',
   await page.goto('/');
   const intro = page.getByRole('dialog', { name: 'Find a scooter nearby' });
   await expect(intro).toBeVisible();
+  // Check the production CSS: prefix ordering must retain the standard blur
+  // declaration through minification, including in Chromium.
+  expect(await intro.evaluate(element => getComputedStyle(element).backdropFilter)).toContain('blur(');
   const box = await intro.boundingBox();
   expect(Math.abs(box!.x + box!.width / 2 - 195)).toBeLessThan(2);
   expect(box!.y).toBeGreaterThan(88);

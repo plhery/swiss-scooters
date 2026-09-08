@@ -77,8 +77,8 @@
   font-size: 24px;
   font-weight: 400;
   line-height: 42px;
-  backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
 }
 
 .map-zoom-controls button + button {
