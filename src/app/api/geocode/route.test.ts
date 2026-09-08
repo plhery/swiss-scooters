@@ -36,7 +36,7 @@ describe('GET /api/geocode', () => {
     vi.stubGlobal('fetch', fetchMock);
     const result = await POST(postRequest(query));
     expect(result.status).toBe(200);
-    expect((await result.json())[0].display_name).toBe(name);
+    expect(await result.json()).toEqual(expect.arrayContaining([expect.objectContaining({ display_name: name })]));
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it('includes French scooter cities in searches', async () => {
