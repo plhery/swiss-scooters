@@ -361,6 +361,81 @@ test('publishes a standalone privacy notice', async ({ page }) => {
   await expect(page.getByText(/has no user accounts/)).toBeVisible();
 });
 
+test('compass rotates the map, preserves marker interaction and resets north', async ({ page }) => {
+  await page.goto('/');
+  await focusFixtureArea(page);
+  await zoomTo(page, 16);
+  const compass = page.getByRole('button', { name: 'Reset map to north' });
+  await expect(compass).toBeVisible();
+  await compass.focus();
+  for (let step = 1; step <= 3; step++) {
+    await compass.press('ArrowRight');
+    await expect(compass).toHaveAttribute('data-bearing', String(step * 15));
+  }
+  const mapPane = page.locator('.leaflet-rotate-pane');
+  expect(await mapPane.evaluate(element => getComputedStyle(element).transform)).not.toBe('none');
+  await zoomTo(page, 17);
+  await expect(compass).toHaveAttribute('data-bearing', '45');
+  // These fixtures share the same parking spot; isolate one provider so an
+  // overlapping scooter cannot intercept the click after rotation.
+  await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
+  await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
+  await expect(page.locator('.vehicle-card')).toBeVisible();
+  await compass.click();
+  await expect(compass).toHaveAttribute('data-bearing', '0');
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
+  await expect(page.locator('.vehicle-card')).toBeVisible();
+  const accessibility = await new AxeBuilder({ page }).include('.map-navigation').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.getByRole('button', { name: 'Choose an origin' }).click();
+  await expect(page.getByRole('combobox', { name: 'City or address' })).toBeVisible();
+  await expect(compass).toBeHidden();
+});
+
+test('compass honors reduced motion and takes the short route across north', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  const compass = page.getByRole('button', { name: 'Reset map to north' });
+  await expect(compass).toBeEnabled();
+  await compass.press('ArrowLeft');
+  await expect(compass).toHaveAttribute('data-bearing', '345');
+  await compass.press('Enter');
+  await expect(compass).toHaveAttribute('data-bearing', '0');
+});
+
+test('two-finger rotation updates the compass and can be reset', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Touch rotation is exercised on mobile WebKit.');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Browse the map' }).click();
+  const compass = page.getByRole('button', { name: 'Reset map to north' });
+  await expect(compass).toBeEnabled();
+  await page.locator('.leaflet-container').evaluate(async element => {
+    const rect = element.getBoundingClientRect();
+    const send = (type: string, angle: number) => {
+      const touches = type === 'touchend' ? [] : [0, Math.PI].map((offset, identifier) => ({
+        identifier, target: element,
+        clientX: rect.x + rect.width / 2 + Math.cos(angle + offset) * 70,
+        clientY: rect.y + rect.height / 2 + Math.sin(angle + offset) * 70,
+      }));
+      // WebKit exposes TouchEvent but disallows constructing Touch objects.
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { touches, targetTouches: touches, changedTouches: touches });
+      element.dispatchEvent(event);
+    };
+    send('touchstart', 0);
+    send('touchmove', Math.PI / 4);
+    await new Promise(requestAnimationFrame);
+    send('touchmove', Math.PI / 2);
+    // Hold before lifting, as a deliberate rotation without a momentum fling.
+    await new Promise(resolve => setTimeout(resolve, 180));
+    send('touchend', Math.PI / 2);
+  });
+  await expect(compass).toHaveAttribute('data-bearing', '45');
+  await compass.click();
+  await expect(compass).toHaveAttribute('data-bearing', '0');
+});
+
 test('parking markers appear at street zoom, follow provider filters and keep scooter counts separate', async ({ page }) => {
   await page.route('**/api/scooters?**', async route => {
     const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));

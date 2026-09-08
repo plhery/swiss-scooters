@@ -4,12 +4,15 @@ import { prefersReducedMotion, selectionFeedback } from '@/lib/feedback';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
+import '@tomickigrzegorz/leaflet-rotate';
 import 'leaflet/dist/leaflet.css';
+import MapCompass from './MapCompass';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
 import type { AddressResult } from '@/components/AddressSearch';
 import { haversineM } from '@/lib/geo';
+import { stopMapRotation, syncRotationMotion } from '@/lib/mapRotation';
 import './map.css';
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -141,6 +144,28 @@ function vehicleMarkerKey(vehicle: Vehicle): string {
     : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`;
 }
 
+// The rotation adapter disables Leaflet's built-in popup autopan. Measure in
+// screen coordinates so parking details clear the floating controls at any angle.
+function keepPopupInView(map: L.Map, popup: L.Popup | null) {
+  const element = popup?.getElement();
+  if (!element) return;
+  const container = map.getContainer();
+  const shell = container.parentElement;
+  const mapRect = container.getBoundingClientRect();
+  const popupRect = element.getBoundingClientRect();
+  const searchRect = shell?.querySelector('.search-island')?.getBoundingClientRect();
+  const dockRect = shell?.querySelector('.sheet')?.getBoundingClientRect();
+  const left = mapRect.left + 16;
+  const right = mapRect.right - 74;
+  const top = Math.max(mapRect.top + 16, (searchRect?.bottom ?? 0) + 12);
+  const bottom = Math.min(mapRect.bottom - 16, (dockRect?.top ?? mapRect.bottom) - 12);
+  const dx = popupRect.right > right ? popupRect.right - right : Math.min(0, popupRect.left - left);
+  const dy = popupRect.top < top ? popupRect.top - top : Math.max(0, popupRect.bottom - bottom);
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+    map.panBy([dx, dy], { animate: !prefersReducedMotion(), duration: 0.25 });
+  }
+}
+
 function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
   const { t } = useI18n();
   const controlRef = useRef<HTMLDivElement>(null);
@@ -223,7 +248,7 @@ export default function MapComponent({
   const initialOriginRef = useRef(origin);
   const onViewportChangeRef = useRef(onViewportChange);
   const onVehicleSelectRef = useRef(onVehicleSelect);
-  const [mapReady, setMapReady] = useState(false);
+  const [readyMap, setReadyMap] = useState<L.Map | null>(null);
   const [zoom, setZoom] = useState(initialZoom);
 
   useEffect(() => {
@@ -277,12 +302,21 @@ export default function MapComponent({
       zoom: initialZoom,
       zoomControl: false,
       attributionControl: false,
+      rotate: true,
+      touchRotate: true,
+      shiftKeyRotate: true,
+      dragRotate: true,
+      rotateControl: false,
       preferCanvas: true,
       zoomAnimation: !prefersReducedMotion(),
       fadeAnimation: !prefersReducedMotion(),
       markerZoomAnimation: !prefersReducedMotion(),
     });
     mapRef.current = map;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const syncMotion = () => syncRotationMotion(map);
+    syncMotion();
+    motionQuery.addEventListener('change', syncMotion);
     scooterLayerRef.current = L.layerGroup().addTo(map);
     destinationLayerRef.current = L.layerGroup().addTo(map);
     userLayerRef.current = L.layerGroup().addTo(map);
@@ -293,16 +327,34 @@ export default function MapComponent({
       setZoom(currentZoom);
     };
     const updateViewport = () => reportViewport(map);
+    let openPopup: L.Popup | null = null;
+    const onPopupOpen = (event: L.PopupEvent) => {
+      openPopup = event.popup;
+      keepPopupInView(map, openPopup);
+    };
+    const onPopupClose = () => { openPopup = null; };
+    const onRotateEnd = () => {
+      keepPopupInView(map, openPopup);
+      updateViewport();
+    };
     map.on('zoomend', updateZoom);
     map.on('moveend', updateViewport);
+    map.on('rotateend', onRotateEnd);
+    map.on('popupopen', onPopupOpen);
+    map.on('popupclose', onPopupClose);
     updateZoom();
     map.whenReady(updateViewport);
-    setMapReady(true);
+    setReadyMap(map);
 
     return () => {
-      setMapReady(false);
+      setReadyMap(null);
       map.off('zoomend', updateZoom);
       map.off('moveend', updateViewport);
+      map.off('rotateend', onRotateEnd);
+      map.off('popupopen', onPopupOpen);
+      map.off('popupclose', onPopupClose);
+      motionQuery.removeEventListener('change', syncMotion);
+      stopMapRotation(map);
       map.remove();
       mapRef.current = null;
       scooterLayerRef.current = null;
@@ -320,7 +372,7 @@ export default function MapComponent({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!mapReady || !map) return;
+    if (!readyMap || !map) return;
     const markers = parkingMarkersRef.current;
     const shown = zoom >= 16 ? parking : [];
     const ids = new Set(shown.map(location => location.id));
@@ -347,18 +399,17 @@ export default function MapComponent({
           iconSize: [36, 36], iconAnchor: [8, 28] }),
         title: label, zIndexOffset: 100,
       }).bindPopup(popup, {
-        maxWidth: Math.min(260, map.getSize().x - 112),
-        autoPanPaddingTopLeft: L.point(16, 100),
-        autoPanPaddingBottomRight: L.point(74, 180),
+        maxWidth: Math.min(260, map.getSize().x - 132),
+        autoPan: false,
       }).addTo(map);
       labelMarker(marker, label);
       markers.set(location.id, { marker, signature });
     }
-  }, [mapReady, parking, t, zoom]);
+  }, [readyMap, parking, t, zoom]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!mapReady || !map) return;
+    if (!readyMap || !map) return;
 
     tileLayerRef.current?.remove();
     const layer = L.tileLayer(TILE_URL, {
@@ -377,22 +428,22 @@ export default function MapComponent({
       layer.remove();
       if (tileLayerRef.current === layer) tileLayerRef.current = null;
     };
-  }, [mapReady, tileLayer]);
+  }, [readyMap, tileLayer]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!mapReady || !map || !focusLocation || focusVersion === 0) return;
+    if (!readyMap || !map || !focusLocation || focusVersion === 0) return;
     map.stop();
     map.flyTo(focusLocation, Math.max(map.getZoom(), 16), {
       animate: !prefersReducedMotion(),
       duration: 0.5,
       easeLinearity: 0.25,
     });
-  }, [focusLocation, focusVersion, mapReady]);
+  }, [focusLocation, focusVersion, readyMap]);
 
   useEffect(() => {
     const layer = userLayerRef.current;
-    if (!mapReady || !layer) return;
+    if (!readyMap || !layer) return;
     layer.clearLayers();
 
     if (userLocation) {
@@ -404,11 +455,11 @@ export default function MapComponent({
       }).addTo(layer);
       labelMarker(marker, label);
     }
-  }, [mapReady, t, userLocation, userLocationIcon]);
+  }, [readyMap, t, userLocation, userLocationIcon]);
 
   useEffect(() => {
     const layer = destinationLayerRef.current;
-    if (!mapReady || !layer) return;
+    if (!readyMap || !layer) return;
     layer.clearLayers();
 
     if (destination) {
@@ -420,12 +471,12 @@ export default function MapComponent({
       }).addTo(layer);
       labelMarker(marker, label);
     }
-  }, [destination, destinationIcon, mapReady, t]);
+  }, [destination, destinationIcon, readyMap, t]);
 
   useEffect(() => {
     const map = mapRef.current;
     const layer = scooterLayerRef.current;
-    if (!mapReady || !map || !layer) return;
+    if (!readyMap || !map || !layer) return;
 
     const distanceFor = (vehicle: Vehicle) => distanceOrigin
       ? haversineM(distanceOrigin[0], distanceOrigin[1], vehicle.lat, vehicle.lng)
@@ -515,7 +566,7 @@ export default function MapComponent({
     distanceOrigin,
     formatNumber,
     iconMap,
-    mapReady,
+    readyMap,
     selectedIconMap,
     selectedVehicleKey,
     t,
@@ -526,7 +577,10 @@ export default function MapComponent({
   return (
     <>
       <div ref={containerRef} className="map-container" />
-      <MapZoomControls mapRef={mapRef} />
+      <div className="map-navigation">
+        <MapCompass map={readyMap} />
+        <MapZoomControls mapRef={mapRef} />
+      </div>
     </>
   );
 }

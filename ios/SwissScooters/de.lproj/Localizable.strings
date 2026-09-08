@@ -57,13 +57,13 @@
 "The scooter request failed (HTTP %lld)." = "Die Scooter-Anfrage ist fehlgeschlagen (HTTP %lld).";
 "A network error prevented the scooter update: %@" = "Ein Netzwerkfehler hat die Scooter-Aktualisierung verhindert: %@";
 "Address search" = "Adresssuche";
-"City or Swiss address" = "Stadt oder Schweizer Adresse";
+"City or address" = "Stadt oder Adresse";
 "Clear address search" = "Adresssuche löschen";
 "Searching addresses…" = "Adressen werden gesucht…";
 "No addresses or cities found." = "Keine Adressen oder Städte gefunden.";
 "Address search is unavailable. Try again." = "Die Adresssuche ist nicht verfügbar. Versuche es erneut.";
 "Find a scooter nearby" = "Scooter in der Nähe finden";
-"Use your location for nearby distances, or search a supported city or Swiss address." = "Nutze deinen Standort oder suche eine unterstützte Stadt oder Schweizer Adresse.";
+"Use your location for nearby distances, or search for a city or address." = "Nutze deinen Standort oder suche eine unterstützte Stadt oder Adresse.";
 "Use my location" = "Meinen Standort nutzen";
 "Browse the map" = "Karte erkunden";
 "Finding scooters…" = "Scooter werden gesucht…";

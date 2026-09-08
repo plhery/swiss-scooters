@@ -57,13 +57,13 @@
 "The scooter request failed (HTTP %lld)." = "La demande de trottinettes a échoué (HTTP %lld).";
 "A network error prevented the scooter update: %@" = "Une erreur réseau a empêché l’actualisation des trottinettes : %@";
 "Address search" = "Recherche d’adresse";
-"City or Swiss address" = "Ville ou adresse suisse";
+"City or address" = "Ville ou adresse";
 "Clear address search" = "Effacer la recherche d’adresse";
 "Searching addresses…" = "Recherche d’adresses…";
 "No addresses or cities found." = "Aucune adresse ou ville trouvée.";
 "Address search is unavailable. Try again." = "La recherche d’adresse est indisponible. Réessayez.";
 "Find a scooter nearby" = "Trouver une trottinette";
-"Use your location for nearby distances, or search a supported city or Swiss address." = "Utilisez votre position ou recherchez une ville couverte ou une adresse suisse.";
+"Use your location for nearby distances, or search for a city or address." = "Utilisez votre position ou recherchez une ville ou une adresse.";
 "Use my location" = "Utiliser ma position";
 "Browse the map" = "Explorer la carte";
 "Finding scooters…" = "Recherche de trottinettes…";

@@ -39,7 +39,7 @@ struct SwissAddressSearch: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
 
-                TextField("City or Swiss address", text: $searchModel.query)
+                TextField("City or address", text: $searchModel.query)
                     .focused($fieldIsFocused)
                     .textContentType(.fullStreetAddress)
                     .textInputAutocapitalization(.words)

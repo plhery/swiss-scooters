@@ -57,13 +57,13 @@
 "The scooter request failed (HTTP %lld)." = "The scooter request failed (HTTP %lld).";
 "A network error prevented the scooter update: %@" = "A network error prevented the scooter update: %@";
 "Address search" = "Address search";
-"City or Swiss address" = "City or Swiss address";
+"City or address" = "City or address";
 "Clear address search" = "Clear address search";
 "Searching addresses…" = "Searching addresses…";
 "No addresses or cities found." = "No addresses or cities found.";
 "Address search is unavailable. Try again." = "Address search is unavailable. Try again.";
 "Find a scooter nearby" = "Find a scooter nearby";
-"Use your location for nearby distances, or search a supported city or Swiss address." = "Use your location for nearby distances, or search a supported city or Swiss address.";
+"Use your location for nearby distances, or search for a city or address." = "Use your location for nearby distances, or search for a city or address.";
 "Use my location" = "Use my location";
 "Browse the map" = "Browse the map";
 "Finding scooters…" = "Finding scooters…";

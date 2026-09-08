@@ -53,18 +53,44 @@
   top: calc(var(--sat) + 8px);
 }
 
-.map-zoom-controls {
+.map-navigation {
   position: absolute;
   z-index: 1000;
   top: calc(var(--sat) + 88px);
   right: 12px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  transition: opacity 180ms ease;
+}
+
+.map-compass {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.map-compass:active { transform: scale(0.94); }
+
+.map-compass:focus-visible {
+  outline: 3px solid rgba(10, 132, 255, 0.6);
+  outline-offset: 3px;
+}
+
+.map-zoom-controls {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: none;
   border-radius: 20px;
   box-shadow: var(--glass-shadow);
-  transition: opacity 180ms ease;
 }
 
 .map-zoom-controls button {
@@ -373,5 +399,5 @@ a.popup-walk {
 }
 
 @media (min-width: 900px) {
-  .map-zoom-controls { top: calc(var(--sat) + 24px); right: 24px; }
+  .map-navigation { top: calc(var(--sat) + 24px); right: 24px; }
 }

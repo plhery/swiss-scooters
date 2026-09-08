@@ -1104,7 +1104,7 @@ svg {
   pointer-events: none;
   transform: translateY(8px) scale(0.96);
 }
-.app-shell[data-searching='true'] .map-zoom-controls {
+.app-shell[data-searching='true'] .map-navigation {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
