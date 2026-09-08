@@ -16,6 +16,7 @@ interface MapWrapperProps {
   distanceOrigin: [number, number] | null;
   tileLayer: 'dark' | 'light' | 'osm';
   userLocation: [number, number] | null;
+  headingEnabled: boolean;
   focusLocation: [number, number] | null;
   focusVersion: number;
   destination: AddressResult | null;

@@ -29,6 +29,7 @@ import {
   haversineM,
 } from '@/lib/geo';
 import { useLiveLocation } from '@/lib/useLiveLocation';
+import { requestHeadingPermission, type HeadingPermission } from '@/lib/deviceHeading';
 
 const SWITZERLAND_CENTER: [number, number] = [46.8182, 8.2275];
 const INITIAL_ZOOM = 8;
@@ -91,6 +92,7 @@ export default function Home() {
     error: locationError,
     locate,
   } = useLiveLocation();
+  const [headingPermission, setHeadingPermission] = useState<HeadingPermission | null>(null);
   const [minBattery, setMinBattery] = useState(0);
   const [tileLayer, setTileLayer] = useState<'dark' | 'light' | 'osm'>('light');
   const [enabledProviders, setEnabledProviders] = useState<Set<string>>(
@@ -291,10 +293,11 @@ export default function Home() {
 
   const handleLocateMe = useCallback(() => {
     setShowLocationIntro(false);
+    if (headingPermission !== 'granted') void requestHeadingPermission().then(setHeadingPermission);
     locate((coords) => {
       setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
     });
-  }, [locate]);
+  }, [headingPermission, locate]);
 
   const resetFilters = useCallback(() => {
     setMinBattery(0);
@@ -421,6 +424,7 @@ export default function Home() {
         distanceOrigin={userLocation}
         tileLayer={tileLayer}
         userLocation={userLocation}
+        headingEnabled={headingPermission === 'granted' && locationError !== 'denied'}
         focusLocation={focusRequest.location}
         focusVersion={focusRequest.version}
         destination={searchedAddress}
@@ -490,6 +494,12 @@ export default function Home() {
           {t(locationError === 'denied'
             ? 'errors.locationDenied'
             : 'errors.locationUnavailable')}
+        </div>
+      )}
+
+      {headingPermission === 'denied' && userLocation && !locationError && !locating && !error && (
+        <div className="toast glass toast-location" role="status">
+          {t('errors.headingDenied')}
         </div>
       )}
 

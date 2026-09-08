@@ -7,6 +7,7 @@ import L from 'leaflet';
 import '@tomickigrzegorz/leaflet-rotate';
 import 'leaflet/dist/leaflet.css';
 import MapCompass from './MapCompass';
+import UserLocationMarker from './UserLocationMarker';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
@@ -26,18 +27,6 @@ function createScooterIcon(provider: string, selected = false): L.DivIcon {
     iconSize: [44, 44],
     iconAnchor: [22, 22],
     popupAnchor: [0, -18],
-  });
-}
-
-function createUserLocationIcon(): L.DivIcon {
-  return L.divIcon({
-    className: '',
-    html: `<div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center">
-      <div class="user-loc-pulse" style="position:absolute;width:24px;height:24px;border-radius:50%;background:rgba(10,132,255,0.35)"></div>
-      <div style="width:16px;height:16px;border-radius:50%;background:#0a84ff;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);position:relative;z-index:1"></div>
-    </div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
   });
 }
 
@@ -208,6 +197,7 @@ interface MapComponentProps {
   distanceOrigin: [number, number] | null;
   tileLayer: 'dark' | 'light' | 'osm';
   userLocation: [number, number] | null;
+  headingEnabled: boolean;
   focusLocation: [number, number] | null;
   focusVersion: number;
   destination: AddressResult | null;
@@ -226,6 +216,7 @@ export default function MapComponent({
   distanceOrigin,
   tileLayer,
   userLocation,
+  headingEnabled,
   focusLocation,
   focusVersion,
   destination,
@@ -237,7 +228,6 @@ export default function MapComponent({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const scooterLayerRef = useRef<L.LayerGroup | null>(null);
-  const userLayerRef = useRef<L.LayerGroup | null>(null);
   const destinationLayerRef = useRef<L.LayerGroup | null>(null);
   const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const clusterMarkersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -273,7 +263,6 @@ export default function MapComponent({
     }
     return icons;
   }, []);
-  const userLocationIcon = useMemo(() => createUserLocationIcon(), []);
   const destinationIcon = useMemo(() => createDestinationIcon(), []);
 
   const reportViewport = useCallback((map: L.Map) => {
@@ -319,7 +308,6 @@ export default function MapComponent({
     motionQuery.addEventListener('change', syncMotion);
     scooterLayerRef.current = L.layerGroup().addTo(map);
     destinationLayerRef.current = L.layerGroup().addTo(map);
-    userLayerRef.current = L.layerGroup().addTo(map);
 
     const updateZoom = () => {
       const currentZoom = map.getZoom();
@@ -358,7 +346,6 @@ export default function MapComponent({
       map.remove();
       mapRef.current = null;
       scooterLayerRef.current = null;
-      userLayerRef.current = null;
       destinationLayerRef.current = null;
       vehicleMarkers.clear();
       clusterMarkers.clear();
@@ -440,22 +427,6 @@ export default function MapComponent({
       easeLinearity: 0.25,
     });
   }, [focusLocation, focusVersion, readyMap]);
-
-  useEffect(() => {
-    const layer = userLayerRef.current;
-    if (!readyMap || !layer) return;
-    layer.clearLayers();
-
-    if (userLocation) {
-      const label = t('marker.yourLocation');
-      const marker = L.marker(userLocation, {
-        icon: userLocationIcon,
-        zIndexOffset: 2000,
-        title: label,
-      }).addTo(layer);
-      labelMarker(marker, label);
-    }
-  }, [readyMap, t, userLocation, userLocationIcon]);
 
   useEffect(() => {
     const layer = destinationLayerRef.current;
@@ -577,6 +548,9 @@ export default function MapComponent({
   return (
     <>
       <div ref={containerRef} className="map-container" />
+      {readyMap && (
+        <UserLocationMarker map={readyMap} location={userLocation} headingEnabled={headingEnabled} />
+      )}
       <div className="map-navigation">
         <MapCompass map={readyMap} />
         <MapZoomControls mapRef={mapRef} />

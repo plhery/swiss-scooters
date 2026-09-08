@@ -382,6 +382,47 @@ a.popup-walk {
 }
 
 /* ---------- User location pulse ---------- */
+.user-location-marker {
+  display: grid !important;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  pointer-events: none;
+}
+
+.user-location-marker .user-loc-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(10, 132, 255, 0.35);
+}
+
+.user-location-dot {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #0a84ff;
+  box-shadow: 0 2px 6px #0006;
+}
+
+.user-heading-beam {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  left: -48px;
+  top: -48px;
+  border-radius: 50%;
+  background: conic-gradient(from calc(-1 * var(--heading-spread, 25deg)), rgba(10, 132, 255, 0.4) 0deg var(--heading-width, 50deg), transparent var(--heading-width, 50deg));
+  -webkit-mask-image: radial-gradient(circle, #000 12%, #0009 40%, transparent 68%);
+  mask-image: radial-gradient(circle, #000 12%, #0009 40%, transparent 68%);
+  transition: transform 160ms linear;
+  pointer-events: none;
+}
+
+.user-heading-beam[hidden] { display: none; }
+
 @keyframes user-loc-pulse {
   0% { transform: scale(1); opacity: 0.6; }
   100% { transform: scale(2.5); opacity: 0; }
@@ -394,6 +435,7 @@ a.popup-walk {
 @media (prefers-reduced-motion: reduce) {
   .user-loc-pulse { animation: none; opacity: 0.3; }
   .leaflet-tile-pane,
+  .user-heading-beam,
   .scooter-marker,
   .cluster-marker { transition: none; }
 }

@@ -21,6 +21,37 @@ async function focusFixtureArea(page: Page) {
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '10');
 }
 
+async function allowLocationWithCompass(page: Page, permission: 'granted' | 'denied') {
+  await page.evaluate(permission => {
+    // Emulated mobile WebKit otherwise inherits the host monitor's angle.
+    Object.defineProperty(window.screen, 'orientation', {
+      configurable: true, value: Object.assign(new EventTarget(), { angle: 0 }),
+    });
+    Object.defineProperty(window, 'DeviceOrientationEvent', {
+      configurable: true,
+      value: class extends Event {
+        static requestPermission(absolute: boolean) {
+          document.body.dataset.compassRequested = String(absolute);
+          return Promise.resolve(permission);
+        }
+      },
+    });
+    const position = {
+      coords: { latitude: 47.3769, longitude: 8.5417, accuracy: 5,
+        altitude: null, altitudeAccuracy: null, heading: 270, speed: 0, toJSON: () => ({}) },
+      timestamp: Date.now(), toJSON: () => ({}),
+    };
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) => queueMicrotask(() => success(position)),
+        watchPosition: (success: PositionCallback) => { queueMicrotask(() => success(position)); return 1; },
+        clearWatch: () => {},
+      },
+    });
+  }, permission);
+}
+
 const scooterResponse = {
   vehicles: [
     {
@@ -402,6 +433,59 @@ test('compass honors reduced motion and takes the short route across north', asy
   await expect(compass).toHaveAttribute('data-bearing', '345');
   await compass.press('Enter');
   await expect(compass).toHaveAttribute('data-bearing', '0');
+});
+
+test('phone direction follows compass readings and stays aligned on a rotated map', async ({ page }) => {
+  const response = await page.goto('/');
+  expect(response?.headers()['permissions-policy']).toContain('magnetometer=(self)');
+  await allowLocationWithCompass(page, 'granted');
+  await page.getByRole('button', { name: 'Use my location', exact: true }).click();
+  const dot = page.getByRole('img', { name: 'Your live location' });
+  const beam = page.locator('.user-heading-beam');
+  await expect(dot).toBeVisible();
+  await expect(beam).toBeHidden();
+  await expect(page.locator('body')).toHaveAttribute('data-compass-requested', 'true');
+  const originalDot = await dot.elementHandle();
+  // A phone emits a stream as it turns; permission and GPS resolve separately.
+  await expect.poll(async () => {
+    await page.evaluate(() => window.dispatchEvent(Object.assign(new Event('deviceorientation'), {
+      absolute: false, alpha: 20, beta: 0, gamma: 0, webkitCompassHeading: 90, webkitCompassAccuracy: 5,
+    })));
+    return beam.isVisible();
+  }).toBe(true);
+  await expect(beam).toHaveAttribute('data-heading', '90');
+  await expect(beam).toHaveAttribute('data-screen-heading', '90');
+  const compass = page.getByRole('button', { name: 'Reset map to north' });
+  await compass.press('ArrowRight');
+  await expect(compass).toHaveAttribute('data-bearing', '15');
+  await expect(beam).toHaveAttribute('data-screen-heading', '105');
+  await compass.click();
+  await expect(beam).toHaveAttribute('data-screen-heading', '90');
+  await page.evaluate(() => {
+    Object.defineProperty(screen.orientation, 'angle', { configurable: true, value: 90 });
+    screen.orientation.dispatchEvent(new Event('change'));
+  });
+  await expect(beam).toHaveAttribute('data-heading', '180');
+  await page.evaluate(() => {
+    Object.defineProperty(screen.orientation, 'angle', { configurable: true, value: 0 });
+    window.dispatchEvent(Object.assign(new Event('deviceorientationabsolute'), { absolute: true, alpha: 180, beta: 0, gamma: 0 }));
+    window.dispatchEvent(Object.assign(new Event('deviceorientation'), { absolute: false, alpha: 0, beta: 0, gamma: 0 }));
+  });
+  await expect(beam).toHaveAttribute('data-heading', '180');
+  expect(await originalDot?.evaluate(element => element.isConnected)).toBe(true);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const duration = await beam.evaluate(element => getComputedStyle(element).transitionDuration);
+  expect(duration.split(',').every(value => parseFloat(value) < 0.001)).toBe(true);
+});
+
+test('denying motion permission keeps location usable without inventing a direction', async ({ page }) => {
+  await page.goto('/');
+  await allowLocationWithCompass(page, 'denied');
+  await page.getByRole('button', { name: 'Use my location', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Your live location' })).toBeVisible();
+  await expect(page.getByText('Motion access is off. Your location is still shown.')).toBeVisible();
+  await expect(page.locator('.user-heading-beam')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Go to my location' })).toBeEnabled();
 });
 
 test('two-finger rotation updates the compass and can be reset', async ({ page, isMobile }) => {
