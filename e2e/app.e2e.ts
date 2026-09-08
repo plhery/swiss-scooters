@@ -135,9 +135,9 @@ test('does not invent a distance without location and offers walking directions'
   await zoomTo(page, 16);
 
   await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
-  await expect(page.locator('.scooter-popup')).toBeVisible();
-  await expect(page.locator('.popup-dist')).toHaveCount(0);
-  await expect(page.locator('.scooter-popup').getByRole('link', { name: 'Walk there' })).toHaveAttribute(
+  await expect(page.locator('.vehicle-card')).toBeVisible();
+  await expect(page.locator('.walking-summary')).toHaveCount(0);
+  await expect(page.locator('.vehicle-card').getByRole('link', { name: 'Walk there' })).toHaveAttribute(
     'href',
     /travelmode=walking/
   );
@@ -242,26 +242,45 @@ test('combines provider filters and resets them together', async ({ page }) => {
 
   await page.getByRole('button', { name: /^Bolt, 1\./ }).click();
   await page.getByRole('button', { name: /^Lime, 1\./ }).click();
-  await expect(page.locator('.scooter-marker')).toHaveCount(1);
+  await expect(page.locator('.scooter-marker')).toHaveCount(2);
 
-  const expandControls = page.getByRole('button', { name: 'Expand controls' });
-  if (await expandControls.count()) await expandControls.click();
+  await page.getByRole('button', { name: 'Filters active', exact: true }).click();
   await page.getByRole('button', { name: 'Reset filters' }).click();
   await expect(page.locator('.scooter-marker')).toHaveCount(3);
 });
 
-test('keeps collapsed sheet controls out of interaction until expanded', async ({ page }) => {
+test('search island manages keyboard focus and keeps the dock out of interaction', async ({ page }) => {
+  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([
+    { lat: 47.378, lng: 8.54, display_name: 'Zürich HB, Switzerland' },
+  ]) }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-
-  const sheetBody = page.locator('#scooter-controls-body');
-  const handle = page.getByRole('button', { name: 'Expand controls' });
-  await expect(sheetBody).toHaveAttribute('inert', '');
-
-  await handle.press('Enter');
-  await expect(sheetBody).not.toHaveAttribute('inert', '');
-  await expect(page.getByRole('combobox')).toBeVisible();
+  await page.getByRole('button', { name: /^Origin:/ }).click();
+  await expect(page.locator('.sheet')).toHaveAttribute('inert', '');
+  const input = page.getByRole('combobox');
+  await expect(input).toBeFocused();
   await expect(page.getByText('Find a scooter nearby')).toHaveCount(0);
+  await input.fill('Zürich HB');
+  await expect(page.getByRole('option', { name: 'Zürich HB, Switzerland' })).toBeVisible();
+  await input.press('Enter');
+  await expect(page.locator('.sheet')).not.toHaveAttribute('inert');
+  await expect(page.getByRole('button', { name: /^Origin: Zürich HB/ })).toBeFocused();
+  await expect(page.locator('.destination-marker')).toBeVisible();
+});
+
+test('settings sheet traps focus, changes the map and restores its trigger', async ({ page }) => {
+  await page.goto('/');
+  const trigger = page.getByRole('button', { name: 'More options' });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: 'Settings & map' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Dark', exact: true }).click();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-map-theme', 'dark');
+  const accessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await expect(trigger).toBeFocused();
 });
 
 test('primary controls have no WCAG A/AA accessibility violations', async ({ page }) => {
@@ -270,12 +289,31 @@ test('primary controls have no WCAG A/AA accessibility violations', async ({ pag
 
   const results = await new AxeBuilder({ page })
     .include('.sheet')
+    .include('.search-island')
     .include('.fab-stack')
     .include('.map-zoom-controls')
     .withTags(['wcag2a', 'wcag2aa'])
     .analyze();
 
   expect(results.violations).toEqual([]);
+});
+
+test('reduced motion and narrow screens retain accessible controls', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Browse the map' }).click();
+  const duration = await page.locator('.sheet').evaluate(element => getComputedStyle(element).transitionDuration);
+  expect(duration.split(',').every(value => parseFloat(value) < 0.001)).toBe(true);
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Filters', exact: true });
+  const accessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+  const box = await dialog.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await expect(dialog).not.toBeVisible();
 });
 
 test('publishes a standalone privacy notice', async ({ page }) => {
@@ -304,9 +342,13 @@ test('parking markers appear at street zoom, follow provider filters and keep sc
   const accessibility = await new AxeBuilder({ page }).include('.parking-popup').analyze();
   expect(accessibility.violations).toEqual([]);
   await page.locator('.leaflet-popup-close-button').click();
-  await page.getByRole('button', { name: /^Dott, 0/ }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  await filters.getByRole('button', { name: /Dott/ }).click();
   await expect(marker).toHaveCount(0);
-  await page.getByRole('button', { name: /^Dott, 0/ }).click();
+  await filters.getByRole('button', { name: /Dott/ }).click();
+  await filters.getByRole('button', { name: 'Done' }).click();
+  await expect(filters).not.toBeVisible();
   await expect(marker).toBeVisible();
   await zoomTo(page, 15);
   await expect(marker).toHaveCount(0);

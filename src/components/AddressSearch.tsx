@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
+import Icon from './Icon';
 
 export interface AddressResult {
   lat: number;
@@ -13,6 +14,8 @@ interface AddressSearchProps {
   onSelect: (result: AddressResult) => void;
   onClear: () => void;
   compact?: boolean;
+  autoFocus?: boolean;
+  initialQuery?: string;
 }
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -22,10 +25,10 @@ function addressParts(displayName: string): { title: string; subtitle: string } 
   return { title: title || displayName, subtitle: rest.join(', ') };
 }
 
-export default function AddressSearch({ onSelect, onClear, compact = false }: AddressSearchProps) {
+export default function AddressSearch({ onSelect, onClear, compact = false, autoFocus = false, initialQuery = '' }: AddressSearchProps) {
   const { locale, t } = useI18n();
   const listboxId = useId();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<AddressResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -135,6 +138,9 @@ export default function AddressSearch({ onSelect, onClear, compact = false }: Ad
         </svg>
         <input
           type="search"
+          autoFocus={autoFocus}
+          enterKeyHint="search"
+          autoComplete="off"
           value={query}
           placeholder={t('search.placeholder')}
           aria-label={t('search.placeholder')}
@@ -155,6 +161,7 @@ export default function AddressSearch({ onSelect, onClear, compact = false }: Ad
               event.preventDefault();
               selectResult(results[activeIndex]);
             } else if (event.key === 'Escape') {
+              if (!expanded) return;
               event.preventDefault();
               setResults([]);
               setActiveIndex(-1);
@@ -187,8 +194,9 @@ export default function AddressSearch({ onSelect, onClear, compact = false }: Ad
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => selectResult(result)}
               >
-                <span className="result-title">{parts.title}</span>
-                {parts.subtitle && <span className="result-subtitle">{parts.subtitle}</span>}
+                <span className="result-symbol"><Icon name="pin" size={19} /></span>
+                <span className="result-copy"><span className="result-title">{parts.title}</span>
+                {parts.subtitle && <span className="result-subtitle">{parts.subtitle}</span>}</span>
               </button>
             );
           })}

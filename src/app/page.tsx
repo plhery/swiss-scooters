@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
 import BottomSheet, { type SelectedVehicle } from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
+import SearchIsland from '@/components/SearchIsland';
+import ControlSheet from '@/components/ControlSheet';
+import { selectionFeedback } from '@/lib/feedback';
 import type { AddressResult } from '@/components/AddressSearch';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
@@ -101,11 +104,13 @@ export default function Home() {
     version: number;
   }>({ location: null, version: 0 });
   const [searchedAddress, setSearchedAddress] = useState<AddressResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [responseMeta, setResponseMeta] = useState<ScooterResponse['meta'] | null>(null);
-  const [controlsExpanded, setControlsExpanded] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<'filters' | 'settings'>('filters');
   const [showLocationIntro, setShowLocationIntro] = useState(true);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
   const initializedRef = useRef(false);
@@ -377,8 +382,32 @@ export default function Home() {
     };
   }, [selectedVehicleKey, userLocation, viewportData.visibleVehicles]);
 
+  const availableProviders = viewportBounds
+    ? [...new Set([...providersForViewport(viewportBounds), ...Object.keys(viewportData.providerCounts)])]
+    : Object.keys(PROVIDERS);
+  const hasActiveFilters = minBattery > 0 || availableProviders.some(provider => !enabledProviders.has(provider));
+
+  const openPanel = (panel: 'filters' | 'settings') => {
+    selectionFeedback();
+    setSearchExpanded(false);
+    setShowLocationIntro(false);
+    setActivePanel(panel);
+    setPanelOpen(true);
+  };
+
+  const handleQuickProviderToggle = (provider: string) => {
+    setEnabledProviders(current => {
+      if (current.size === 1 && current.has(provider)) return new Set(Object.keys(PROVIDERS));
+      if (availableProviders.every(key => current.has(key))) return new Set([provider]);
+      const next = new Set(current);
+      if (next.has(provider)) next.delete(provider);
+      else next.add(provider);
+      return next;
+    });
+  };
+
   return (
-    <div className="app-shell" data-map-theme={tileLayer}>
+    <div className="app-shell" data-map-theme={tileLayer} data-searching={searchExpanded}>
       <MapWrapper
         parking={parking.filter(location => enabledProviders.has(location.provider) &&
           viewportBounds && boundsContainPoint(viewportBounds, location.lat, location.lng))}
@@ -395,22 +424,38 @@ export default function Home() {
         destination={searchedAddress}
         onViewportChange={handleViewportChange}
         selectedVehicleKey={selectedVehicleKey}
-        onVehicleSelect={vehicle => setSelectedVehicleKey(
-          vehicle.vehicle_id
+        onVehicleSelect={vehicle => {
+          selectionFeedback();
+          setShowLocationIntro(false);
+          setSelectedVehicleKey(vehicle.vehicle_id
             ? `${vehicle.provider}:${vehicle.vehicle_id}`
             : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`
-        )}
+          );
+        }}
       />
 
-      {showLocationIntro && !userLocation && !searchedAddress && (
+      <SearchIsland
+        address={searchedAddress}
+        hasLocation={Boolean(userLocation)}
+        expanded={searchExpanded}
+        hasActiveFilters={hasActiveFilters}
+        onExpandedChange={expanded => { setSearchExpanded(expanded); if (expanded) setShowLocationIntro(false); }}
+        onSelect={handleAddressSelect}
+        onClear={() => setSearchedAddress(null)}
+        onLocate={handleLocateMe}
+        onShowFilters={() => openPanel('filters')}
+        onShowSettings={() => openPanel('settings')}
+      />
+
+      {showLocationIntro && !searchExpanded && !userLocation && !searchedAddress && (
         <div className="location-intro glass" role="dialog" aria-labelledby="location-intro-title">
           <div>
             <strong id="location-intro-title">{t('intro.title')}</strong>
             <span>{t('intro.body')}</span>
           </div>
           <div className="location-intro-actions">
-            <button className="intro-primary" onClick={handleLocateMe}>{t('intro.useLocation')}</button>
-            <button onClick={() => setShowLocationIntro(false)}>{t('intro.browse')}</button>
+            <button className="intro-primary" onClick={() => { selectionFeedback(); handleLocateMe(); }}>{t('intro.useLocation')}</button>
+            <button onClick={() => { selectionFeedback(); setShowLocationIntro(false); }}>{t('intro.browse')}</button>
           </div>
         </div>
       )}
@@ -439,7 +484,8 @@ export default function Home() {
 
       <MapControls
         loading={loading}
-        hidden={controlsExpanded}
+        locating={locating}
+        hidden={searchExpanded}
         onLocateMe={handleLocateMe}
         onRefresh={() => fetchScooters()}
       />
@@ -448,27 +494,32 @@ export default function Home() {
         minBattery={minBattery}
         enabledProviders={enabledProviders}
         providerCounts={viewportData.providerCounts}
-        availableProviders={viewportBounds
-          ? [...new Set([...providersForViewport(viewportBounds), ...Object.keys(viewportData.providerCounts)])]
-          : Object.keys(PROVIDERS)}
+        availableProviders={availableProviders}
         totalCount={viewportData.totalCount}
         loading={loading}
         lastUpdated={lastUpdated}
         dataHealthNotice={dataHealthNotice}
-        tileLayer={tileLayer}
         selectedVehicle={selectedVehicle}
-        onMinBatteryChange={setMinBattery}
-        onAddressSelect={handleAddressSelect}
-        onAddressClear={() => setSearchedAddress(null)}
+        hidden={searchExpanded}
         onShowAllProviders={handleShowAllProviders}
-        onProviderToggle={handleProviderToggle}
-        onTileLayerChange={setTileLayer}
-        onExpandedChange={expanded => {
-          setControlsExpanded(expanded);
-          if (expanded) setShowLocationIntro(false);
-        }}
+        onProviderToggle={handleQuickProviderToggle}
         onClearSelection={() => setSelectedVehicleKey(null)}
         onResetFilters={resetFilters}
+      />
+
+      <ControlSheet
+        open={panelOpen}
+        panel={activePanel}
+        onClose={() => setPanelOpen(false)}
+        minBattery={minBattery}
+        enabledProviders={enabledProviders}
+        availableProviders={availableProviders}
+        hasActiveFilters={hasActiveFilters}
+        tileLayer={tileLayer}
+        onMinBatteryChange={setMinBattery}
+        onProviderToggle={handleProviderToggle}
+        onResetFilters={resetFilters}
+        onTileLayerChange={setTileLayer}
       />
     </div>
   );

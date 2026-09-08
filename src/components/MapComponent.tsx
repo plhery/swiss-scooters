@@ -1,5 +1,7 @@
 'use client';
 
+import { prefersReducedMotion, selectionFeedback } from '@/lib/feedback';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -8,7 +10,6 @@ import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
 import type { AddressResult } from '@/components/AddressSearch';
 import { haversineM } from '@/lib/geo';
-import { browserRentalLink } from '@/lib/rentalLinks';
 import './map.css';
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -62,12 +63,6 @@ function formatDistance(meters: number, t: Translate, formatNumber: FormatNumber
           maximumFractionDigits: 1,
         }),
       });
-}
-
-function batteryColor(percentage: number): string {
-  if (percentage >= 50) return '#34c759';
-  if (percentage >= 20) return '#ff9500';
-  return '#ff3b30';
 }
 
 function createClusterIcon(cluster: ScooterCluster): L.DivIcon {
@@ -126,76 +121,6 @@ function makeElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-function vehiclePopup(
-  vehicle: Vehicle,
-  distanceM: number | null,
-  t: Translate,
-  formatNumber: FormatNumber
-): HTMLElement {
-  const cfg = PROVIDERS[vehicle.provider];
-  const root = makeElement('div');
-  const head = makeElement('div', 'popup-head');
-  const dot = makeElement('span', 'popup-dot');
-  dot.style.background = cfg?.color ?? '#999';
-  dot.setAttribute('aria-hidden', 'true');
-  head.appendChild(dot);
-  head.appendChild(makeElement('span', 'popup-name', cfg?.name ?? vehicle.provider));
-  if (distanceM !== null) {
-    head.appendChild(makeElement(
-      'span',
-      'popup-dist',
-      formatDistance(distanceM, t, formatNumber)
-    ));
-  }
-  root.appendChild(head);
-
-  if (vehicle.battery !== null) {
-    const battery = makeElement('div', 'popup-batt');
-    const track = makeElement('div', 'popup-batt-bar');
-    const fill = makeElement('div');
-    fill.style.width = `${vehicle.battery}%`;
-    fill.style.background = batteryColor(vehicle.battery);
-    track.appendChild(fill);
-    const range = vehicle.range_m === null
-      ? ''
-      : ` · ${formatDistance(vehicle.range_m, t, formatNumber)}`;
-    battery.appendChild(track);
-    battery.appendChild(makeElement(
-      'span',
-      undefined,
-      `${formatNumber(vehicle.battery)}%${range}`
-    ));
-    root.appendChild(battery);
-  }
-
-  const actions = makeElement('div', 'popup-actions');
-  const directions = makeElement('a', 'popup-cta popup-walk', t('marker.walkThere'));
-  const destination = `${vehicle.lat},${vehicle.lng}`;
-  directions.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=walking`;
-  directions.target = '_blank';
-  directions.rel = 'noopener noreferrer';
-  actions.appendChild(directions);
-
-  const rentalLink = browserRentalLink(
-    vehicle,
-    navigator.userAgent,
-    navigator.maxTouchPoints
-  );
-  if (rentalLink) {
-    const link = makeElement('a', 'popup-cta', t('marker.openIn', {
-      name: cfg?.name ?? t('marker.app'),
-    }));
-    link.href = rentalLink;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.style.background = cfg?.color ?? '#0a84ff';
-    actions.appendChild(link);
-  }
-  root.appendChild(actions);
-
-  return root;
-}
-
 function labelMarker(marker: L.Marker, label: string) {
   const applyLabel = () => {
     const element = marker.getElement();
@@ -235,7 +160,7 @@ function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
         type="button"
         aria-label={t('controls.zoomIn')}
         title={t('controls.zoomIn')}
-        onClick={() => mapRef.current?.zoomIn()}
+        onClick={() => { selectionFeedback(); mapRef.current?.zoomIn(1, { animate: !prefersReducedMotion() }); }}
       >
         <span aria-hidden="true">+</span>
       </button>
@@ -243,7 +168,7 @@ function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
         type="button"
         aria-label={t('controls.zoomOut')}
         title={t('controls.zoomOut')}
-        onClick={() => mapRef.current?.zoomOut()}
+        onClick={() => { selectionFeedback(); mapRef.current?.zoomOut(1, { animate: !prefersReducedMotion() }); }}
       >
         <span aria-hidden="true">−</span>
       </button>
@@ -356,9 +281,9 @@ export default function MapComponent({
       zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
-      zoomAnimation: true,
-      fadeAnimation: true,
-      markerZoomAnimation: true,
+      zoomAnimation: !prefersReducedMotion(),
+      fadeAnimation: !prefersReducedMotion(),
+      markerZoomAnimation: !prefersReducedMotion(),
     });
     mapRef.current = map;
     scooterLayerRef.current = L.layerGroup().addTo(map);
@@ -425,7 +350,11 @@ export default function MapComponent({
           html: `<span class="parking-marker" style="--parking-provider:${provider?.color ?? '#2166c2'}">P</span>`,
           iconSize: [36, 36], iconAnchor: [8, 28] }),
         title: label, zIndexOffset: 100,
-      }).bindPopup(popup).addTo(map);
+      }).bindPopup(popup, {
+        maxWidth: Math.min(260, map.getSize().x - 112),
+        autoPanPaddingTopLeft: L.point(16, 100),
+        autoPanPaddingBottomRight: L.point(74, 180),
+      }).addTo(map);
       labelMarker(marker, label);
       markers.set(location.id, { marker, signature });
     }
@@ -459,7 +388,7 @@ export default function MapComponent({
     if (!mapReady || !map || !focusLocation || focusVersion === 0) return;
     map.stop();
     map.flyTo(focusLocation, Math.max(map.getZoom(), 16), {
-      animate: true,
+      animate: !prefersReducedMotion(),
       duration: 0.5,
       easeLinearity: 0.25,
     });
@@ -539,13 +468,9 @@ export default function MapComponent({
       if (existing) {
         if (!existing.getLatLng().equals([vehicle.lat, vehicle.lng])) existing.setLatLng([vehicle.lat, vehicle.lng]);
         if (existing.options.icon !== icon) existing.setIcon(icon);
-        existing.setPopupContent(vehiclePopup(vehicle, distanceM, t, formatNumber));
         updateMarkerLabel(existing, label);
       } else {
         const marker = L.marker([vehicle.lat, vehicle.lng], { icon, riseOnHover: true, title: label })
-          .bindPopup(vehiclePopup(vehicle, distanceM, t, formatNumber), {
-            className: 'scooter-popup', closeButton: false,
-          })
           .on('click', () => {
             const current = vehicleDataRef.current.get(key);
             if (current) onVehicleSelectRef.current(current);
@@ -577,9 +502,12 @@ export default function MapComponent({
         updateMarkerLabel(existing, label);
       } else {
         const marker = L.marker(center, { icon: createClusterIcon(cluster), zIndexOffset: 500, title: label })
-          .on('click', () => map.flyTo(marker.getLatLng(), cluster.city ? 13 : Math.min(map.getZoom() + 2, 20), {
-            animate: true, duration: 0.55,
-          }))
+          .on('click', () => {
+            selectionFeedback();
+            map.flyTo(marker.getLatLng(), cluster.city ? 13 : Math.min(map.getZoom() + 2, 20), {
+              animate: !prefersReducedMotion(), duration: 0.55,
+            });
+          })
           .addTo(layer);
         labelMarker(marker, label);
         clusterMarkersRef.current.set(cluster.id, marker);

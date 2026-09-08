@@ -6,7 +6,6 @@ import BottomSheet from '@/components/BottomSheet';
 import { I18nProvider } from '@/lib/i18n';
 import { PROVIDERS } from '@/lib/types';
 
-let desktopPanel = false;
 
 function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>> = {}) {
   const props: React.ComponentProps<typeof BottomSheet> = {
@@ -17,15 +16,11 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>
     loading: false,
     lastUpdated: null,
     dataHealthNotice: null,
-    tileLayer: 'light',
+    hidden: false,
+    availableProviders: Object.keys(PROVIDERS),
     selectedVehicle: null,
-    onMinBatteryChange: vi.fn(),
-    onAddressSelect: vi.fn(),
-    onAddressClear: vi.fn(),
     onShowAllProviders: vi.fn(),
     onProviderToggle: vi.fn(),
-    onTileLayerChange: vi.fn(),
-    onExpandedChange: vi.fn(),
     onClearSelection: vi.fn(),
     onResetFilters: vi.fn(),
     ...overrides,
@@ -36,14 +31,13 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>
 }
 
 beforeEach(() => {
-  desktopPanel = false;
   localStorage.clear();
   vi.stubGlobal('ResizeObserver', class {
     observe() {}
     disconnect() {}
   });
   vi.stubGlobal('matchMedia', vi.fn(() => ({
-    matches: desktopPanel,
+    matches: false,
     media: '(min-width: 900px)',
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -59,29 +53,23 @@ describe('BottomSheet', () => {
     expect(screen.queryByRole('button', { name: /^Hopp,/ })).not.toBeInTheDocument();
     expect(enabledProviders.has('publibike')).toBe(true);
   });
-  it('keeps collapsed controls inert until keyboard expansion', () => {
-    const onExpandedChange = vi.fn();
-    renderSheet({ onExpandedChange });
-
-    const body = document.querySelector('#scooter-controls-body');
-    const handle = screen.getByRole('button', { name: 'Expand controls' });
-    expect(body).toHaveAttribute('inert');
-
-    handle.focus();
-    fireEvent.keyDown(handle, { key: 'Enter' });
-
-    expect(handle).toHaveFocus();
-    expect(body).not.toHaveAttribute('inert');
-    expect(onExpandedChange).toHaveBeenCalledWith(true);
+  it('makes the dock inert while searching', () => {
+    renderSheet({ hidden: true });
+    const dock = document.querySelector('.sheet');
+    expect(dock).toHaveAttribute('inert');
+    expect(dock).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('keeps address search inside the bottom sheet and omits the nearby list', () => {
-    renderSheet();
-
-    const body = document.querySelector('#scooter-controls-body');
-    const search = screen.getByRole('combobox', { name: 'City or Swiss address' });
-    expect(body).toContainElement(search);
-    expect(screen.queryByText('Nearby scooters')).not.toBeInTheDocument();
+  it('keeps provider shortcuts available with selected scooter details', () => {
+    renderSheet({ selectedVehicle: {
+      vehicle: { provider: 'lime', lat: 47.37, lng: 8.54, battery: 82, range_m: 14000,
+        vehicle_id: 'lime-1', deep_link: null, distance_m: 0 },
+      distanceM: null,
+    } });
+    expect(screen.getByRole('button', { name: /^Bolt,/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Close scooter details' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Walk there' })).toHaveAttribute('href', expect.stringContaining('travelmode=walking'));
+    expect(document.querySelector('.walking-summary')).not.toBeInTheDocument();
   });
 
   it('shows feed metadata as an accessible status', () => {
@@ -126,25 +114,4 @@ describe('BottomSheet', () => {
     expect(onProviderToggle).toHaveBeenCalledWith('bolt');
   });
 
-  it('leaves the body active and removes drawer semantics on wide screens', () => {
-    desktopPanel = true;
-    renderSheet();
-
-    expect(screen.queryByRole('button', { name: 'Expand controls' })).not.toBeInTheDocument();
-    expect(document.querySelector('#scooter-controls-body')).not.toHaveAttribute('inert');
-  });
-
-  it('links to the privacy notice and named public data sources', () => {
-    renderSheet();
-
-    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
-    expect(screen.getByRole('link', { name: 'Mobility data' })).toHaveAttribute(
-      'href',
-      'https://opentransportdata.swiss/en/cookbook/shared-mobility/'
-    );
-    expect(screen.getByRole('link', { name: 'Address data © swisstopo' })).toHaveAttribute(
-      'href',
-      'https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api'
-    );
-  });
 });

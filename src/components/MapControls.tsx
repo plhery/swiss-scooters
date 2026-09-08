@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
+import { selectionFeedback } from '@/lib/feedback';
 
 interface MapControlsProps {
   loading: boolean;
+  locating?: boolean;
   hidden: boolean;
   onLocateMe: () => void;
   onRefresh: () => Promise<boolean>;
@@ -12,6 +14,7 @@ interface MapControlsProps {
 
 export default function MapControls({
   loading,
+  locating = false,
   hidden,
   onLocateMe,
   onRefresh,
@@ -25,6 +28,7 @@ export default function MapControls({
   }, []);
 
   const handleRefresh = async () => {
+    selectionFeedback();
     if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
     setRefreshed(false);
     const succeeded = await onRefresh();
@@ -42,10 +46,10 @@ export default function MapControls({
       <span className="sr-only" role="status" aria-live="polite">
         {refreshed ? t('status.refreshed') : ''}
       </span>
-      <button className="fab glass" onClick={onLocateMe} aria-label={t('controls.locate')}>
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <button className="fab glass" disabled={locating} onClick={() => { selectionFeedback(); onLocateMe(); }} aria-label={t('controls.locate')}>
+        {locating ? <span className="mini-spinner" aria-hidden="true" /> : <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M21.7 2.3a1 1 0 0 1 .2 1.1l-8 18a1 1 0 0 1-1.9-.1l-2.2-6.6a1 1 0 0 0-.6-.6L2.7 12a1 1 0 0 1-.1-1.9l18-8a1 1 0 0 1 1.1.2Z" />
-        </svg>
+        </svg>}
       </button>
       <button
         className={`fab glass ${refreshed ? 'fab-success' : ''}`}
