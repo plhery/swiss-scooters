@@ -755,7 +755,7 @@ final class ScooterAnnotationView: MKAnnotationView {
     static let reuseIdentifier = "scooter"
     static let clusteringIdentifier = "scooters"
     static let selectedMarkerZPriority = MKAnnotationViewZPriority(rawValue: 900)
-    static let markerSize = CGSize(width: 40, height: 40)
+    static let markerSize = CGSize(width: 38, height: 38)
 
     private let selectionLayer = CAShapeLayer()
     private let markerLayer = CAShapeLayer()
@@ -800,7 +800,7 @@ final class ScooterAnnotationView: MKAnnotationView {
         markerLayer.lineWidth = 1.5
         layer.addSublayer(markerLayer)
 
-        providerLabel.font = .systemFont(ofSize: 18, weight: .bold)
+        providerLabel.font = .systemFont(ofSize: 17, weight: .bold)
         providerLabel.textAlignment = .center
         providerLabel.adjustsFontSizeToFitWidth = true
         providerLabel.minimumScaleFactor = 0.75
