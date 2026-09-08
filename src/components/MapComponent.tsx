@@ -46,20 +46,12 @@ function createDestinationIcon(): L.DivIcon {
   });
 }
 
-const TILE_URLS: Record<string, string> = {
-  osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-};
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>';
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>';
 const MOBILITY_ATTRIBUTION = '<a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">Mobility data CH</a> · <a href="https://transport.data.gouv.fr/datasets?type=vehicles-sharing">FR: Dott, Bird, Lime, Voi, Pony</a>';
 const ADDRESS_ATTRIBUTION = '<a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api">&copy; swisstopo</a>';
-const TILE_ATTRIBUTIONS: Record<string, string> = {
-  osm: `${OSM_ATTRIBUTION} · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`,
-  dark: `${OSM_ATTRIBUTION} &copy; <a href="https://carto.com/attributions">CARTO</a> · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`,
-  light: `${OSM_ATTRIBUTION} &copy; <a href="https://carto.com/attributions">CARTO</a> · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`,
-};
+const TILE_ATTRIBUTION = `${OSM_ATTRIBUTION} · ${MOBILITY_ATTRIBUTION} · ${ADDRESS_ATTRIBUTION}`;
 
 function formatDistance(meters: number, t: Translate, formatNumber: FormatNumber): string {
   return meters < 1000
@@ -405,9 +397,13 @@ export default function MapComponent({
     if (!mapReady || !map) return;
 
     tileLayerRef.current?.remove();
-    const layer = L.tileLayer(TILE_URLS[tileLayer], {
-      attribution: TILE_ATTRIBUTIONS[tileLayer],
-      subdomains: 'abc',
+    const layer = L.tileLayer(TILE_URL, {
+      attribution: TILE_ATTRIBUTION,
+      className: `map-basemap-${tileLayer}`,
+      // Identify the site without sending a shared link's coordinates in Referer.
+      referrerPolicy: 'origin',
+      maxNativeZoom: 19,
+      maxZoom: 22,
       updateWhenZooming: false,
       keepBuffer: 2,
     }).addTo(map);

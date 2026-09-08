@@ -18,6 +18,14 @@
   transition: opacity 0.22s ease;
 }
 
+.map-basemap-light {
+  filter: saturate(0.6) brightness(1.03);
+}
+
+.map-basemap-dark {
+  filter: invert(1) hue-rotate(180deg) saturate(0.65) brightness(0.85);
+}
+
 .leaflet-top {
   top: calc(var(--sat) + 8px);
 }

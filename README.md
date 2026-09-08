@@ -91,8 +91,8 @@ run the `SwissScooters` scheme. More details are in [ios/README.md](ios/README.m
 
 Scooter locations come from the
 [Open data platform mobility Switzerland](https://data.opentransportdata.swiss/en/dataset/sharedmobility),
-address search comes from swisstopo, and map tiles come from OpenStreetMap or
-CARTO. The app stores no account or location history.
+address search comes from swisstopo, and web map tiles come from OpenStreetMap.
+The app stores no account or location history.
 
 - [Data sources and attribution](DATA_SOURCES.md)
 - [Privacy](PRIVACY.md)

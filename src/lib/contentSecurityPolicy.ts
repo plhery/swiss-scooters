@@ -21,7 +21,7 @@ export function documentContentSecurityPolicy({
     `style-src-elem 'self' ${nonceSource}${development ? " 'unsafe-inline'" : ''}`,
     "style-src-attr 'unsafe-inline'",
     "font-src 'self'",
-    "img-src 'self' data: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com",
+    "img-src 'self' data: https://tile.openstreetmap.org",
     `connect-src 'self'${development ? ' ws: wss:' : ''}`,
     `worker-src 'self'${development ? ' blob:' : ''}`,
     "child-src 'self'",

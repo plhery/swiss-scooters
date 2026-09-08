@@ -29,8 +29,8 @@ export default function PrivacyPage() {
           separate user-location coordinate. These values are not stored by the application.
         </p>
         <p>
-          Map tiles are requested directly from OpenStreetMap or CARTO. Those providers receive
-          standard network information such as your IP address and the requested tile coordinates.
+          Map tiles are requested directly from OpenStreetMap. It receives standard network
+          information such as your IP address, the website origin and the requested tile coordinates.
         </p>
 
         <h2>Address search</h2>
@@ -70,8 +70,7 @@ export default function PrivacyPage() {
           Questions can be sent to <a href="mailto:swiss-scooters@plhery.com">swiss-scooters@plhery.com</a>.
           Third-party services have their own privacy policies: {' '}
           <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>, {' '}
-          <a href="https://osmfoundation.org/wiki/Privacy_Policy">OpenStreetMap</a>, {' '}
-          <a href="https://carto.com/privacy/">CARTO</a>, and {' '}
+          <a href="https://osmfoundation.org/wiki/Privacy_Policy">OpenStreetMap</a>, and {' '}
           <a href="https://www.geo.admin.ch/en/data-privacy">geo.admin.ch</a>.
         </p>
       </article>

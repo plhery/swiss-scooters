@@ -63,5 +63,7 @@ catalog. French street-address geocoding is not provided.
 
 - OpenStreetMap standard raster tiles are used only for interactive views, with
   visible contributor attribution, browser caching, and a valid referrer.
-- CARTO basemaps use OpenStreetMap data and display both OSM and CARTO attribution.
+- Light and dark themes style the same OpenStreetMap tiles locally, reusing the
+  browser cache. The previous unauthenticated CARTO tiles now require an API key.
+- Zooms above 19 scale the last native tile level without requesting unavailable tiles.
 - The service worker does not bulk-download or create offline tile archives.

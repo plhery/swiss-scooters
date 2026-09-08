@@ -11,7 +11,7 @@ searches.
   find vehicles, not a separate user-location coordinate.
 - Address text is proxied in a non-cacheable request body to the Swiss federal
   geo.admin.ch service.
-- OpenStreetMap or CARTO receive normal tile requests from the user's device.
+- OpenStreetMap receives normal tile requests from the user's device, with the website origin as the referrer (no page path or query string).
 - Language, filters, and map style are stored locally. Precise map origins are
   not persisted.
 - Cloudflare hosts and protects the service. Persisted Worker invocation logs
