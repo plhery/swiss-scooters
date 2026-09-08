@@ -65,6 +65,7 @@ struct ScooterClusterPayload: Decodable, Sendable {
     let latitude: Double
     let longitude: Double
     let count: Int
+    let city: String?
     let providers: [String: Int]
 
     private enum CodingKeys: String, CodingKey {
@@ -72,6 +73,7 @@ struct ScooterClusterPayload: Decodable, Sendable {
         case latitude = "lat"
         case longitude = "lng"
         case count
+        case city
         case providers
     }
 }
@@ -82,6 +84,9 @@ struct ScooterResponseMetadataPayload: Decodable, Sendable {
     let failedSources: [String]
     let sources: [String: ScooterFeedSourceStatusPayload]
     let generatedAt: String
+    let overview: Bool?
+    let refreshAfterSeconds: Int?
+    let availableProviders: [String]?
     let truncated: Bool
     let totalVehicles: Int
     let mode: ScooterResponseModePayload

@@ -35,6 +35,7 @@ export interface ScooterCluster {
   lat: number;
   lng: number;
   count: number;
+  city?: string;
   providers: Record<string, number>;
 }
 
@@ -44,6 +45,9 @@ export interface ScooterResponseMeta {
   failedSources: string[];
   sources: Record<string, FeedSourceStatus>;
   generatedAt: string;
+  overview?: boolean;
+  refreshAfterSeconds?: number;
+  availableProviders?: string[];
   truncated: boolean;
   totalVehicles: number;
   mode: ScooterResponseMode;

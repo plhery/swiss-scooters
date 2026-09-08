@@ -144,6 +144,33 @@ function writeOrCheck(path, expected) {
   writeFileSync(path, expected);
 }
 
+function swiftCoverage() {
+  const swiss = JSON.parse(readFileSync(resolve(root, 'data/swiss-scooter-areas.json'), 'utf8'));
+  const french = JSON.parse(readFileSync(resolve(root, 'data/french-scooter-feeds.json'), 'utf8')).systems;
+  const bounds = b => `GeoBounds(south: ${b.south}, west: ${b.west}, north: ${b.north}, east: ${b.east})`;
+  return `
+enum ScooterProviderCoverage {
+    private static let swissAreas: [GeoBounds] = [
+${swiss.map(area => `        ${bounds(area.bounds)},`).join('\n')}
+    ]
+    private static let frenchSystems: [(ScooterProvider, GeoBounds)] = [
+${french.map(system => `        (.${system.provider}, ${bounds(system.bounds)}),`).join('\n')}
+    ]
+
+    static func providers(in viewport: GeoBounds) -> [ScooterProvider] {
+        var available = Set<ScooterProvider>()
+        if swissAreas.contains(where: { $0.intersects(viewport) }) {
+            available.formUnion(ScooterProvider.allCases.filter { $0 != .pony })
+        }
+        for (provider, bounds) in frenchSystems where bounds.intersects(viewport) {
+            available.insert(provider)
+        }
+        return ScooterProvider.allCases.filter { available.contains($0) }
+    }
+}
+`;
+}
+
 validateCatalog();
 writeOrCheck(typescriptPath, typescriptCatalog());
-writeOrCheck(swiftPath, swiftCatalog());
+writeOrCheck(swiftPath, swiftCatalog() + swiftCoverage());

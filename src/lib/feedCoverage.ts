@@ -1,6 +1,7 @@
 import { boundsIntersect } from '@/lib/geo';
 import type { MapBounds } from '@/lib/types';
 import { FRENCH_SCOOTER_SYSTEMS } from '@/lib/frenchScooterSystems';
+import swissAreas from '../../data/swiss-scooter-areas.json';
 
 // The Swiss registry is queried only within this padded national envelope.
 export const SWISS_MOBILITY_BOUNDS: MapBounds = {
@@ -31,28 +32,10 @@ export const SUPPORTED_MOBILITY_BOUNDS: MapBounds = {
  * Unknown systems are not rejected from this table: scooterFeeds falls back to
  * sharedmobility.ch's spatial API for those systems.
  */
-const AREA_BOUNDS: Record<string, MapBounds> = {
-  basel: { south: 47.42, west: 7.38, north: 47.70, east: 7.82 },
-  bern: { south: 46.82, west: 7.20, north: 47.08, east: 7.70 },
-  biel: { south: 47.03, west: 7.05, north: 47.27, east: 7.45 },
-  bulle: { south: 46.50, west: 6.82, north: 46.70, east: 7.12 },
-  frauenfeld: { south: 47.45, west: 8.72, north: 47.68, east: 9.10 },
-  grenchen: { south: 47.08, west: 7.28, north: 47.28, east: 7.52 },
-  'illnau-effretikon': { south: 47.33, west: 8.58, north: 47.55, east: 8.88 },
-  kloten: { south: 47.40, west: 8.47, north: 47.56, east: 8.74 },
-  locarno: { south: 46.10, west: 8.67, north: 46.25, east: 8.90 },
-  nyon: { south: 46.25, west: 6.05, north: 46.55, east: 6.45 },
-  opfikon: { south: 47.39, west: 8.47, north: 47.50, east: 8.68 },
-  romanshorn: { south: 47.45, west: 9.20, north: 47.66, east: 9.58 },
-  rorschach: { south: 47.36, west: 9.30, north: 47.58, east: 9.68 },
-  schaffhausen: { south: 47.60, west: 8.42, north: 47.83, east: 8.88 },
-  'st-gallen': { south: 47.28, west: 9.10, north: 47.60, east: 9.65 },
-  uster: { south: 47.25, west: 8.58, north: 47.43, east: 8.86 },
-  wetzikon: { south: 47.20, west: 8.68, north: 47.40, east: 8.98 },
-  winterthur: { south: 47.38, west: 8.53, north: 47.64, east: 8.97 },
-  zug: { south: 47.03, west: 8.32, north: 47.31, east: 8.74 },
-  zurich: { south: 47.27, west: 8.34, north: 47.49, east: 8.73 },
-};
+export const SWISS_SCOOTER_AREAS = swissAreas;
+const AREA_BOUNDS: Record<string, MapBounds> = Object.fromEntries(
+  swissAreas.map(area => [area.id.slice(3), area.bounds])
+);
 
 const SYSTEM_SUFFIXES = [
   'illnau-effretikon',

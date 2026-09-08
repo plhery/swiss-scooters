@@ -169,7 +169,8 @@
           "minimum": -180,
           "maximum": 180
         },
-        "count": { "type": "integer", "minimum": 2 },
+        "count": { "type": "integer", "minimum": 1 },
+        "city": { "type": "string", "minLength": 1 },
         "providers": {
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 1 }
@@ -203,6 +204,9 @@
           "additionalProperties": { "$ref": "#/$defs/FeedSourceStatus" }
         },
         "generatedAt": { "type": "string", "format": "date-time" },
+        "overview": { "type": "boolean" },
+        "refreshAfterSeconds": { "type": "integer", "minimum": 1 },
+        "availableProviders": { "type": "array", "items": { "type": "string" } },
         "truncated": { "type": "boolean" },
         "totalVehicles": { "type": "integer", "minimum": 0 },
         "mode": { "$ref": "#/$defs/ScooterResponseMode" },

@@ -800,7 +800,7 @@ struct ScooterFilterSheet: View {
             }
 
             LazyVGrid(columns: columns, spacing: 10) {
-                ForEach(ScooterProvider.allCases) { provider in
+                ForEach(model.availableProviders) { provider in
                     providerButton(provider)
                 }
             }

@@ -299,7 +299,9 @@ export default function MapComponent({
   const userLayerRef = useRef<L.LayerGroup | null>(null);
   const destinationLayerRef = useRef<L.LayerGroup | null>(null);
   const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map());
-  const renderModeRef = useRef<'vehicles' | 'clusters' | null>(null);
+  const clusterMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const markerSignaturesRef = useRef<Map<string, string>>(new Map());
+  const vehicleDataRef = useRef<Map<string, Vehicle>>(new Map());
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const initialOriginRef = useRef(origin);
   const onViewportChangeRef = useRef(onViewportChange);
@@ -349,6 +351,8 @@ export default function MapComponent({
     const container = containerRef.current;
     if (!container) return;
     const vehicleMarkers = vehicleMarkersRef.current;
+    const clusterMarkers = clusterMarkersRef.current;
+    const markerSignatures = markerSignaturesRef.current;
 
     const map = L.map(container, {
       center: initialOriginRef.current,
@@ -388,7 +392,9 @@ export default function MapComponent({
       userLayerRef.current = null;
       destinationLayerRef.current = null;
       vehicleMarkers.clear();
-      renderModeRef.current = null;
+      clusterMarkers.clear();
+      markerSignatures.clear();
+      vehicleDataRef.current.clear();
       tileLayerRef.current = null;
       delete container.dataset.zoom;
     };
@@ -475,97 +481,74 @@ export default function MapComponent({
           });
     };
 
-    const addVehicle = (vehicle: Vehicle) => {
+    vehicleDataRef.current = new Map(vehicles.map(vehicle => [vehicleMarkerKey(vehicle), vehicle]));
+    const incomingKeys = new Set(vehicleDataRef.current.keys());
+    for (const [key, marker] of vehicleMarkersRef.current) {
+      if (incomingKeys.has(key)) continue;
+      layer.removeLayer(marker);
+      vehicleMarkersRef.current.delete(key);
+      markerSignaturesRef.current.delete(`v:${key}`);
+    }
+    for (const vehicle of vehicles) {
+      const key = vehicleMarkerKey(vehicle);
       const distanceM = distanceFor(vehicle);
       const label = labelFor(vehicle, distanceM);
-      const key = vehicleMarkerKey(vehicle);
-      const marker = L.marker([vehicle.lat, vehicle.lng], {
-        icon: key === selectedVehicleKey
-          ? selectedIconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider, true)
-          : iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider),
-        riseOnHover: true,
-        title: label,
-      })
-        .bindPopup(vehiclePopup(vehicle, distanceM, t, formatNumber), {
-          className: 'scooter-popup',
-          closeButton: false,
-        })
-        .on('click', () => onVehicleSelectRef.current(vehicle))
-        .addTo(layer);
-      labelMarker(marker, label);
-    };
-
-    if (!clustered) {
-      if (renderModeRef.current !== 'vehicles') {
-        layer.clearLayers();
-        vehicleMarkersRef.current.clear();
-        renderModeRef.current = 'vehicles';
-      }
-
-      const incomingKeys = new Set(vehicles.map(vehicleMarkerKey));
-      for (const [key, marker] of vehicleMarkersRef.current) {
-        if (incomingKeys.has(key)) continue;
-        layer.removeLayer(marker);
-        vehicleMarkersRef.current.delete(key);
-      }
-
-      for (const vehicle of vehicles) {
-        const key = vehicleMarkerKey(vehicle);
-        const distanceM = distanceFor(vehicle);
-        const label = labelFor(vehicle, distanceM);
-        const existing = vehicleMarkersRef.current.get(key);
-        if (!existing) {
-          const cfg = PROVIDERS[vehicle.provider];
-          const selected = key === selectedVehicleKey;
-          const marker = L.marker([vehicle.lat, vehicle.lng], {
-            icon: selected
-              ? selectedIconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider, true)
-              : iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider),
-            riseOnHover: true,
-            title: label,
-          })
-            .bindPopup(vehiclePopup(vehicle, distanceM, t, formatNumber), {
-              className: 'scooter-popup',
-              closeButton: false,
-            })
-            .on('click', () => onVehicleSelectRef.current(vehicle))
-            .addTo(layer);
-          if (cfg) marker.setIcon(selected ? selectedIconMap[vehicle.provider] : iconMap[vehicle.provider]);
-          labelMarker(marker, label);
-          vehicleMarkersRef.current.set(key, marker);
-          continue;
-        }
-
-        existing.setLatLng([vehicle.lat, vehicle.lng]);
-        existing.setIcon(key === selectedVehicleKey
-          ? selectedIconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider, true)
-          : iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider));
+      const selected = key === selectedVehicleKey;
+      const signature = JSON.stringify([vehicle, selected, distanceM, label]);
+      if (markerSignaturesRef.current.get(`v:${key}`) === signature) continue;
+      markerSignaturesRef.current.set(`v:${key}`, signature);
+      const icon = selected
+        ? selectedIconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider, true)
+        : iconMap[vehicle.provider] ?? createScooterIcon(vehicle.provider);
+      const existing = vehicleMarkersRef.current.get(key);
+      if (existing) {
+        if (!existing.getLatLng().equals([vehicle.lat, vehicle.lng])) existing.setLatLng([vehicle.lat, vehicle.lng]);
+        if (existing.options.icon !== icon) existing.setIcon(icon);
         existing.setPopupContent(vehiclePopup(vehicle, distanceM, t, formatNumber));
         updateMarkerLabel(existing, label);
+      } else {
+        const marker = L.marker([vehicle.lat, vehicle.lng], { icon, riseOnHover: true, title: label })
+          .bindPopup(vehiclePopup(vehicle, distanceM, t, formatNumber), {
+            className: 'scooter-popup', closeButton: false,
+          })
+          .on('click', () => {
+            const current = vehicleDataRef.current.get(key);
+            if (current) onVehicleSelectRef.current(current);
+          })
+          .addTo(layer);
+        labelMarker(marker, label);
+        vehicleMarkersRef.current.set(key, marker);
       }
-      return;
     }
 
-    renderModeRef.current = 'clusters';
-    vehicleMarkersRef.current.clear();
-    layer.clearLayers();
-
-    for (const vehicle of vehicles) addVehicle(vehicle);
-
-    for (const cluster of clusters) {
+    const visibleClusters = clustered ? clusters : [];
+    const incomingClusters = new Set(visibleClusters.map(cluster => cluster.id));
+    for (const [id, marker] of clusterMarkersRef.current) {
+      if (incomingClusters.has(id)) continue;
+      layer.removeLayer(marker);
+      clusterMarkersRef.current.delete(id);
+      markerSignaturesRef.current.delete(`c:${id}`);
+    }
+    for (const cluster of visibleClusters) {
       const center: [number, number] = [cluster.lat, cluster.lng];
-      const label = clusterTitle(cluster, t, formatNumber);
-      const marker = L.marker(center, {
-        icon: createClusterIcon(cluster),
-        zIndexOffset: 500,
-        title: label,
-      })
-        .on('click', () => map.flyTo(center, Math.min(zoom + 2, 20), {
-          animate: true,
-          duration: 0.55,
-        }))
-        .addTo(layer);
-      labelMarker(marker, label);
+      const label = `${cluster.city ? `${cluster.city}: ` : ''}${clusterTitle(cluster, t, formatNumber)}`;
+      const signature = JSON.stringify([cluster, label]);
+      if (markerSignaturesRef.current.get(`c:${cluster.id}`) === signature) continue;
+      markerSignaturesRef.current.set(`c:${cluster.id}`, signature);
+      const existing = clusterMarkersRef.current.get(cluster.id);
+      if (existing) {
+        if (!existing.getLatLng().equals(center)) existing.setLatLng(center);
+        existing.setIcon(createClusterIcon(cluster));
+        updateMarkerLabel(existing, label);
+      } else {
+        const marker = L.marker(center, { icon: createClusterIcon(cluster), zIndexOffset: 500, title: label })
+          .on('click', () => map.flyTo(marker.getLatLng(), cluster.city ? 13 : Math.min(map.getZoom() + 2, 20), {
+            animate: true, duration: 0.55,
+          }))
+          .addTo(layer);
+        labelMarker(marker, label);
+        clusterMarkersRef.current.set(cluster.id, marker);
+      }
     }
   }, [
     clustered,

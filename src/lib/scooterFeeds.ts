@@ -176,6 +176,52 @@ interface SourceVehicles {
   failedSources?: string[];
 }
 
+export interface CollectableScooterFeed {
+  id: string;
+  source: keyof ScooterFetchMetadata['sources'];
+  provider: ProviderKey;
+  coverage: MapBounds[];
+  collect: () => Promise<SourceVehicles>;
+}
+
+// The persistent collector refreshes each system independently. A failing
+// operator must not discard another city's last successful snapshot.
+export async function discoverCollectableFeeds(): Promise<CollectableScooterFeed[]> {
+  const query: FeedQuery = { bounds: SWISS_MOBILITY_BOUNDS, minBattery: 0 };
+  const registry = await fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
+    authenticated: true, revalidate: METADATA_REVALIDATE_SECONDS,
+  });
+  return [
+    ...(registry.data.systems ?? []).flatMap(entry => {
+      const system = registrySystem(entry.id, entry.url);
+      return system ? [{
+        id: `national:${system.id}`,
+        source: 'national' as const,
+        provider: system.provider,
+        coverage: knownSystemCoverage(system.id) ?? [SWISS_MOBILITY_BOUNDS],
+        collect: () => fetchSystemVehicles(system, query),
+      }] : [];
+    }),
+    ...independentCollectableFeeds(),
+  ];
+}
+
+export function independentCollectableFeeds(): CollectableScooterFeed[] {
+  const query: FeedQuery = { bounds: SWISS_MOBILITY_BOUNDS, minBattery: 0 };
+  return [
+    { id: 'hopp', source: 'hopp', provider: 'hopp', coverage: [HOPP_COVERAGE],
+      collect: () => fetchHoppVehicles(query) },
+    { id: 'publibike', source: 'publibike', provider: 'publibike',
+      coverage: [PUBLIBIKE_FREE_FLOATING_COVERAGE],
+      collect: () => fetchPubliBikeFreeFloatingVehicles(query) },
+    ...FRENCH_SCOOTER_SYSTEMS.map(system => ({
+      id: `france:${system.id}`, source: 'france' as const, provider: system.provider,
+      coverage: [system.bounds],
+      collect: () => fetchFrenchSystemVehicles(system, { bounds: system.bounds, minBattery: 0 }),
+    })),
+  ];
+}
+
 interface NationalSystem {
   id: string;
   provider: ProviderKey;

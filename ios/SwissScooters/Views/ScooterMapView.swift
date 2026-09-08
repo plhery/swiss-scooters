@@ -579,8 +579,8 @@ struct ScooterMapView: UIViewRepresentable {
                     MKCoordinateRegion(
                         center: cluster.coordinate,
                         span: MKCoordinateSpan(
-                            latitudeDelta: span.latitudeDelta / 4,
-                            longitudeDelta: span.longitudeDelta / 4
+                            latitudeDelta: cluster.cluster.city == nil ? span.latitudeDelta / 4 : 0.08,
+                            longitudeDelta: cluster.cluster.city == nil ? span.longitudeDelta / 4 : 0.12
                         )
                     ),
                     on: mapView,

@@ -13,16 +13,9 @@ export interface ClusteredVehicles {
   clusters: ScooterCluster[];
 }
 
-function clusterCellSize(zoom: number, vehicleCount: number): number {
-  const base = zoom >= 15 ? 48 : zoom >= 13 ? 56 : 64;
-  const densityScale = vehicleCount > 1200
-    ? 1.35
-    : vehicleCount > 700
-      ? 1.2
-      : vehicleCount > 400
-        ? 1.1
-        : 1;
-  return Math.round(base * densityScale);
+// Fixed cells keep IDs stable when a padded viewport changes its vehicle count.
+function clusterCellSize(zoom: number): number {
+  return zoom >= 15 ? 56 : zoom >= 13 ? 64 : 80;
 }
 
 function worldPixel(vehicle: Vehicle, zoom: number): [number, number] {
@@ -41,7 +34,7 @@ function worldPixel(vehicle: Vehicle, zoom: number): [number, number] {
 export function clusterVehicles(vehicles: Vehicle[], zoom: number): ClusteredVehicles {
   if (!shouldClusterAtZoom(zoom)) return { vehicles, clusters: [] };
 
-  const cellSize = clusterCellSize(zoom, vehicles.length);
+  const cellSize = clusterCellSize(zoom);
   const cells = new Map<string, Vehicle[]>();
   for (const vehicle of vehicles) {
     const [x, y] = worldPixel(vehicle, zoom);

@@ -32,6 +32,7 @@ jobs:
       - run: npm run check:api-contract
       - run: npm run lint
       - run: npm test
+      - run: docker build -f server/Dockerfile -t scooter-cache:ci .
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - run: npm run cf-typegen

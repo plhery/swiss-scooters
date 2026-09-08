@@ -1,0 +1,282 @@
+[
+  {
+    "id": "ch:basel",
+    "city": "Basel",
+    "center": [
+      47.5596,
+      7.5886
+    ],
+    "bounds": {
+      "south": 47.42,
+      "west": 7.38,
+      "north": 47.7,
+      "east": 7.82
+    }
+  },
+  {
+    "id": "ch:bern",
+    "city": "Bern",
+    "center": [
+      46.948,
+      7.4474
+    ],
+    "bounds": {
+      "south": 46.82,
+      "west": 7.2,
+      "north": 47.08,
+      "east": 7.7
+    }
+  },
+  {
+    "id": "ch:biel",
+    "city": "Biel/Bienne",
+    "center": [
+      47.1368,
+      7.2468
+    ],
+    "bounds": {
+      "south": 47.03,
+      "west": 7.05,
+      "north": 47.27,
+      "east": 7.45
+    }
+  },
+  {
+    "id": "ch:bulle",
+    "city": "Bulle",
+    "center": [
+      46.6,
+      6.970000000000001
+    ],
+    "bounds": {
+      "south": 46.5,
+      "west": 6.82,
+      "north": 46.7,
+      "east": 7.12
+    }
+  },
+  {
+    "id": "ch:frauenfeld",
+    "city": "Frauenfeld",
+    "center": [
+      47.565,
+      8.91
+    ],
+    "bounds": {
+      "south": 47.45,
+      "west": 8.72,
+      "north": 47.68,
+      "east": 9.1
+    }
+  },
+  {
+    "id": "ch:grenchen",
+    "city": "Grenchen",
+    "center": [
+      47.18,
+      7.4
+    ],
+    "bounds": {
+      "south": 47.08,
+      "west": 7.28,
+      "north": 47.28,
+      "east": 7.52
+    }
+  },
+  {
+    "id": "ch:illnau-effretikon",
+    "city": "Illnau-Effretikon",
+    "center": [
+      47.44,
+      8.73
+    ],
+    "bounds": {
+      "south": 47.33,
+      "west": 8.58,
+      "north": 47.55,
+      "east": 8.88
+    }
+  },
+  {
+    "id": "ch:kloten",
+    "city": "Kloten",
+    "center": [
+      47.4515,
+      8.5849
+    ],
+    "bounds": {
+      "south": 47.4,
+      "west": 8.47,
+      "north": 47.56,
+      "east": 8.74
+    }
+  },
+  {
+    "id": "ch:locarno",
+    "city": "Locarno",
+    "center": [
+      46.169,
+      8.799
+    ],
+    "bounds": {
+      "south": 46.1,
+      "west": 8.67,
+      "north": 46.25,
+      "east": 8.9
+    }
+  },
+  {
+    "id": "ch:nyon",
+    "city": "Nyon",
+    "center": [
+      46.3833,
+      6.2396
+    ],
+    "bounds": {
+      "south": 46.25,
+      "west": 6.05,
+      "north": 46.55,
+      "east": 6.45
+    }
+  },
+  {
+    "id": "ch:opfikon",
+    "city": "Opfikon",
+    "center": [
+      47.4317,
+      8.5759
+    ],
+    "bounds": {
+      "south": 47.39,
+      "west": 8.47,
+      "north": 47.5,
+      "east": 8.68
+    }
+  },
+  {
+    "id": "ch:romanshorn",
+    "city": "Romanshorn",
+    "center": [
+      47.555,
+      9.39
+    ],
+    "bounds": {
+      "south": 47.45,
+      "west": 9.2,
+      "north": 47.66,
+      "east": 9.58
+    }
+  },
+  {
+    "id": "ch:rorschach",
+    "city": "Rorschach",
+    "center": [
+      47.478,
+      9.493
+    ],
+    "bounds": {
+      "south": 47.36,
+      "west": 9.3,
+      "north": 47.58,
+      "east": 9.68
+    }
+  },
+  {
+    "id": "ch:schaffhausen",
+    "city": "Schaffhausen",
+    "center": [
+      47.715,
+      8.65
+    ],
+    "bounds": {
+      "south": 47.6,
+      "west": 8.42,
+      "north": 47.83,
+      "east": 8.88
+    }
+  },
+  {
+    "id": "ch:st-gallen",
+    "city": "St. Gallen",
+    "center": [
+      47.4245,
+      9.3767
+    ],
+    "bounds": {
+      "south": 47.28,
+      "west": 9.1,
+      "north": 47.6,
+      "east": 9.65
+    }
+  },
+  {
+    "id": "ch:uster",
+    "city": "Uster",
+    "center": [
+      47.34,
+      8.719999999999999
+    ],
+    "bounds": {
+      "south": 47.25,
+      "west": 8.58,
+      "north": 47.43,
+      "east": 8.86
+    }
+  },
+  {
+    "id": "ch:wetzikon",
+    "city": "Wetzikon",
+    "center": [
+      47.3,
+      8.83
+    ],
+    "bounds": {
+      "south": 47.2,
+      "west": 8.68,
+      "north": 47.4,
+      "east": 8.98
+    }
+  },
+  {
+    "id": "ch:winterthur",
+    "city": "Winterthur",
+    "center": [
+      47.499,
+      8.7241
+    ],
+    "bounds": {
+      "south": 47.38,
+      "west": 8.53,
+      "north": 47.64,
+      "east": 8.97
+    }
+  },
+  {
+    "id": "ch:zug",
+    "city": "Zug",
+    "center": [
+      47.1724,
+      8.5174
+    ],
+    "bounds": {
+      "south": 47.03,
+      "west": 8.32,
+      "north": 47.31,
+      "east": 8.74
+    }
+  },
+  {
+    "id": "ch:zurich",
+    "city": "Zürich",
+    "center": [
+      47.3769,
+      8.5417
+    ],
+    "bounds": {
+      "south": 47.27,
+      "west": 8.34,
+      "north": 47.49,
+      "east": 8.73
+    }
+  }
+]

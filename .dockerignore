@@ -1,0 +1,10 @@
+.git
+node_modules
+**/node_modules
+.next
+.open-next
+.wrangler
+.env*
+ios
+test-results
+playwright-report

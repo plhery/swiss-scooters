@@ -8,6 +8,7 @@
 import openNextWorker from './.open-next/worker.js';
 import { documentContentSecurityPolicy } from './src/lib/contentSecurityPolicy';
 import { legacyHostRedirect } from './src/lib/legacyHost';
+import { proxyScooterSnapshot } from './src/lib/scooterProxy';
 
 function secureDocumentResponse(request: Request, response: Response): Response {
   if (!response.headers.get('Content-Type')?.toLowerCase().startsWith('text/html')) {
@@ -47,6 +48,10 @@ const swissScootersWorker = {
     const redirect = legacyHostRedirect(request);
     if (redirect) {
       return redirect;
+    }
+
+    if (new URL(request.url).pathname === '/api/scooters' && env.SCOOTER_SNAPSHOT_API_URL) {
+      return proxyScooterSnapshot(request, env);
     }
 
     const response = await openNextWorker.fetch(request, env, ctx);

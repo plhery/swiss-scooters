@@ -4,12 +4,8 @@ import {
   ScooterFeedsUnavailableError,
 } from '@/lib/scooterFeeds';
 import { rateLimitAllows } from '@/lib/rateLimit';
-import { MAX_SCOOTER_RESULTS, parseScooterQuery } from '@/lib/scooterQuery';
-import { clusterVehicles, shouldClusterAtZoom } from '@/lib/clustering';
-import type { ScooterResponse } from '@/lib/types';
-
-const MOBILITY_SOURCE =
-  'Open data platform mobility Switzerland; Hopp GBFS; PubliBike Velospot public app feed; France: Dott, Bird, Lime, Voi, Pony GBFS (transport.data.gouv.fr)';
+import { parseScooterQuery } from '@/lib/scooterQuery';
+import { MOBILITY_SOURCE, scooterResponse, scooterResponseHeaders } from '@/lib/scooterResponse';
 
 export async function GET(request: NextRequest) {
   if (!await rateLimitAllows(request, 'SCOOTER_API_RATE_LIMITER')) {
@@ -35,56 +31,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await fetchScooters(parsed.query);
-    const totalVehicles = result.vehicles.length;
-    const clusterResponse = parsed.zoom !== null && shouldClusterAtZoom(parsed.zoom);
-    const representation = clusterResponse
-      ? clusterVehicles(result.vehicles, parsed.zoom as number)
-      : { vehicles: result.vehicles, clusters: [] };
-    const clusters = representation.clusters.slice(0, MAX_SCOOTER_RESULTS);
-    const remainingVehicleSlots = Math.max(MAX_SCOOTER_RESULTS - clusters.length, 0);
-    const vehicles = representation.vehicles.slice(0, remainingVehicleSlots);
-    const truncated = (
-      clusters.length < representation.clusters.length ||
-      vehicles.length < representation.vehicles.length
-    );
-    const providers: Record<string, number> = {};
-    for (const vehicle of result.vehicles) {
-      providers[vehicle.provider] = (providers[vehicle.provider] ?? 0) + 1;
-    }
-
-    const degraded = result.meta.partial || result.meta.stale;
-    const dataStatus = result.meta.partial
-      ? 'partial'
-      : result.meta.stale
-        ? 'stale'
-        : 'fresh';
-
-    const body = {
-        vehicles,
-        clusters,
-        providers,
-        meta: {
-          ...result.meta,
-          generatedAt: new Date().toISOString(),
-          truncated,
-          totalVehicles,
-          mode: clusterResponse ? 'clusters' : 'vehicles',
-          zoom: parsed.zoom,
-        },
-      } satisfies ScooterResponse;
-
-    return NextResponse.json(
-      body,
-      {
-        headers: {
-          'Cache-Control': degraded
-            ? 'public, max-age=10, s-maxage=10, stale-while-revalidate=30'
-            : 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
-          'X-Mobility-Data-Source': MOBILITY_SOURCE,
-          'X-Mobility-Data-Status': dataStatus,
-        },
-      }
-    );
+    const body = scooterResponse(result, parsed.zoom);
+    return NextResponse.json(body, { headers: scooterResponseHeaders(body) });
   } catch (error) {
     if (error instanceof ScooterFeedsUnavailableError) {
       return NextResponse.json(

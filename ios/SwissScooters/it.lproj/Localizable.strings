@@ -166,3 +166,5 @@
 "Pricing can vary. Confirm the final price and pass eligibility in the provider app before riding." = "I prezzi possono variare. Conferma il prezzo finale e l’idoneità del pass nell’app del fornitore prima della corsa.";
 "%@ pass" = "Pass %@";
 "French mobility data" = "Dati sulla mobilità in Francia";
+
+"City totals · refreshed hourly" = "Totali per città · aggiornati ogni ora";

@@ -60,7 +60,9 @@ npm run build
 ```
 
 Provider metadata shared by the web and iPhone apps is generated from
-`data/providers.json`; run `npm run generate:providers` after changing it.
+`data/providers.json`; the same generator includes Swiss/French service-area
+coverage for native provider filters. Run `npm run generate:providers` after
+changing the provider or service-area catalogs.
 The scooter API wire types are generated for both clients from
 `data/scooter-api.schema.json`; run `npm run generate:api-contract` after
 changing the response contract.
@@ -68,7 +70,9 @@ changing the response contract.
 ## Deploy your own
 
 The included configuration targets Cloudflare Workers through OpenNext. Give
-your fork a Worker name and hostname in `wrangler.jsonc`, then:
+your fork a Worker name and hostname in `wrangler.jsonc`. Deploy the persistent
+cache with `server/Dockerfile` and a `/data` volume, and set
+`SCOOTER_SNAPSHOT_API_URL` to that origin. Then:
 
 ```bash
 npx wrangler login

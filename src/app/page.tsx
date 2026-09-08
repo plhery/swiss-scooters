@@ -15,7 +15,7 @@ import {
 } from '@/lib/clientParams';
 import { scooterDataHealthNotice } from '@/lib/dataHealth';
 import { shouldAutoRefresh } from '@/lib/autoRefresh';
-import { shouldClusterAtZoom } from '@/lib/clustering';
+import { mapRepresentationsMatch, providersForViewport } from '@/lib/mapCoverage';
 import { useI18n } from '@/lib/i18n';
 import {
   boundsContainBounds,
@@ -93,7 +93,6 @@ export default function Home() {
   );
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [clusters, setClusters] = useState<ScooterCluster[]>([]);
-  const [responseProviderCounts, setResponseProviderCounts] = useState<Record<string, number>>({});
   const [viewportBounds, setViewportBounds] = useState<MapBounds | null>(null);
   const [mapQuery, setMapQuery] = useState<ScooterMapQuery | null>(null);
   const [focusRequest, setFocusRequest] = useState<{
@@ -113,6 +112,7 @@ export default function Home() {
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestSequenceRef = useRef(0);
   const lastUpdatedRef = useRef<number | null>(null);
+  const refreshIntervalRef = useRef(AUTO_REFRESH_INTERVAL_MS);
 
   /* eslint-disable react-hooks/set-state-in-effect -- These effects intentionally
      restore browser-only state after hydration and fetch data when inputs change. */
@@ -159,6 +159,8 @@ export default function Home() {
     };
   }, [tileLayer]);
 
+  const queryMinimumBattery = mapQuery && mapQuery.zoom <= 15 ? minBattery : 0;
+
   const fetchScooters = useCallback(async (requestedQuery?: ScooterMapQuery) => {
     const query = requestedQuery ?? mapQueryRef.current;
     if (!query) return false;
@@ -179,24 +181,25 @@ export default function Home() {
         north: bounds.north.toFixed(5),
         east: bounds.east.toFixed(5),
         zoom: String(zoom),
-        minBattery: String(minBattery),
+        minBattery: String(queryMinimumBattery),
       });
       const res = await fetch(`/api/scooters?${params}`, {
         signal: request.controller.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ScooterResponse = await res.json();
+      if (requestRef.current?.id !== request.id) return false;
       setVehicles(data.vehicles);
       setClusters(data.clusters ?? []);
-      setResponseProviderCounts(data.providers ?? {});
       setResponseMeta(data.meta);
       const generatedAt = data.meta?.generatedAt ? new Date(data.meta.generatedAt) : new Date();
       const updatedAt = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt;
-      lastUpdatedRef.current = updatedAt.getTime();
+      lastUpdatedRef.current = data.meta.overview ? updatedAt.getTime() : Date.now();
+      refreshIntervalRef.current = (data.meta.refreshAfterSeconds ?? 60) * 1000;
       setLastUpdated(updatedAt);
       return true;
     } catch (e) {
-      if ((e as Error).name === 'AbortError') return false;
+      if ((e as Error).name === 'AbortError' || requestRef.current?.id !== request.id) return false;
       console.error('Failed to fetch scooters:', e);
       setError(true);
       return false;
@@ -206,10 +209,12 @@ export default function Home() {
         setLoading(false);
       }
     }
-  }, [minBattery]);
+  }, [queryMinimumBattery]);
 
   useEffect(() => {
-    if (mapQuery) void fetchScooters(mapQuery);
+    if (!mapQuery) return;
+    const timer = window.setTimeout(() => void fetchScooters(mapQuery), 180);
+    return () => window.clearTimeout(timer);
   }, [fetchScooters, mapQuery]);
 
   useEffect(() => () => requestRef.current?.controller.abort(), []);
@@ -223,7 +228,7 @@ export default function Home() {
         hasBounds: mapQueryRef.current !== null,
         lastUpdatedAt,
         now: Date.now(),
-        intervalMs: AUTO_REFRESH_INTERVAL_MS,
+        intervalMs: refreshIntervalRef.current,
       })) return;
 
       void fetchScooters();
@@ -263,17 +268,14 @@ export default function Home() {
   const handleViewportChange = useCallback((bounds: MapBounds, zoom: number) => {
     setViewportBounds(current => boundsEqual(current, bounds) ? current : bounds);
 
-    const clustered = shouldClusterAtZoom(zoom);
     const current = mapQueryRef.current;
-    const shouldFetch = !current || (clustered
-      ? !shouldClusterAtZoom(current.zoom) || current.zoom !== zoom || !boundsEqual(current.bounds, bounds)
-      : shouldClusterAtZoom(current.zoom) || !boundsContainBounds(current.bounds, bounds));
+    const shouldFetch = !current || !mapRepresentationsMatch(current.zoom, zoom) ||
+      !boundsContainBounds(current.bounds, bounds);
     if (!shouldFetch) return;
 
-    const next = {
-      bounds: clustered ? bounds : expandBounds(bounds, VIEWPORT_FETCH_PADDING),
-      zoom,
-    };
+    // Padding also applies to clusters. Stable grid cells make nearby pans reuse
+    // the response without refetching or rebuilding the entire marker layer.
+    const next = { bounds: expandBounds(bounds, VIEWPORT_FETCH_PADDING), zoom };
     mapQueryRef.current = next;
     setMapQuery(next);
   }, []);
@@ -295,9 +297,7 @@ export default function Home() {
   // provider selection so every pill shows how many are available on screen.
   const viewportData = useMemo(() => {
     const clustered = responseMeta?.mode === 'clusters';
-    const providerCounts: Record<string, number> = clustered
-      ? { ...responseProviderCounts }
-      : {};
+    const providerCounts: Record<string, number> = {};
     const visibleVehicles: Vehicle[] = [];
     const visibleClusters: ScooterCluster[] = [];
     if (!viewportBounds) return { providerCounts, visibleVehicles, visibleClusters, totalCount: 0 };
@@ -306,15 +306,16 @@ export default function Home() {
       if (!boundsContainPoint(viewportBounds, vehicle.lat, vehicle.lng)) continue;
       if (minBattery > 0 && (vehicle.battery === null || vehicle.battery < minBattery)) continue;
 
-      if (!clustered) {
-        providerCounts[vehicle.provider] = (providerCounts[vehicle.provider] ?? 0) + 1;
-      }
+      providerCounts[vehicle.provider] = (providerCounts[vehicle.provider] ?? 0) + 1;
       if (enabledProviders.has(vehicle.provider)) visibleVehicles.push(vehicle);
     }
 
     if (clustered) {
       for (const cluster of clusters) {
         if (!boundsContainPoint(viewportBounds, cluster.lat, cluster.lng)) continue;
+        for (const [provider, count] of Object.entries(cluster.providers)) {
+          providerCounts[provider] = (providerCounts[provider] ?? 0) + count;
+        }
         const providers = Object.fromEntries(
           Object.entries(cluster.providers).filter(([provider]) => enabledProviders.has(provider))
         );
@@ -333,7 +334,6 @@ export default function Home() {
     enabledProviders,
     minBattery,
     responseMeta?.mode,
-    responseProviderCounts,
     vehicles,
     viewportBounds,
   ]);
@@ -346,6 +346,7 @@ export default function Home() {
   const dataHealthNotice = useMemo(
     () => scooterDataHealthNotice(responseMeta, representedVehicleCount, {
       cached: t('data.cached'),
+      overview: t('data.overview'),
       partial: t('data.partial'),
       truncated: (shown, total) => t('data.truncated', {
         shown: formatNumber(shown),
@@ -441,6 +442,9 @@ export default function Home() {
         minBattery={minBattery}
         enabledProviders={enabledProviders}
         providerCounts={viewportData.providerCounts}
+        availableProviders={viewportBounds
+          ? [...new Set([...providersForViewport(viewportBounds), ...Object.keys(viewportData.providerCounts)])]
+          : Object.keys(PROVIDERS)}
         totalCount={viewportData.totalCount}
         loading={loading}
         lastUpdated={lastUpdated}

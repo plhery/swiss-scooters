@@ -195,6 +195,33 @@ test('clusters at zoom 15 and separates scooters above it', async ({ page }) => 
   await expect(page.locator('.scooter-marker')).toHaveCount(3);
 });
 
+test('city overview drills directly into the city and preserves unchanged marker nodes', async ({ page }) => {
+  await page.route('**/api/scooters?**', async route => {
+    const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      ...scooterResponse, vehicles: [],
+      clusters: [{ id: 'city:ch:zurich', city: 'Zürich', lat: 47.3769, lng: 8.5417, count: 3,
+        providers: { lime: 1, bird: 1, bolt: 1 } }],
+      meta: { ...scooterResponse.meta, mode: 'clusters', overview: true, refreshAfterSeconds: 3600, zoom },
+    }) });
+  });
+  await page.goto('/');
+  const marker = page.locator('.cluster-marker-wrap');
+  await expect(marker).toHaveCount(1);
+  const original = await marker.elementHandle();
+  await marker.click();
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
+  await expect(page.getByText('City totals · refreshed hourly')).toBeVisible();
+  expect(await original?.evaluate(node => node.isConnected)).toBe(true);
+});
+
+test('French map controls omit Swiss providers while keeping the local operator', async ({ page }) => {
+  await page.goto('/?origin=45.75,4.85');
+  await expect(page.getByRole('button', { name: /^Dott, / })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^PubliBike, / })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Hopp, / })).toHaveCount(0);
+});
+
 test('combines provider filters and resets them together', async ({ page }) => {
   await page.goto('/');
   await focusFixtureArea(page);

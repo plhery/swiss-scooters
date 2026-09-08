@@ -6,6 +6,35 @@ import XCTest
 
 @MainActor
 final class ScooterMapModelTests: XCTestCase {
+    func testFrenchViewportHidesSwissProvidersWithoutChangingSavedSelection() {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        let selected = model.enabledProviders
+        model.viewport = GeoBounds(south: 45.72, west: 4.79, north: 45.80, east: 4.90)
+        XCTAssertEqual(model.availableProviders, [.dott])
+        XCTAssertFalse(model.quickProviderOrder.contains(.publibike))
+        XCTAssertEqual(model.enabledProviders, selected)
+        model.viewport = GeoBounds(south: 47.3, west: 8.4, north: 47.5, east: 8.7)
+        XCTAssertTrue(model.availableProviders.contains(.publibike))
+    }
+
+    func testProviderCountsRemainAvailableWhenAProviderIsHidden() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [], clusters: [ScooterCluster(id: "city:ch:zurich", latitude: 47.38,
+                longitude: 8.54, count: 100, providers: ["lime": 80, "bird": 20], city: "Zürich")],
+            meta: ScooterResponseMetadata(partial: false, failedSources: [], mode: "clusters", zoom: 8, overview: true)
+        ))
+        let model = makeModel(api: api)
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        model.toggle(provider: .bird)
+        XCTAssertEqual(model.count(for: .bird), 20)
+        XCTAssertEqual(model.visibleCount, 80)
+        XCTAssertEqual(model.allProviderCount, 100)
+        XCTAssertTrue(ScooterClusteringPolicy.representationsMatch(6, 10))
+        XCTAssertFalse(ScooterClusteringPolicy.representationsMatch(10, 11))
+    }
+
     func testSupersededFetchIsCancelled() async throws {
         let api = StubScooterAPI(response: ScooterResponse(vehicles: []), delaysFirstRequest: true)
         let model = makeModel(api: api)
@@ -27,7 +56,7 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(loadingFinished)
     }
 
-    func testPartialRefreshKeepsLastCompleteScooterSet() async throws {
+    func testPartialRefreshAcceptsHealthyResultsAndShowsHealthNotice() async throws {
         let completeScooters = [
             scooter(id: "lime", provider: "lime"),
             scooter(id: "voi", provider: "voi")
@@ -48,11 +77,12 @@ final class ScooterMapModelTests: XCTestCase {
         model.refresh()
 
         let partialRefreshFinished = await waitUntil {
-            model.errorMessage != nil && !model.isLoading
+            model.dataHealthMessage != nil && !model.isLoading
         }
         XCTAssertTrue(partialRefreshFinished)
-        XCTAssertEqual(Set(model.mapScooters.map(\.id)), Set(completeScooters.map(\.id)))
-        XCTAssertFalse(model.errorMessage?.isEmpty ?? true)
+        XCTAssertEqual(model.mapScooters.map(\.vehicleID), ["voi-new"])
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNotNil(model.dataHealthMessage)
     }
 
     func testAcceptedDegradedResponseExposesADataHealthMessage() async throws {

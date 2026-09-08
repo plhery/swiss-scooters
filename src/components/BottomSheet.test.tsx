@@ -51,6 +51,14 @@ beforeEach(() => {
 });
 
 describe('BottomSheet', () => {
+  it('only offers providers in the current area without changing the saved selection', () => {
+    const enabledProviders = new Set(Object.keys(PROVIDERS));
+    renderSheet({ enabledProviders, availableProviders: ['dott'], providerCounts: { dott: 3 } });
+    expect(screen.getByRole('button', { name: /^Dott, 3/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^PubliBike,/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Hopp,/ })).not.toBeInTheDocument();
+    expect(enabledProviders.has('publibike')).toBe(true);
+  });
   it('keeps collapsed controls inert until keyboard expansion', () => {
     const onExpandedChange = vi.fn();
     renderSheet({ onExpandedChange });

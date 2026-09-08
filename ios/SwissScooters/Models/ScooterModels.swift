@@ -294,6 +294,7 @@ struct ScooterCluster: Identifiable, Hashable, Sendable {
     let longitude: Double
     let count: Int
     let providers: [String: Int]
+    var city: String? = nil
 
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -310,13 +311,15 @@ struct ScooterCluster: Identifiable, Hashable, Sendable {
             latitude: latitude,
             longitude: longitude,
             count: filteredCount,
-            providers: filteredProviders
+            providers: filteredProviders,
+            city: city
         )
     }
 }
 
 enum ScooterClusteringPolicy {
     static let maximumClusterZoom = 15
+    static let maximumOverviewZoom = 10
 
     static func shouldCluster(at zoomLevel: Double) -> Bool {
         zoomLevel <= Double(maximumClusterZoom)
@@ -332,6 +335,7 @@ enum ScooterClusteringPolicy {
     }
 
     static func representationsMatch(_ lhs: Int, _ rhs: Int) -> Bool {
+        if lhs <= maximumOverviewZoom, rhs <= maximumOverviewZoom { return true }
         if !shouldCluster(at: lhs), !shouldCluster(at: rhs) {
             return true
         }
@@ -368,6 +372,8 @@ struct ScooterResponseMetadata: Sendable {
     let totalVehicles: Int?
     let mode: String?
     let zoom: Int?
+    let overview: Bool
+    let refreshAfterSeconds: Int?
 
     init(
         partial: Bool,
@@ -378,7 +384,9 @@ struct ScooterResponseMetadata: Sendable {
         truncated: Bool = false,
         totalVehicles: Int? = nil,
         mode: String? = nil,
-        zoom: Int? = nil
+        zoom: Int? = nil,
+        overview: Bool = false,
+        refreshAfterSeconds: Int? = nil
     ) {
         self.partial = partial
         self.stale = stale
@@ -389,6 +397,8 @@ struct ScooterResponseMetadata: Sendable {
         self.totalVehicles = totalVehicles
         self.mode = mode
         self.zoom = zoom
+        self.overview = overview
+        self.refreshAfterSeconds = refreshAfterSeconds
     }
 }
 
@@ -429,7 +439,8 @@ extension ScooterClusterPayload {
             latitude: latitude,
             longitude: longitude,
             count: count,
-            providers: providers
+            providers: providers,
+            city: city
         )
     }
 }
@@ -445,7 +456,9 @@ extension ScooterResponseMetadataPayload {
             truncated: truncated,
             totalVehicles: totalVehicles,
             mode: mode.rawValue,
-            zoom: zoom
+            zoom: zoom,
+            overview: overview ?? false,
+            refreshAfterSeconds: refreshAfterSeconds
         )
     }
 }
@@ -518,11 +531,15 @@ struct GeoBounds: Equatable, Sendable {
         east = min(180, region.center.longitude + halfLongitude)
     }
 
-    private init(south: Double, west: Double, north: Double, east: Double) {
+    init(south: Double, west: Double, north: Double, east: Double) {
         self.south = south
         self.west = west
         self.north = north
         self.east = east
+    }
+
+    func intersects(_ other: GeoBounds) -> Bool {
+        south <= other.north && north >= other.south && west <= other.east && east >= other.west
     }
 
     func contains(_ other: GeoBounds) -> Bool {

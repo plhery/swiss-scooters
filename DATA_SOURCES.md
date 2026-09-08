@@ -38,9 +38,11 @@ and [transport.data.gouv.fr](https://transport.data.gouv.fr/datasets?format=gbfs
 as discovery sources. Pony is accessed through the National Access Point's proxy;
 the other feeds are served directly by their operators.
 
-Only systems intersecting the viewport are requested, with four concurrent
-French systems at most. Availability uses the existing 30-second cache and
-five-minute stale-on-error window. French feed timestamps older than five minutes
+Production collects each system independently every minute on Netcup, with at
+most six systems in flight. Map requests read only the relevant cached systems,
+with no operator requests. The local direct-feed fallback selects by viewport
+and allows four concurrent French systems. Individual vehicles expire after a
+five-minute stale-on-error window; city totals are aggregated hourly. French feed timestamps older than five minutes
 are marked stale; timestamps older than fifteen minutes are rejected.
 
 These endpoints are publicly accessible but do not share one universal license.

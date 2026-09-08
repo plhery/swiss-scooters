@@ -68,20 +68,6 @@ enum NearbyOrigin: Equatable, Sendable {
     }
 }
 
-private struct PartialScooterResponseError: LocalizedError {
-    let failedSources: [String]
-
-    var errorDescription: String? {
-        let sourceDescription = failedSources.isEmpty
-            ? String(localized: "one or more data sources")
-            : failedSources.joined(separator: ", ")
-        return String(
-            format: String(localized: "Scooter data from %@ is temporarily unavailable. Keeping the last complete map."),
-            sourceDescription
-        )
-    }
-}
-
 @MainActor
 @Observable
 final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
@@ -94,6 +80,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     private(set) var vehicles: [Scooter] = [] {
         didSet {
+            guard !isApplyingResponse else { return }
             rebuildVehicleIndex()
             rebuildMapScooters()
             rebuildVisibleCounts()
@@ -101,6 +88,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
     private(set) var clusters: [ScooterCluster] = [] {
         didSet {
+            guard !isApplyingResponse else { return }
             rebuildMapClusters()
             rebuildVisibleCounts()
         }
@@ -168,7 +156,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var bestLocationCandidate: CLLocation?
     @ObservationIgnored private var focusToken = 0
     @ObservationIgnored private var hasStarted = false
-    @ObservationIgnored private var hasCompleteResponse = false
+    @ObservationIgnored private var isApplyingResponse = false
     @ObservationIgnored private var distanceOrigin = switzerlandCenter
     @ObservationIgnored private var vehiclesByID: [String: Scooter] = [:]
     private(set) var mapScooters: [Scooter] = []
@@ -258,7 +246,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     var allProvidersSelected: Bool {
-        enabledProviders == Set(ScooterProvider.allCases)
+        Set(availableProviders).isSubset(of: enabledProviders)
+    }
+
+    var availableProviders: [ScooterProvider] {
+        let providers = Set(ScooterProviderCoverage.providers(in: viewport)).union(visibleProviderCounts.keys)
+        return ScooterProvider.allCases.filter { providers.contains($0) }
     }
 
     var hasActiveFilters: Bool {
@@ -269,6 +262,9 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         guard let responseMetadata else { return nil }
 
         var messages: [String] = []
+        if responseMetadata.overview {
+            messages.append(String(localized: "City totals · refreshed hourly"))
+        }
         if responseMetadata.stale {
             messages.append(String(localized: "Showing cached data"))
         }
@@ -288,42 +284,15 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func count(for provider: ScooterProvider) -> Int {
-        var count = vehicles.lazy.filter {
-            self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude) &&
-                self.passesBatteryFilter($0) &&
-                $0.providerInfo == provider
-        }.count
-
-        if responseMetadata?.mode == "clusters" {
-            count += clusters.lazy.filter {
-                self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude)
-            }.reduce(0) { partialResult, cluster in
-                partialResult + cluster.providers[provider.rawValue, default: 0]
-            }
-        }
-
-        return count
+        visibleProviderCounts[provider, default: 0]
     }
 
-    var allProviderCount: Int {
-        var count = vehicles.lazy.filter {
-            self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude) &&
-                self.passesBatteryFilter($0)
-        }.count
-
-        if responseMetadata?.mode == "clusters" {
-            count += clusters.lazy.filter {
-                self.viewport.contains(latitude: $0.latitude, longitude: $0.longitude)
-            }.reduce(0) { $0 + $1.count }
-        }
-
-        return count
-    }
+    var allProviderCount: Int { visibleProviderCounts.values.reduce(0, +) }
 
     var quickProviderOrder: [ScooterProvider] {
         let isFilteringProviders = !allProvidersSelected
 
-        return ScooterProvider.allCases.sorted { lhs, rhs in
+        return availableProviders.sorted { lhs, rhs in
             let lhsSelected = isFilteringProviders && self.enabledProviders.contains(lhs)
             let rhsSelected = isFilteringProviders && self.enabledProviders.contains(rhs)
             if lhsSelected != rhsSelected {
@@ -446,7 +415,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             }
             return
         }
-        if fetchTask == nil, Date().timeIntervalSince(lastUpdated) >= 60 {
+        if fetchTask == nil, Date().timeIntervalSince(lastUpdated) >= Double(responseMetadata?.refreshAfterSeconds ?? 60) {
             refresh()
         }
     }
@@ -559,16 +528,20 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     private func rebuildMapScooters() {
-        mapScooters = ScooterFiltering.mapScooters(
+        let next = ScooterFiltering.mapScooters(
             from: vehicles,
             minimumBattery: minimumBattery,
             enabledProviders: enabledProviders
         )
+        guard next != mapScooters else { return }
+        mapScooters = next
         mapScootersRevision &+= 1
     }
 
     private func rebuildMapClusters() {
-        mapClusters = clusters.compactMap { $0.filtered(to: enabledProviders) }
+        let next = clusters.compactMap { $0.filtered(to: enabledProviders) }
+        guard next != mapClusters else { return }
+        mapClusters = next
         mapClustersRevision &+= 1
     }
 
@@ -580,45 +553,23 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     private func rebuildVisibleCounts() {
-        if responseMetadata?.mode == "clusters" {
-            var count = 0
-            var providerCounts: [ScooterProvider: Int] = [:]
-
-            for scooter in mapScooters where viewport.contains(
-                latitude: scooter.latitude,
-                longitude: scooter.longitude
-            ) {
-                count += 1
-                if let provider = scooter.providerInfo {
-                    providerCounts[provider, default: 0] += 1
-                }
-            }
-
-            for cluster in mapClusters where viewport.contains(
-                latitude: cluster.latitude,
-                longitude: cluster.longitude
-            ) {
-                count += cluster.count
-                for (providerID, providerCount) in cluster.providers {
-                    if let provider = ScooterProvider(rawValue: providerID) {
-                        providerCounts[provider, default: 0] += providerCount
-                    }
-                }
-            }
-
-            visibleScooterCount = count
-            visibleProviderCounts = providerCounts
-            return
-        }
-
         let summary = ScooterFiltering.visibleSummary(
-            for: vehicles,
-            viewport: viewport,
-            minimumBattery: minimumBattery,
+            for: vehicles, viewport: viewport, minimumBattery: minimumBattery,
             enabledProviders: enabledProviders
         )
-        visibleScooterCount = summary.count
-        visibleProviderCounts = summary.providerCounts
+        var count = summary.count
+        var providers = summary.providerCounts
+        if responseMetadata?.mode == "clusters" {
+            for cluster in clusters where viewport.contains(latitude: cluster.latitude, longitude: cluster.longitude) {
+                for (providerID, providerCount) in cluster.providers {
+                    guard let provider = ScooterProvider(rawValue: providerID) else { continue }
+                    providers[provider, default: 0] += providerCount
+                    if enabledProviders.contains(provider) { count += providerCount }
+                }
+            }
+        }
+        visibleScooterCount = count
+        visibleProviderCounts = providers
     }
 
     private var representedVehicleCount: Int {
@@ -656,7 +607,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
             if debounce {
                 do {
-                    try await Task.sleep(for: .milliseconds(320))
+                    try await Task.sleep(for: .milliseconds(180))
                 } catch {
                     return
                 }
@@ -673,19 +624,26 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                     minimumBattery: requestMinimumBattery
                 )
                 guard !Task.isCancelled, activeRequestID == requestID else { return }
-                if let metadata = response.meta, metadata.partial, hasCompleteResponse {
-                    throw PartialScooterResponseError(failedSources: metadata.failedSources)
-                }
+                // The backend preserves recent successful feeds independently.
+                // Accept healthy cities even when another operator is unavailable.
+                isApplyingResponse = true
                 vehicles = response.vehicles
                 clusters = response.clusters
                 responseMetadata = response.meta
+                isApplyingResponse = false
+                rebuildVehicleIndex()
+                rebuildMapScooters()
+                rebuildMapClusters()
                 rebuildVisibleCounts()
-                hasCompleteResponse = response.meta?.partial != true
                 queryBounds = bounds
                 queryZoom = zoom
                 queryMinimumBattery = requestMinimumBattery
                 distanceOrigin = fetchOrigin
-                lastUpdated = Date()
+                lastUpdated = response.meta?.generatedAt.flatMap { value in
+                    let formatter = ISO8601DateFormatter()
+                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+                } ?? Date()
                 clearSelectionIfHidden()
             } catch is CancellationError {
                 return

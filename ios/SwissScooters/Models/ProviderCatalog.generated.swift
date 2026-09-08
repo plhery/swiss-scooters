@@ -56,3 +56,68 @@ enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {
         }
     }
 }
+
+enum ScooterProviderCoverage {
+    private static let swissAreas: [GeoBounds] = [
+        GeoBounds(south: 47.42, west: 7.38, north: 47.7, east: 7.82),
+        GeoBounds(south: 46.82, west: 7.2, north: 47.08, east: 7.7),
+        GeoBounds(south: 47.03, west: 7.05, north: 47.27, east: 7.45),
+        GeoBounds(south: 46.5, west: 6.82, north: 46.7, east: 7.12),
+        GeoBounds(south: 47.45, west: 8.72, north: 47.68, east: 9.1),
+        GeoBounds(south: 47.08, west: 7.28, north: 47.28, east: 7.52),
+        GeoBounds(south: 47.33, west: 8.58, north: 47.55, east: 8.88),
+        GeoBounds(south: 47.4, west: 8.47, north: 47.56, east: 8.74),
+        GeoBounds(south: 46.1, west: 8.67, north: 46.25, east: 8.9),
+        GeoBounds(south: 46.25, west: 6.05, north: 46.55, east: 6.45),
+        GeoBounds(south: 47.39, west: 8.47, north: 47.5, east: 8.68),
+        GeoBounds(south: 47.45, west: 9.2, north: 47.66, east: 9.58),
+        GeoBounds(south: 47.36, west: 9.3, north: 47.58, east: 9.68),
+        GeoBounds(south: 47.6, west: 8.42, north: 47.83, east: 8.88),
+        GeoBounds(south: 47.28, west: 9.1, north: 47.6, east: 9.65),
+        GeoBounds(south: 47.25, west: 8.58, north: 47.43, east: 8.86),
+        GeoBounds(south: 47.2, west: 8.68, north: 47.4, east: 8.98),
+        GeoBounds(south: 47.38, west: 8.53, north: 47.64, east: 8.97),
+        GeoBounds(south: 47.03, west: 8.32, north: 47.31, east: 8.74),
+        GeoBounds(south: 47.27, west: 8.34, north: 47.49, east: 8.73),
+    ]
+    private static let frenchSystems: [(ScooterProvider, GeoBounds)] = [
+        (.bird, GeoBounds(south: 41.81, west: 8.53, north: 42.03, east: 8.87)),
+        (.bird, GeoBounds(south: 47.46, west: 1.2, north: 47.71, east: 1.44)),
+        (.bird, GeoBounds(south: 48.85, west: 4.22, north: 49.07, east: 4.49)),
+        (.bird, GeoBounds(south: 47.95, west: -0.94, north: 48.19, east: -0.65)),
+        (.bird, GeoBounds(south: 46, west: 3.28, north: 46.27, east: 3.62)),
+        (.dott, GeoBounds(south: 44.66, west: -0.86, north: 45.07, east: -0.32)),
+        (.dott, GeoBounds(south: 45.49, west: 5.14, north: 45.7, east: 5.39)),
+        (.dott, GeoBounds(south: 45.63, west: 4.68, north: 45.92, east: 5)),
+        (.dott, GeoBounds(south: 48.73, west: 2.58, north: 48.97, east: 2.86)),
+        (.dott, GeoBounds(south: 45.36, west: 6.81, north: 45.56, east: 7)),
+        (.dott, GeoBounds(south: 48.73, west: 2.02, north: 48.96, east: 2.24)),
+        (.lime, GeoBounds(south: 50.4, west: 2.75, north: 50.9, east: 3.4)),
+        (.lime, GeoBounds(south: 43.12, west: 5.22, north: 43.49, east: 5.65)),
+        (.pony, GeoBounds(south: 47.33, west: -0.73, north: 47.62, east: -0.38)),
+        (.pony, GeoBounds(south: 49.16, west: 1.67, north: 49.75, east: 2.55)),
+        (.pony, GeoBounds(south: 44.67, west: -0.86, north: 45.05, east: -0.39)),
+        (.pony, GeoBounds(south: 46.96, west: 2.28, north: 47.21, east: 2.53)),
+        (.pony, GeoBounds(south: 48.52, west: 2.31, north: 48.73, east: 2.55)),
+        (.pony, GeoBounds(south: 48.89, west: -0.76, north: 49.49, east: 0.09)),
+        (.pony, GeoBounds(south: 47.59, west: -3.58, north: 47.89, east: -3.21)),
+        (.pony, GeoBounds(south: 42.52, west: 2.63, north: 43.03, east: 3.2)),
+        (.pony, GeoBounds(south: 46.32, west: -0.09, north: 46.91, east: 0.81)),
+        (.voi, GeoBounds(south: 48.77, west: 1.47, north: 49.16, east: 2.3)),
+        (.voi, GeoBounds(south: 45.01, west: 5.47, north: 45.37, east: 5.98)),
+        (.voi, GeoBounds(south: 49.35, west: -0.05, north: 49.73, east: 0.38)),
+        (.voi, GeoBounds(south: 43.11, west: 5.18, north: 43.49, east: 5.65)),
+        (.voi, GeoBounds(south: 48.6, west: 1.77, north: 48.95, east: 2.24)),
+    ]
+
+    static func providers(in viewport: GeoBounds) -> [ScooterProvider] {
+        var available = Set<ScooterProvider>()
+        if swissAreas.contains(where: { $0.intersects(viewport) }) {
+            available.formUnion(ScooterProvider.allCases.filter { $0 != .pony })
+        }
+        for (provider, bounds) in frenchSystems where bounds.intersects(viewport) {
+            available.insert(provider)
+        }
+        return ScooterProvider.allCases.filter { available.contains($0) }
+    }
+}

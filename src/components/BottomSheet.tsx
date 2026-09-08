@@ -16,6 +16,7 @@ interface BottomSheetProps {
   minBattery: number;
   enabledProviders: Set<string>;
   providerCounts: Record<string, number>;
+  availableProviders?: string[];
   totalCount: number;
   loading: boolean;
   lastUpdated: Date | null;
@@ -103,6 +104,7 @@ export default function BottomSheet({
   minBattery,
   enabledProviders,
   providerCounts,
+  availableProviders,
   totalCount,
   loading,
   lastUpdated,
@@ -125,7 +127,7 @@ export default function BottomSheet({
   const now = useCurrentTime();
   const desktopPanel = useDesktopPanel();
   const controlsVisible = desktopPanel || expanded;
-  const providerKeys = Object.keys(PROVIDERS);
+  const providerKeys = (availableProviders ?? Object.keys(PROVIDERS)).filter(key => PROVIDERS[key]);
   const allProvidersSelected = providerKeys.every(provider => enabledProviders.has(provider));
   const allProviderCount = providerKeys.reduce(
     (count, provider) => count + (providerCounts[provider] ?? 0),
@@ -387,7 +389,8 @@ export default function BottomSheet({
                 {t('providers.all')}
                 <span className="chip-count">{formatNumber(allProviderCount)}</span>
               </button>
-              {Object.entries(PROVIDERS).map(([key, provider]) => {
+              {providerKeys.map(key => {
+                const provider = PROVIDERS[key];
                 const selected = enabledProviders.has(key);
                 return (
                   <button
