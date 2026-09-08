@@ -272,3 +272,28 @@ test('publishes a standalone privacy notice', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Privacy' })).toBeVisible();
   await expect(page.getByText(/has no user accounts/)).toBeVisible();
 });
+
+test('parking markers appear at street zoom, follow provider filters and keep scooter counts separate', async ({ page }) => {
+  await page.route('**/api/scooters?**', async route => {
+    const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      ...scooterResponse, vehicles: [], clusters: [], providers: {},
+      parking: [{ id: 'dott:bay', provider: 'dott', name: 'Place test', lat: 45.75, lng: 4.85, mandatory: true }],
+      meta: { ...scooterResponse.meta, mode: 'vehicles', totalVehicles: 0, zoom },
+    }) });
+  });
+  await page.goto('/?origin=45.75,4.85');
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '16');
+  const marker = page.getByRole('button', { name: 'Dott parking: Place test', exact: true });
+  await expect(marker).toBeVisible();
+  await marker.click();
+  await expect(page.getByText('Designated parking is required in this zone.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Directions to parking' })).toHaveAttribute('href', /destination=45.75,4.85/);
+  await page.locator('.leaflet-popup-close-button').click();
+  await page.getByRole('button', { name: /^Dott, 0/ }).click();
+  await expect(marker).toHaveCount(0);
+  await page.getByRole('button', { name: /^Dott, 0/ }).click();
+  await expect(marker).toBeVisible();
+  await zoomTo(page, 15);
+  await expect(marker).toHaveCount(0);
+});

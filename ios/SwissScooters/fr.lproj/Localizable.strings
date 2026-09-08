@@ -168,3 +168,12 @@
 "French mobility data" = "Données de mobilité françaises";
 
 "City totals · refreshed hourly" = "Totaux par ville · actualisés chaque heure";
+
+/* Scooter parking */
+"Designated parking is required in this zone." = "Le stationnement dans les emplacements désignés est obligatoire dans cette zone.";
+"Designated scooter parking." = "Emplacement de stationnement pour trottinettes.";
+"Check the operator app to confirm you can end your ride here." = "Vérifiez dans l’application de l’opérateur que vous pouvez terminer votre trajet ici.";
+"Directions to parking" = "Itinéraire vers le stationnement";
+"Parking data is temporarily unavailable" = "Les données de stationnement sont temporairement indisponibles";
+"Parking data may be out of date" = "Les données de stationnement peuvent être anciennes";
+"Parking" = "Stationnement";

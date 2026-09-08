@@ -247,7 +247,7 @@ function sharedMobilityHeaders(): Record<string, string> {
   };
 }
 
-async function fetchJson<T>(
+export async function fetchJson<T>(
   url: string,
   options: { authenticated?: boolean; revalidate: number }
 ): Promise<CachedJson<T>> {
@@ -490,7 +490,7 @@ function registrySystem(systemId: string, systemUrl: string): NationalSystem | n
   }
 }
 
-function discoveryFeedEntries(feed: DiscoveryFeed): DiscoveryFeedEntry[] {
+export function discoveryFeedEntries(feed: DiscoveryFeed): DiscoveryFeedEntry[] {
   const data = feed.data;
   if (!data) return [];
   if (Array.isArray(data.feeds)) return data.feeds;
@@ -527,7 +527,7 @@ function trustedFeedUrl(rawUrl: string | undefined, trustedBaseUrl: string): str
   }
 }
 
-function discoveredFeedUrl(
+export function discoveredFeedUrl(
   entries: DiscoveryFeedEntry[],
   name: string,
   trustedBaseUrl: string

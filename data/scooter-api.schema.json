@@ -7,6 +7,10 @@
   "additionalProperties": false,
   "required": ["vehicles", "clusters", "providers", "meta"],
   "properties": {
+    "parking": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ParkingLocation" }
+    },
     "vehicles": {
       "type": "array",
       "items": { "$ref": "#/$defs/Vehicle" }
@@ -22,6 +26,39 @@
     "meta": { "$ref": "#/$defs/ScooterResponseMeta" }
   },
   "$defs": {
+    "ParkingLocation": {
+      "x-swift-name": "ScooterParkingLocationPayload",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "name",
+        "lat",
+        "lng",
+        "mandatory"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "mandatory": {
+          "type": "boolean"
+        }
+      }
+    },
     "FeedSourceStatus": {
       "x-swift-name": "ScooterFeedSourceStatusPayload",
       "type": "string",
@@ -193,6 +230,7 @@
         "zoom"
       ],
       "properties": {
+        "parkingStatus": { "$ref": "#/$defs/FeedSourceStatus" },
         "partial": { "type": "boolean" },
         "stale": { "type": "boolean" },
         "failedSources": {

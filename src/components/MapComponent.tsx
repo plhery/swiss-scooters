@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { MapBounds, ScooterCluster, Vehicle } from '@/lib/types';
+import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
 import type { AddressResult } from '@/components/AddressSearch';
@@ -252,6 +252,7 @@ function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
 }
 
 interface MapComponentProps {
+  parking?: ParkingLocation[];
   vehicles: Vehicle[];
   clusters: ScooterCluster[];
   clustered: boolean;
@@ -269,6 +270,7 @@ interface MapComponentProps {
 }
 
 export default function MapComponent({
+  parking = [],
   vehicles,
   clusters,
   clustered,
@@ -292,6 +294,7 @@ export default function MapComponent({
   const destinationLayerRef = useRef<L.LayerGroup | null>(null);
   const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const clusterMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const parkingMarkersRef = useRef<Map<string, { marker: L.Marker; signature: string }>>(new Map());
   const markerSignaturesRef = useRef<Map<string, string>>(new Map());
   const vehicleDataRef = useRef<Map<string, Vehicle>>(new Map());
   const tileLayerRef = useRef<L.TileLayer | null>(null);
@@ -344,6 +347,7 @@ export default function MapComponent({
     if (!container) return;
     const vehicleMarkers = vehicleMarkersRef.current;
     const clusterMarkers = clusterMarkersRef.current;
+    const parkingMarkers = parkingMarkersRef.current;
     const markerSignatures = markerSignaturesRef.current;
 
     const map = L.map(container, {
@@ -385,12 +389,47 @@ export default function MapComponent({
       destinationLayerRef.current = null;
       vehicleMarkers.clear();
       clusterMarkers.clear();
+      parkingMarkers.clear();
       markerSignatures.clear();
       vehicleDataRef.current.clear();
       tileLayerRef.current = null;
       delete container.dataset.zoom;
     };
   }, [initialZoom, reportViewport]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const markers = parkingMarkersRef.current;
+    const shown = zoom >= 16 ? parking : [];
+    const ids = new Set(shown.map(location => location.id));
+    for (const [id, entry] of markers) {
+      if (!ids.has(id)) { entry.marker.remove(); markers.delete(id); }
+    }
+    for (const location of shown) {
+      const provider = PROVIDERS[location.provider];
+      const label = t('parking.label', { name: provider?.name ?? location.provider, place: location.name });
+      const signature = JSON.stringify([location, label, t('parking.check')]);
+      const old = markers.get(location.id);
+      if (old?.signature === signature) continue;
+      old?.marker.remove();
+      const popup = makeElement('div', 'parking-popup', '');
+      popup.appendChild(makeElement('strong', '', label));
+      popup.appendChild(makeElement('p', '', t(location.mandatory ? 'parking.required' : 'parking.designated')));
+      popup.appendChild(makeElement('p', '', t('parking.check')));
+      const link = makeElement('a', 'popup-cta', t('parking.directions'));
+      link.href = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}&travelmode=walking`;
+      link.target = '_blank'; link.rel = 'noopener noreferrer'; popup.appendChild(link);
+      const marker = L.marker([location.lat, location.lng], {
+        icon: L.divIcon({ className: 'parking-marker-wrap',
+          html: `<span class="parking-marker" style="--parking-provider:${provider?.color ?? '#2166c2'}">P</span>`,
+          iconSize: [36, 36], iconAnchor: [8, 28] }),
+        title: label, zIndexOffset: 100,
+      }).bindPopup(popup).addTo(map);
+      labelMarker(marker, label);
+      markers.set(location.id, { marker, signature });
+    }
+  }, [mapReady, parking, t, zoom]);
 
   useEffect(() => {
     const map = mapRef.current;

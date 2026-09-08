@@ -6,6 +6,13 @@ export const SUPPORTED_LOCALES = ['de', 'fr', 'it', 'en'] as const;
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
 
 const en = {
+    "parking.label": "{name} parking: {place}",
+    "parking.required": "Designated parking is required in this zone.",
+    "parking.designated": "Designated scooter parking.",
+    "parking.check": "Check the operator app to confirm you can end your ride here.",
+    "parking.directions": "Directions to parking",
+    "parking.unavailable": "Parking data is temporarily unavailable",
+    "parking.stale": "Parking data may be out of date",
   'controls.locate': 'Go to my location',
   'controls.refresh': 'Refresh scooters',
   'controls.zoomGroup': 'Map zoom',
@@ -84,6 +91,13 @@ type Dictionary = Record<TranslationKey, string>;
 const dictionaries: Record<AppLocale, Dictionary> = {
   en,
   de: {
+    "parking.label": "{name}-Parkplatz: {place}",
+    "parking.required": "In dieser Zone muss auf ausgewiesenen Flächen geparkt werden.",
+    "parking.designated": "Ausgewiesener Rollerparkplatz.",
+    "parking.check": "Prüfe in der Anbieter-App, ob du die Fahrt hier beenden kannst.",
+    "parking.directions": "Weg zum Parkplatz",
+    "parking.unavailable": "Parkplatzdaten sind vorübergehend nicht verfügbar",
+    "parking.stale": "Parkplatzdaten sind möglicherweise veraltet",
     'controls.locate': 'Zu meinem Standort',
     'controls.refresh': 'Scooter aktualisieren',
     'controls.zoomGroup': 'Kartenzoom',
@@ -156,6 +170,13 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'links.privacy': 'Datenschutz',
   },
   fr: {
+    "parking.label": "Stationnement {name} : {place}",
+    "parking.required": "Le stationnement dans les emplacements désignés est obligatoire dans cette zone.",
+    "parking.designated": "Emplacement de stationnement pour trottinettes.",
+    "parking.check": "Vérifiez dans l’application de l’opérateur que vous pouvez terminer votre trajet ici.",
+    "parking.directions": "Itinéraire vers le stationnement",
+    "parking.unavailable": "Les données de stationnement sont temporairement indisponibles",
+    "parking.stale": "Les données de stationnement peuvent être anciennes",
     'controls.locate': 'Aller à ma position',
     'controls.refresh': 'Actualiser les trottinettes',
     'controls.zoomGroup': 'Zoom de la carte',
@@ -228,6 +249,13 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'links.privacy': 'Confidentialité',
   },
   it: {
+    "parking.label": "Parcheggio {name}: {place}",
+    "parking.required": "In questa zona è obbligatorio usare gli spazi di parcheggio designati.",
+    "parking.designated": "Parcheggio riservato ai monopattini.",
+    "parking.check": "Verifica nell’app dell’operatore di poter terminare la corsa qui.",
+    "parking.directions": "Indicazioni per il parcheggio",
+    "parking.unavailable": "Dati sui parcheggi temporaneamente non disponibili",
+    "parking.stale": "I dati sui parcheggi potrebbero non essere aggiornati",
     'controls.locate': 'Vai alla mia posizione',
     'controls.refresh': 'Aggiorna i monopattini',
     'controls.zoomGroup': 'Zoom della mappa',

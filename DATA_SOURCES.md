@@ -67,3 +67,29 @@ catalog. French street-address geocoding is not provided.
   browser cache. The previous unauthenticated CARTO tiles now require an API key.
 - Zooms above 19 scale the last native tile level without requesting unavailable tiles.
 - The service worker does not bulk-download or create offline tile archives.
+
+## French scooter parking
+
+The reviewed French GBFS systems also supply `station_information`,
+`station_status` and `geofencing_zones` where published. Actual virtual parking
+bays are shown from zoom 16, filtered to the selected providers. Parking never
+adds to scooter counts or disappears because of a battery filter. Selecting a
+bay identifies the operator, explains published mandatory-parking rules and
+opens directions. The operator app remains the final check for ending a ride.
+
+- GBFS 2.3 `vehicle_type_id` and GBFS 3 `vehicle_type_ids`, localized names,
+  polygon holes, ordered rules, global defaults and active dates are supported.
+- Only scooter-compatible virtual/infrastructure stations are used. Lime's
+  synthetic whole-city Lille station is excluded; missing spots do not imply
+  unrestricted parking.
+- `is_returning=false` removes a bay. Virtual stations do not require installed
+  docking hardware: Pony publishes `is_installed=false` alongside
+  `is_returning=true` throughout its virtual parking feeds.
+- Static station/rule metadata is cached for an hour; return status is refreshed
+  with the minute collector. A parking failure does not fail scooter collection.
+  The API marks retained parking stale and stops exposing it after five minutes.
+- Map requests only read the persistent snapshot. Country/city overviews omit
+  parking geometry and individual bays to keep low-zoom payloads small.
+
+References: [GBFS station information and geofencing](https://github.com/MobilityData/gbfs/blob/master/gbfs.md),
+[Dott France's published GBFS feeds](https://transport.data.gouv.fr/datasets/tier-dott-gbfs-france?locale=fr).

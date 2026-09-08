@@ -1,4 +1,5 @@
 export type {
+  ParkingLocation,
   FeedSourceStatus,
   RentalUris,
   RidePricing,

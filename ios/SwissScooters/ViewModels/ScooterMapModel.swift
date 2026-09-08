@@ -93,6 +93,14 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             rebuildVisibleCounts()
         }
     }
+    private(set) var parking: [ScooterParking] = []
+    var mapParking: [ScooterParking] {
+        guard viewportZoom >= 16 else { return [] }
+        return parking.filter { location in
+            guard let provider = ScooterProvider(rawValue: location.provider) else { return false }
+            return enabledProviders.contains(provider) && viewport.contains(latitude: location.latitude, longitude: location.longitude)
+        }
+    }
     var viewport = GeoBounds(region: initialRegion) {
         didSet { rebuildVisibleCounts() }
     }
@@ -270,6 +278,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
         if responseMetadata.partial {
             messages.append(String(localized: "Some providers are unavailable"))
+        }
+        if responseMetadata.parkingStatus == "failed" || responseMetadata.parkingStatus == "partial" {
+            messages.append(String(localized: "Parking data is temporarily unavailable"))
+        } else if responseMetadata.parkingStatus == "stale" {
+            messages.append(String(localized: "Parking data may be out of date"))
         }
         if responseMetadata.truncated {
             let shown = representedVehicleCount
@@ -629,6 +642,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                 isApplyingResponse = true
                 vehicles = response.vehicles
                 clusters = response.clusters
+                parking = response.parking
                 responseMetadata = response.meta
                 isApplyingResponse = false
                 rebuildVehicleIndex()

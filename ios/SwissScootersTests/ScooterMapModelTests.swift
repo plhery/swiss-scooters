@@ -6,6 +6,26 @@ import XCTest
 
 @MainActor
 final class ScooterMapModelTests: XCTestCase {
+    func testParkingFollowsZoomAndProviderFiltersWithoutChangingScooterCounts() async {
+        let location = ScooterParking(id: "dott:bay", provider: "dott", name: "Place test",
+            latitude: 45.75, longitude: 4.85, mandatory: true)
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [], parking: [location])))
+        let region = MKCoordinateRegion(center: location.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
+        model.updateViewport(region, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(model.mapParking, [location])
+        XCTAssertEqual(model.visibleCount, 0)
+        model.setMinimumBattery(100)
+        XCTAssertEqual(model.mapParking, [location])
+        model.toggle(provider: .dott)
+        XCTAssertTrue(model.mapParking.isEmpty)
+        model.toggle(provider: .dott)
+        model.updateViewport(region, zoom: 15)
+        XCTAssertTrue(model.mapParking.isEmpty)
+    }
+
     func testFrenchViewportHidesSwissProvidersWithoutChangingSavedSelection() {
         let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
         let selected = model.enabledProviders

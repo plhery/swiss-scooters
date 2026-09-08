@@ -168,3 +168,12 @@
 "French mobility data" = "French mobility data";
 
 "City totals · refreshed hourly" = "City totals · refreshed hourly";
+
+/* Scooter parking */
+"Designated parking is required in this zone." = "Designated parking is required in this zone.";
+"Designated scooter parking." = "Designated scooter parking.";
+"Check the operator app to confirm you can end your ride here." = "Check the operator app to confirm you can end your ride here.";
+"Directions to parking" = "Directions to parking";
+"Parking data is temporarily unavailable" = "Parking data is temporarily unavailable";
+"Parking data may be out of date" = "Parking data may be out of date";
+"Parking" = "Parking";

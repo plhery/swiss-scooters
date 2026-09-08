@@ -148,3 +148,9 @@ For cache rollback, redeploy the previous commit in Coolify and keep `/data`.
 The persisted snapshot format is versioned. Removing `SCOOTER_SNAPSHOT_API_URL`
 restores the older direct-feed route, but also restores its broad-view Worker
 subrequest limitation; prefer rolling back the cache image.
+
+Parking is an optional field in the existing scooter response and snapshot
+format; old clients and persisted snapshots remain readable. Deploy the cache
+before the clients, then verify `/health` reports `parkingLocations > 0` and an
+empty `failedParkingFeeds` list. A French request at zoom 16 includes `parking`
+and `meta.parkingStatus`; zoom 15 and below omit individual parking locations.

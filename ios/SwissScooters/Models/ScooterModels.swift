@@ -343,22 +343,46 @@ enum ScooterClusteringPolicy {
     }
 }
 
+struct ScooterParking: Identifiable, Equatable, Sendable {
+    let id: String
+    let provider: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let mandatory: Bool
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+    var title: String {
+        "\(ScooterProvider(rawValue: provider)?.name ?? provider) · \(String(localized: "Parking"))"
+    }
+    var guidance: String {
+        let rule = mandatory ? String(localized: "Designated parking is required in this zone.")
+            : String(localized: "Designated scooter parking.")
+        return "\(rule)\n\(String(localized: "Check the operator app to confirm you can end your ride here."))"
+    }
+}
+
 struct ScooterResponse: Sendable {
     let vehicles: [Scooter]
     let clusters: [ScooterCluster]
     let providers: [String: Int]
     let meta: ScooterResponseMetadata?
+    let parking: [ScooterParking]
 
     init(
         vehicles: [Scooter],
         clusters: [ScooterCluster] = [],
         providers: [String: Int] = [:],
-        meta: ScooterResponseMetadata? = nil
+        meta: ScooterResponseMetadata? = nil,
+        parking: [ScooterParking] = []
     ) {
         self.vehicles = vehicles
         self.clusters = clusters
         self.providers = providers
         self.meta = meta
+        self.parking = parking
     }
 }
 
@@ -374,6 +398,7 @@ struct ScooterResponseMetadata: Sendable {
     let zoom: Int?
     let overview: Bool
     let refreshAfterSeconds: Int?
+    let parkingStatus: String?
 
     init(
         partial: Bool,
@@ -386,7 +411,8 @@ struct ScooterResponseMetadata: Sendable {
         mode: String? = nil,
         zoom: Int? = nil,
         overview: Bool = false,
-        refreshAfterSeconds: Int? = nil
+        refreshAfterSeconds: Int? = nil,
+        parkingStatus: String? = nil
     ) {
         self.partial = partial
         self.stale = stale
@@ -399,6 +425,7 @@ struct ScooterResponseMetadata: Sendable {
         self.zoom = zoom
         self.overview = overview
         self.refreshAfterSeconds = refreshAfterSeconds
+        self.parkingStatus = parkingStatus
     }
 }
 
@@ -458,7 +485,8 @@ extension ScooterResponseMetadataPayload {
             mode: mode.rawValue,
             zoom: zoom,
             overview: overview ?? false,
-            refreshAfterSeconds: refreshAfterSeconds
+            refreshAfterSeconds: refreshAfterSeconds,
+            parkingStatus: parkingStatus?.rawValue
         )
     }
 }
@@ -469,7 +497,9 @@ extension ScooterAPIResponsePayload {
             vehicles: vehicles.map(\.model),
             clusters: clusters.map(\.model),
             providers: providers,
-            meta: meta.model
+            meta: meta.model,
+            parking: (parking ?? []).map { ScooterParking(id: $0.id, provider: $0.provider,
+                name: $0.name, latitude: $0.lat, longitude: $0.lng, mandatory: $0.mandatory) }
         )
     }
 }

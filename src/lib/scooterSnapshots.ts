@@ -2,6 +2,7 @@ import { SWISS_SCOOTER_AREAS, coverageIntersects } from '@/lib/feedCoverage';
 import { FRENCH_SCOOTER_SYSTEMS } from '@/lib/frenchScooterSystems';
 import { boundsContainPoint, haversineM } from '@/lib/geo';
 import { CITY_OVERVIEW_MAX_ZOOM, providersForViewport } from '@/lib/mapCoverage';
+import { PARKING_MAX_AGE_MS, PARKING_MIN_ZOOM, type ParkingSnapshot } from '@/lib/parking';
 import { scooterResponse } from '@/lib/scooterResponse';
 import { ScooterFeedsUnavailableError, type FeedQuery, type ScooterFetchMetadata } from '@/lib/scooterFeeds';
 import type { MapBounds, ScooterCluster, ScooterResponse, Vehicle } from '@/lib/types';
@@ -11,6 +12,7 @@ export const OVERVIEW_REFRESH_MS = 60 * 60_000;
 const OVERVIEW_MAX_AGE_MS = 3 * OVERVIEW_REFRESH_MS;
 
 export interface FeedSnapshot {
+  parking?: ParkingSnapshot;
   id: string;
   source: keyof ScooterFetchMetadata['sources'];
   provider: string;
@@ -164,9 +166,18 @@ export function querySnapshot(snapshot: MobilitySnapshot, query: FeedQuery, zoom
   }
   const vehicles = [...unique.values()];
   if (query.origin) vehicles.sort((a, b) => (a.distance_m ?? 0) - (b.distance_m ?? 0));
-  return scooterResponse({ vehicles, meta }, zoom, {
+  const response = scooterResponse({ vehicles, meta }, zoom, {
     generatedAt: new Date(Math.min(now, ...relevant.filter(feed => !feed.skipped && feed.observedAt > 0).map(feed => feed.observedAt))).toISOString(),
     refreshAfterSeconds: 60,
     availableProviders: providersForViewport(query.bounds),
   });
+  if (zoom !== null && zoom >= PARKING_MIN_ZOOM) {
+    const systems = relevant.filter(feed => feed.source === 'france');
+    const available = systems.filter(feed => feed.parking && now - feed.parking.observedAt <= PARKING_MAX_AGE_MS);
+    response.parking = available.flatMap(feed => feed.parking!.locations)
+      .filter(location => boundsContainPoint(query.bounds, location.lat, location.lng));
+    response.meta.parkingStatus = !systems.length ? 'skipped' : available.length === 0 ? 'failed'
+      : available.length < systems.length ? 'partial' : available.some(feed => feed.parking!.stale) ? 'stale' : 'fresh';
+  }
+  return response;
 }

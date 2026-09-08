@@ -26,6 +26,27 @@
   filter: invert(1) hue-rotate(180deg) saturate(0.65) brightness(0.85);
 }
 
+.parking-marker-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.parking-marker {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--parking-provider);
+  border-radius: 6px;
+  background: #fff;
+  color: #174a91;
+  font: 800 15px/1 system-ui, sans-serif;
+  box-shadow: 0 1px 5px #0004;
+}
+
+.parking-popup { max-width: 260px; }
+.parking-popup p { margin: 8px 0; }
+
 .leaflet-top {
   top: calc(var(--sat) + 8px);
 }

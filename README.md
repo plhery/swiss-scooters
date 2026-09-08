@@ -100,3 +100,8 @@ The app stores no account or location history.
 - [Security](SECURITY.md)
 
 Swiss Scooters is open source under the [MIT License](LICENSE). Come build with us.
+
+French operator parking bays appear as **P** markers at street zoom. Tap a bay
+for the provider, published parking requirement and directions. Closed return
+locations are removed when the operator publishes that status. Coverage depends
+on the operator's public feed; check its app before ending a ride.

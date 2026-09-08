@@ -4,6 +4,18 @@ import XCTest
 @testable import SwissScooters
 
 final class ScooterAPITests: XCTestCase {
+    func testParkingIsDecodedSeparatelyFromVehiclesAndLegacyResponsesStillWork() async throws {
+        let data = Data(#"{"vehicles":[],"clusters":[],"providers":{},"parking":[{"id":"dott:bay","provider":"dott","name":"Place test","lat":45.75,"lng":4.85,"mandatory":true}],"meta":{"partial":false,"stale":false,"failedSources":[],"sources":{},"generatedAt":"2026-09-08T12:00:00Z","truncated":false,"totalVehicles":0,"mode":"vehicles","zoom":16,"parkingStatus":"fresh"}}"#.utf8)
+        let response = try await makeAPI(responseStatus: 200, data: data).scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
+        XCTAssertEqual(response.parking.count, 1)
+        XCTAssertTrue(response.parking[0].mandatory)
+        XCTAssertEqual(response.parking[0].coordinate.latitude, 45.75)
+        XCTAssertEqual(response.meta?.parkingStatus, "fresh")
+        XCTAssertTrue(response.vehicles.isEmpty)
+        let legacy = try await makeAPI(responseStatus: 200, data: emptyResponseData).scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
+        XCTAssertTrue(legacy.parking.isEmpty)
+    }
+
     func testSuccessfulResponseIsDecoded() async throws {
         let api = makeAPI(responseStatus: 200, data: emptyResponseData)
 

@@ -3,6 +3,15 @@
 
 import Foundation
 
+struct ScooterParkingLocationPayload: Decodable, Sendable {
+    let id: String
+    let provider: String
+    let name: String
+    let lat: Double
+    let lng: Double
+    let mandatory: Bool
+}
+
 enum ScooterFeedSourceStatusPayload: String, Decodable, Sendable {
     case fresh = "fresh"
     case stale = "stale"
@@ -79,6 +88,7 @@ struct ScooterClusterPayload: Decodable, Sendable {
 }
 
 struct ScooterResponseMetadataPayload: Decodable, Sendable {
+    let parkingStatus: ScooterFeedSourceStatusPayload?
     let partial: Bool
     let stale: Bool
     let failedSources: [String]
@@ -94,6 +104,7 @@ struct ScooterResponseMetadataPayload: Decodable, Sendable {
 }
 
 struct ScooterAPIResponsePayload: Decodable, Sendable {
+    let parking: [ScooterParkingLocationPayload]?
     let vehicles: [ScooterVehiclePayload]
     let clusters: [ScooterClusterPayload]
     let providers: [String: Int]

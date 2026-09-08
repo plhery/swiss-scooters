@@ -96,3 +96,20 @@ describe('map coverage and zoom tiers', () => {
     expect(mapRepresentationsMatch(16, 19)).toBe(true);
   });
 });
+
+it('returns parking only at street zoom, separately from scooter counts and battery filters', () => {
+  const location = { id: 'dott_fr_lyon:bay', name: 'Bay', provider: 'dott', lat: 45.75, lng: 4.85, mandatory: true };
+  const cached = snapshot([feed({ parking: { locations: [location, { ...location, id: 'outside', lat: 47 }], observedAt: now, stale: false } })]);
+  const street = querySnapshot(cached, { ...query, minBattery: 100 }, 16, now);
+  expect(street.vehicles).toEqual([]);
+  expect(street.parking).toEqual([location]);
+  expect(street.meta.totalVehicles).toBe(0);
+  expect(street.meta.parkingStatus).toBe('fresh');
+  expect(querySnapshot(cached, query, 15, now).parking).toBeUndefined();
+  expect(querySnapshot(cached, { ...query, providers: new Set(['voi']) }, 16, now).parking).toEqual([]);
+  cached.feeds[0].parking!.observedAt = now - VEHICLE_MAX_AGE_MS - 1;
+  const expired = querySnapshot(cached, query, 16, now);
+  expect(expired.parking).toEqual([]);
+  expect(expired.meta.parkingStatus).toBe('failed');
+  expect(expired.vehicles).toHaveLength(2);
+});

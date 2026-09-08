@@ -5,7 +5,7 @@ import MapWrapper from '@/components/MapWrapper';
 import BottomSheet, { type SelectedVehicle } from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
 import type { AddressResult } from '@/components/AddressSearch';
-import type { MapBounds, ScooterCluster, Vehicle, ScooterResponse } from '@/lib/types';
+import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle, ScooterResponse } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
   parseClientParams,
@@ -93,6 +93,7 @@ export default function Home() {
   );
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [clusters, setClusters] = useState<ScooterCluster[]>([]);
+  const [parking, setParking] = useState<ParkingLocation[]>([]);
   const [viewportBounds, setViewportBounds] = useState<MapBounds | null>(null);
   const [mapQuery, setMapQuery] = useState<ScooterMapQuery | null>(null);
   const [focusRequest, setFocusRequest] = useState<{
@@ -191,6 +192,7 @@ export default function Home() {
       if (requestRef.current?.id !== request.id) return false;
       setVehicles(data.vehicles);
       setClusters(data.clusters ?? []);
+      setParking(data.parking ?? []);
       setResponseMeta(data.meta);
       const generatedAt = data.meta?.generatedAt ? new Date(data.meta.generatedAt) : new Date();
       const updatedAt = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt;
@@ -347,6 +349,8 @@ export default function Home() {
     () => scooterDataHealthNotice(responseMeta, representedVehicleCount, {
       cached: t('data.cached'),
       overview: t('data.overview'),
+      parkingUnavailable: t('parking.unavailable'),
+      parkingStale: t('parking.stale'),
       partial: t('data.partial'),
       truncated: (shown, total) => t('data.truncated', {
         shown: formatNumber(shown),
@@ -376,6 +380,8 @@ export default function Home() {
   return (
     <div className="app-shell" data-map-theme={tileLayer}>
       <MapWrapper
+        parking={parking.filter(location => enabledProviders.has(location.provider) &&
+          viewportBounds && boundsContainPoint(viewportBounds, location.lat, location.lng))}
         vehicles={viewportData.visibleVehicles}
         clusters={viewportData.visibleClusters}
         clustered={responseMeta?.mode === 'clusters'}

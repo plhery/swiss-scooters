@@ -1,12 +1,13 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import type { MapBounds, ScooterCluster, Vehicle } from '@/lib/types';
+import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import type { AddressResult } from '@/components/AddressSearch';
 
 const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
 interface MapWrapperProps {
+  parking?: ParkingLocation[];
   vehicles: Vehicle[];
   clusters: ScooterCluster[];
   clustered: boolean;

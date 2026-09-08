@@ -6,6 +6,8 @@ import { discoverCollectableFeeds, independentCollectableFeeds, ScooterFeedsUnav
 import { parseScooterQuery } from '../src/lib/scooterQuery';
 import { buildCityOverview, OVERVIEW_REFRESH_MS, querySnapshot, type FeedSnapshot, type MobilitySnapshot } from '../src/lib/scooterSnapshots';
 import { scooterResponseHeaders } from '../src/lib/scooterResponse';
+import { FRENCH_SCOOTER_SYSTEMS } from '../src/lib/frenchScooterSystems';
+import { fetchFrenchParking } from '../src/lib/parkingFeeds';
 
 const snapshotPath = process.env.SCOOTER_SNAPSHOT_PATH ?? '/data/scooters.json';
 const port = Number(process.env.PORT ?? 3001);
@@ -56,6 +58,18 @@ async function refresh() {
           stale: true, failed: true, skipped: false });
         console.warn(JSON.stringify({ event: 'snapshot_feed_failed', feed: definition.id,
           error: error instanceof Error ? error.message : String(error) }));
+      }
+      const frenchSystem = FRENCH_SCOOTER_SYSTEMS.find(system => definition.id === `france:${system.id}`);
+      if (frenchSystem) {
+        const record = next.get(definition.id)!;
+        try {
+          const parking = await fetchFrenchParking(frenchSystem);
+          record.parking = { ...parking, observedAt: parking.stale ? old?.parking?.observedAt ?? 0 : Date.now() };
+        } catch (error) {
+          if (old?.parking) record.parking = { ...old.parking, stale: true };
+          console.warn(JSON.stringify({ event: 'parking_feed_failed', feed: definition.id,
+            error: error instanceof Error ? error.message : String(error) }));
+        }
       }
     }
   }));
@@ -109,6 +123,9 @@ const server = createServer((request, response) => {
     response.writeHead(healthy ? 200 : 503);
     response.end(JSON.stringify({ ready: healthy, updatedAt: snapshot?.updatedAt,
       feeds: snapshot?.feeds.length, failedFeeds: snapshot?.feeds.filter(feed => feed.failed).map(feed => feed.id),
+      parkingLocations: snapshot?.feeds.reduce((total, feed) => total + (feed.parking?.locations.length ?? 0), 0),
+      failedParkingFeeds: snapshot?.feeds.filter(feed => feed.source === 'france' &&
+        (!feed.parking || feed.parking.stale || Date.now() - feed.parking.observedAt > 5 * interval)).map(feed => feed.id),
       cities: snapshot?.overview.cities.length, version: process.env.SOURCE_COMMIT ?? 'local' }));
     return;
   }

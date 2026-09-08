@@ -55,6 +55,7 @@ struct ScooterMapView: UIViewRepresentable {
     let onSelectionChange: (String?) -> Void
     var userHeading: ScooterUserHeading? = nil
     var showsMapCompass = true
+    var parking: [ScooterParking] = []
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -92,6 +93,8 @@ struct ScooterMapView: UIViewRepresentable {
             MKMarkerAnnotationView.self,
             forAnnotationViewWithReuseIdentifier: SearchedAddressAnnotation.reuseIdentifier
         )
+        mapView.register(MKMarkerAnnotationView.self,
+            forAnnotationViewWithReuseIdentifier: ScooterParkingAnnotation.reuseIdentifier)
         // MapKit can defer didSelect while resolving dense, overlapping annotations.
         // Publish direct scooter taps immediately and keep the delegate as a fallback.
         let scooterTapRecognizer = UITapGestureRecognizer(
@@ -118,6 +121,7 @@ struct ScooterMapView: UIViewRepresentable {
         context.coordinator.updateClusteringMode(on: mapView)
         context.coordinator.reconcile(scooters, revision: scooterRevision, on: mapView)
         context.coordinator.reconcile(clusters, revision: clusterRevision, on: mapView)
+        context.coordinator.reconcileParking(parking, on: mapView)
         context.coordinator.applyDestination(destination, on: mapView)
         context.coordinator.applySelection(selectedScooterID, on: mapView)
         context.coordinator.applyFocus(focusRequest, on: mapView)
@@ -129,6 +133,8 @@ struct ScooterMapView: UIViewRepresentable {
         var parent: ScooterMapView
         private var annotationsByID: [String: ScooterMapAnnotation] = [:]
         private var clusterAnnotationsByID: [String: ScooterServerClusterAnnotation] = [:]
+        private var parkingAnnotationsByID: [String: ScooterParkingAnnotation] = [:]
+        private var reconciledParking: [ScooterParking] = []
         private var lastFocusToken: Int?
         private var appliedSelectionID: String?
         private var reconciledScooterRevision: Int?
@@ -223,6 +229,18 @@ struct ScooterMapView: UIViewRepresentable {
             if !additions.isEmpty {
                 mapView.addAnnotations(additions)
             }
+        }
+
+        func reconcileParking(_ locations: [ScooterParking], on mapView: MKMapView) {
+            guard locations != reconciledParking else { return }
+            reconciledParking = locations
+            let incoming = Dictionary(locations.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+            let removed = parkingAnnotationsByID.values.filter { incoming[$0.parking.id] != $0.parking }
+            mapView.removeAnnotations(removed)
+            for annotation in removed { parkingAnnotationsByID.removeValue(forKey: annotation.parking.id) }
+            let added = locations.filter { parkingAnnotationsByID[$0.id] == nil }.map(ScooterParkingAnnotation.init)
+            for annotation in added { parkingAnnotationsByID[annotation.parking.id] = annotation }
+            mapView.addAnnotations(added)
         }
 
         func reconcile(_ clusters: [ScooterCluster], revision: Int, on mapView: MKMapView) {
@@ -373,6 +391,29 @@ struct ScooterMapView: UIViewRepresentable {
                 return view
             }
 
+            if let parking = annotation as? ScooterParkingAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: ScooterParkingAnnotation.reuseIdentifier, for: parking
+                ) as! MKMarkerAnnotationView
+                view.markerTintColor = ScooterProvider(rawValue: parking.parking.provider)?.uiColor ?? .systemBlue
+                view.glyphText = "P"
+                view.glyphImage = nil
+                view.canShowCallout = true
+                view.displayPriority = .required
+                view.clusteringIdentifier = nil
+                view.accessibilityLabel = "\(parking.parking.title), \(parking.parking.name)"
+                let details = UILabel()
+                details.numberOfLines = 0
+                details.font = .preferredFont(forTextStyle: .caption1)
+                details.text = parking.parking.guidance
+                details.widthAnchor.constraint(lessThanOrEqualToConstant: 250).isActive = true
+                view.detailCalloutAccessoryView = details
+                let directions = UIButton(type: .detailDisclosure)
+                directions.accessibilityLabel = String(localized: "Directions to parking")
+                view.rightCalloutAccessoryView = directions
+                return view
+            }
+
             if let address = annotation as? SearchedAddressAnnotation {
                 let view = mapView.dequeueReusableAnnotationView(
                     withIdentifier: SearchedAddressAnnotation.reuseIdentifier,
@@ -427,6 +468,11 @@ struct ScooterMapView: UIViewRepresentable {
             guard let mapView = gestureRecognizer.view as? MKMapView else { return }
             let point = gestureRecognizer.location(in: mapView)
             guard !Self.isCompassView(mapView.hitTest(point, with: nil)) else { return }
+            var hitView = mapView.hitTest(point, with: nil)
+            while let view = hitView, view !== mapView {
+                if let annotation = (view as? MKAnnotationView)?.annotation, annotation is ScooterParkingAnnotation { return }
+                hitView = view.superview
+            }
             guard !isExcludedFromMapInteraction(point, on: mapView) else {
                 registerExcludedChromeInteraction()
                 return
@@ -623,7 +669,25 @@ struct ScooterMapView: UIViewRepresentable {
             appliedSelectionID = nil
             parent.onSelectionChange(nil)
         }
+
+        func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView,
+            calloutAccessoryControlTapped control: UIControl) {
+            guard let annotation = view.annotation as? ScooterParkingAnnotation else { return }
+            let item = MKMapItem(location: CLLocation(latitude: annotation.coordinate.latitude,
+                longitude: annotation.coordinate.longitude), address: nil)
+            item.name = annotation.parking.name
+            item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+        }
     }
+}
+
+final class ScooterParkingAnnotation: NSObject, MKAnnotation {
+    static let reuseIdentifier = "scooter-parking"
+    let parking: ScooterParking
+    var coordinate: CLLocationCoordinate2D { parking.coordinate }
+    var title: String? { parking.title }
+    var subtitle: String? { parking.name }
+    init(parking: ScooterParking) { self.parking = parking; super.init() }
 }
 
 final class SearchedAddressAnnotation: NSObject, MKAnnotation {

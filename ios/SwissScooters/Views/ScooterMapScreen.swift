@@ -31,7 +31,8 @@ struct ScooterMapScreen: View {
                     onRegionChange: model.updateViewport,
                     onSelectionChange: handleSelection,
                     userHeading: model.userHeading,
-                    showsMapCompass: !searchIsExpanded
+                    showsMapCompass: !searchIsExpanded,
+                    parking: model.mapParking
                 )
                 .ignoresSafeArea()
 
