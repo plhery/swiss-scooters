@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Swiss Scooters.
+Thanks for helping improve Scooters.
 
 ## Before you start
 

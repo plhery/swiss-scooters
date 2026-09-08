@@ -6,6 +6,10 @@
   "compatibility_flags": ["nodejs_compat"],
   "routes": [
     {
+      "pattern": "scooters.plhery.com",
+      "custom_domain": true
+    },
+    {
       "pattern": "swiss-scooters.plhery.com",
       "custom_domain": true
     },

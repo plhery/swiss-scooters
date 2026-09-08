@@ -1,6 +1,6 @@
 # Code of conduct
 
-Swiss Scooters aims to be a welcoming, practical, and respectful project.
+Scooters aims to be a welcoming, practical, and respectful project.
 
 Contributors and maintainers are expected to communicate constructively,
 respect different backgrounds and levels of experience, accept good-faith

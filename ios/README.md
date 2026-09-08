@@ -1,8 +1,8 @@
-# Swiss Scooters — Map-first iOS app
+# Scooters — Map-first iOS app
 
-The canonical SwiftUI and MapKit app for Swiss Scooters, designed for iOS 26 or
+The canonical SwiftUI and MapKit app for Scooters, designed for iOS 26 or
 newer. It uses the production bundle identifier `com.plhery.zurichscooters` and
-appears as **Swiss Scooters** when installed.
+appears as **Scooters** when installed.
 
 ## Run it on your iPhone
 
@@ -21,10 +21,10 @@ the app while refreshing its free provisioning profile.
 
 No API keys or third-party packages are required. The app reads live scooter
 data from the production API at
-`https://swiss-scooters.plhery.com/api/scooters`.
+`https://scooters.plhery.com/api/scooters`.
 
-The shared API supports Switzerland and 25 French cities or operating areas.
-Search accepts Swiss addresses and supported French city names. French providers
+The shared API supports Switzerland and selected cities in France, Germany and Italy.
+Search accepts Swiss addresses and supported city names in those countries. Providers outside Switzerland
 include Dott, Bird, Lime, Voi and Pony, with EUR pricing where the feed supplies it.
 The backend loads feeds for the visible map area; viewing a French city does not
 load Swiss feeds just because the phone is in Switzerland.

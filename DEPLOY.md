@@ -1,14 +1,17 @@
 # Cloudflare deployment
 
-Swiss Scooters serves its Next.js website and geocoder on Cloudflare Workers
+Scooters serves its Next.js website and geocoder on Cloudflare Workers
 through OpenNext. The scooter API reads persistent snapshots from a small Node
 service on Netcup, managed by Coolify; user map requests never fetch GBFS feeds.
 
-- Canonical production host: <https://swiss-scooters.plhery.com>
-- Legacy compatibility host: <https://zurich-scooter.plhery.com>
+- Canonical production host: <https://scooters.plhery.com>
+- Legacy compatibility hosts: <https://swiss-scooters.plhery.com> and
+  <https://zurich-scooter.plhery.com>
 
-The legacy host redirects browser pages to the canonical host while continuing
-to serve `/api/*` for older native-app installations.
+Both legacy hosts redirect browser pages to the canonical host while continuing
+to serve `/api/*` for older native-app installations. Their `/sw.js` remains
+available on the original origin: it replaces cached web apps with a migration
+worker that clears old app caches and opens the new address.
 
 ## Requirements
 
@@ -47,8 +50,8 @@ npm run deploy
 OpenNext builds `.open-next/worker.js`; `worker.ts` applies the legacy-host
 redirect, proxies `/api/scooters` to `SCOOTER_SNAPSHOT_API_URL`, and delegates
 other requests to that generated Worker. Wrangler
-uploads the bundle and static assets, creates the `swiss-scooters.plhery.com`
-custom domain, and keeps the legacy hostname attached to the same Worker.
+uploads the bundle and static assets, creates the `scooters.plhery.com`
+custom domain, and keeps both legacy hostnames attached to the same Worker.
 
 The outer Worker applies the document CSP at the Cloudflare boundary. It creates
 a fresh nonce for every HTML response and uses `HTMLRewriter` to attach it to
@@ -75,7 +78,8 @@ npx wrangler deploy
 Use `npx wrangler versions upload` for non-production branch previews. After a
 GitHub repository or Worker rename, verify the build connection in Cloudflare;
 the repository is identified by GitHub internally, but the target Worker name
-must be `swiss-scooters`.
+must remain `swiss-scooters`. This is the internal Worker identity; the public
+app name and canonical domain are Scooters and `scooters.plhery.com`.
 
 ## Netcup scooter cache
 
@@ -125,7 +129,9 @@ counts, and feed failures; it does not log map URLs, coordinates, or caller IPs.
 3. Confirm legacy `/api/scooters` and `/api/geocode` requests still work.
 4. Verify valid scooter and address queries, bounds validation, `429` responses,
    and upstream outage behavior.
-5. Test a fresh PWA install and confirm old `zurich-scooter-*` caches disappear.
+5. Test a fresh PWA install and an update from each legacy origin. Confirm the
+   old app opens the canonical host and clears its `swiss-scooters-*` and
+   `zurich-scooter-*` caches.
 6. Test the native iOS app against the canonical endpoint.
 7. Check only structured, non-location-bearing application errors are persisted.
 8. Monitor latency, `429`, `5xx`, upstream failures, and Worker usage.
@@ -140,7 +146,7 @@ repository can remain private until the separate open-source publication gate.
 ## Rollback
 
 Cloudflare retains Worker versions. Roll back the deployment through the
-Cloudflare dashboard or Wrangler, then point both custom domains at the last
+Cloudflare dashboard or Wrangler, then point all three custom domains at the last
 known-good version. Do not remove the legacy hostname until installed native
 clients have had a reasonable migration window.
 

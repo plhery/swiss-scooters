@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://swiss-scooters.plhery.com/schemas/scooter-api-response.json",
+  "$id": "https://scooters.plhery.com/schemas/scooter-api-response.json",
   "title": "ScooterResponse",
   "x-swift-name": "ScooterAPIResponsePayload",
   "type": "object",

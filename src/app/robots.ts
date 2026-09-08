@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: '/api/',
     },
-    sitemap: 'https://swiss-scooters.plhery.com/sitemap.xml',
+    sitemap: 'https://scooters.plhery.com/sitemap.xml',
   };
 }

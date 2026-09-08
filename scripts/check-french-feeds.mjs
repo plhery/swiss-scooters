@@ -6,7 +6,7 @@ if (requested.some(country => !catalogs[country])) throw new Error('Use --countr
 const catalog = { systems: requested.flatMap(country => JSON.parse(readFileSync(
   new URL(`../data/${catalogs[country]}-scooter-feeds.json`, import.meta.url), 'utf8')).systems.map(system => ({ ...system, country }))) };
 const results = [];
-const headers = { Accept: 'application/json', 'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)' };
+const headers = { Accept: 'application/json', 'User-Agent': 'scooters/2.0 (scooters.plhery.com)' };
 
 async function json(url) {
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });

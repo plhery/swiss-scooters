@@ -1,4 +1,4 @@
-const baseUrl = process.env.SWISS_SCOOTERS_BASE_URL ?? 'https://swiss-scooters.plhery.com';
+const baseUrl = process.env.SWISS_SCOOTERS_BASE_URL ?? 'https://scooters.plhery.com';
 const query = new URLSearchParams({
   south: '47.36',
   west: '8.52',

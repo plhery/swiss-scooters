@@ -2,7 +2,7 @@
 
 Last updated: 23 August 2026
 
-Swiss Scooters has no accounts, advertising, analytics SDK, or application
+Scooters has no accounts, advertising, analytics SDK, or application
 database. It does not intentionally retain precise user locations or address
 searches.
 
@@ -22,6 +22,6 @@ searches.
 
 Cloudflare and upstream providers may process limited network or security
 metadata under their own privacy policies. The full user-facing notice is
-published at <https://swiss-scooters.plhery.com/privacy>.
+published at <https://scooters.plhery.com/privacy>.
 
 Questions: `swiss-scooters@plhery.com`.

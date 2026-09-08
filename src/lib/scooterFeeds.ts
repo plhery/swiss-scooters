@@ -245,7 +245,7 @@ function sharedMobilityHeaders(): Record<string, string> {
   return {
     Accept: 'application/json',
     Authorization: process.env.SHAREDMOBILITY_AUTH_EMAIL ?? DEFAULT_AUTH_EMAIL,
-    'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)',
+    'User-Agent': 'scooters/2.0 (scooters.plhery.com)',
   };
 }
 
@@ -255,7 +255,7 @@ export async function fetchJson<T>(
 ): Promise<CachedJson<T>> {
   const headers = options.authenticated
     ? sharedMobilityHeaders()
-    : { Accept: 'application/json', 'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)' };
+    : { Accept: 'application/json', 'User-Agent': 'scooters/2.0 (scooters.plhery.com)' };
 
   return upstreamJsonCache.fetch<T>(url, {
     headers,

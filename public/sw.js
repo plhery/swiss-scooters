@@ -1,5 +1,8 @@
-const CACHE_PREFIX = "swiss-scooters";
-const LEGACY_CACHE_PREFIXES = ["zurich-scooter"];
+const CACHE_PREFIX = "scooters";
+const LEGACY_CACHE_PREFIXES = ["swiss-scooters", "zurich-scooter"];
+const MOVED_ORIGIN = ["swiss-scooters.plhery.com", "zurich-scooter.plhery.com"].includes(
+  self.location.hostname
+) ? "https://scooters.plhery.com" : null;
 const APP_CACHE = `${CACHE_PREFIX}-app-v5`;
 const ASSET_CACHE = `${CACHE_PREFIX}-assets-v4`;
 const APP_SHELL_URL = new URL("/", self.location.origin).toString();
@@ -20,6 +23,11 @@ const MAX_ASSET_ENTRIES = 80;
 let shellRefreshPromise = null;
 
 self.addEventListener("install", (event) => {
+  if (MOVED_ORIGIN) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
+
   event.waitUntil(
     (async () => {
       const [appCache, assetCache] = await Promise.all([
@@ -50,7 +58,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      const activeCaches = new Set([APP_CACHE, ASSET_CACHE]);
+      const activeCaches = new Set(MOVED_ORIGIN ? [] : [APP_CACHE, ASSET_CACHE]);
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
@@ -61,6 +69,16 @@ self.addEventListener("activate", (event) => {
           ))
           .map((name) => caches.delete(name))
       );
+
+      if (MOVED_ORIGIN) {
+        await self.clients.claim();
+        const clients = await self.clients.matchAll({ type: "window" });
+        await Promise.allSettled(clients.map((client) => {
+          const destination = movedPageUrl(client.url);
+          return destination ? client.navigate(destination) : Promise.resolve();
+        }));
+        return;
+      }
 
       if (self.registration.navigationPreload) {
         try {
@@ -77,6 +95,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+  if (MOVED_ORIGIN) {
+    const destination = movedPageUrl(request.url);
+    if (request.mode === "navigate" && destination) {
+      event.respondWith(Response.redirect(destination, 308));
+    }
+    return;
+  }
+
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
@@ -114,7 +140,7 @@ self.addEventListener("message", (event) => {
     return;
   }
 
-  if (event.data?.type !== "CHECK_FOR_UPDATE") return;
+  if (MOVED_ORIGIN || event.data?.type !== "CHECK_FOR_UPDATE") return;
 
   event.waitUntil(
     (async () => {
@@ -130,6 +156,14 @@ self.addEventListener("message", (event) => {
     })()
   );
 });
+
+function movedPageUrl(source) {
+  const url = new URL(source);
+  if (!MOVED_ORIGIN || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) {
+    return null;
+  }
+  return `${MOVED_ORIGIN}${url.pathname}${url.search}${url.hash}`;
+}
 
 async function serveAppShell(refresh) {
   const cache = await caches.open(APP_CACHE);

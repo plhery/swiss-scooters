@@ -10,22 +10,22 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://swiss-scooters.plhery.com"),
-  title: "Swiss Scooters",
+  metadataBase: new URL("https://scooters.plhery.com"),
+  title: "Scooters",
   description: "Find shared e-scooters in Switzerland and selected cities in France, Germany and Italy",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
-    siteName: "Swiss Scooters",
-    title: "Swiss Scooters",
+    siteName: "Scooters",
+    title: "Scooters",
     description: "Find shared e-scooters in Switzerland and selected cities in France, Germany and Italy",
     locale: "en_CH",
-    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "Swiss Scooters" }],
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "Scooters" }],
   },
   twitter: {
     card: "summary",
-    title: "Swiss Scooters",
+    title: "Scooters",
     description: "Find shared e-scooters in Switzerland and selected cities in France, Germany and Italy",
     images: ["/icon-512.png"],
   },
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Swiss Scooters",
+    title: "Scooters",
   },
 };
 

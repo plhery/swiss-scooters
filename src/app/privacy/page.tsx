@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Privacy — Swiss Scooters',
-  description: 'How Swiss Scooters handles location, search, and service data.',
+  title: 'Privacy — Scooters',
+  description: 'How Scooters handles location, search, and service data.',
   alternates: { canonical: '/privacy' },
 };
 
@@ -11,13 +11,13 @@ export default function PrivacyPage() {
   return (
     <main className="legal-page">
       <article className="legal-content">
-        <Link className="legal-back" href="/">← Back to Swiss Scooters</Link>
+        <Link className="legal-back" href="/">← Back to Scooters</Link>
         <h1>Privacy</h1>
         <p>Last updated: 23 August 2026</p>
 
         <h2>Overview</h2>
         <p>
-          Swiss Scooters has no user accounts, advertising, analytics SDK, or application
+          Scooters has no user accounts, advertising, analytics SDK, or application
           database. It does not intentionally retain your precise location or address searches.
         </p>
 
@@ -25,7 +25,7 @@ export default function PrivacyPage() {
         <p>
           If you grant location permission, your browser or device provides your position to the
           app. Your position is used on the device to focus the map and calculate distances. The
-          Swiss Scooters API receives the visible map bounds needed to find vehicles, but no
+          Scooters API receives the visible map bounds needed to find vehicles, but no
           separate user-location coordinate. These values are not stored by the application.
         </p>
         <p>
@@ -35,7 +35,7 @@ export default function PrivacyPage() {
 
         <h2>Address search</h2>
         <p>
-          Address search text is sent through the Swiss Scooters API to the Swiss federal
+          Address search text is sent through the Scooters API to the Swiss federal
           geo.admin.ch service operated by swisstopo. The current app sends search text in the
           request body, and instructs browsers and intermediary caches not to store the request
           or response.
@@ -44,7 +44,7 @@ export default function PrivacyPage() {
         <h2>Mobility data</h2>
         <p>
           Live vehicle data comes from the Open data platform mobility Switzerland and participating
-          mobility providers. Swiss Scooters filters that data to the visible map area and does not
+          mobility providers. Scooters filters that data to the visible map area and does not
           build a history of vehicle movements.
         </p>
 

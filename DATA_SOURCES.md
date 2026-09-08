@@ -1,6 +1,6 @@
 # Data sources and terms
 
-Swiss Scooters does not own the mobility, address, or map data it displays.
+Scooters does not own the mobility, address, or map data it displays.
 
 ## Mobility data
 

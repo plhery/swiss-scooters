@@ -1052,7 +1052,7 @@ struct ScooterSettingsSheet: View {
                     Link(destination: URL(string: "https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api")!) {
                         Label("Address data © swisstopo", systemImage: "map")
                     }
-                    Link(destination: URL(string: "https://swiss-scooters.plhery.com/privacy")!) {
+                    Link(destination: URL(string: "https://scooters.plhery.com/privacy")!) {
                         Label("Privacy", systemImage: "hand.raised")
                     }
                 } header: {

@@ -1,9 +1,15 @@
-const LEGACY_HOST = 'zurich-scooter.plhery.com';
-const CANONICAL_HOST = 'swiss-scooters.plhery.com';
+const LEGACY_HOSTS = new Set(['zurich-scooter.plhery.com', 'swiss-scooters.plhery.com']);
+const CANONICAL_HOST = 'scooters.plhery.com';
 
 export function legacyHostRedirect(request: Request): Response | null {
   const source = new URL(request.url);
-  if (source.hostname !== LEGACY_HOST || source.pathname.startsWith('/api/')) {
+  // Service-worker updates must stay on their original origin. The legacy
+  // worker migrates installed web apps that would otherwise keep a cached shell.
+  if (
+    !LEGACY_HOSTS.has(source.hostname) ||
+    source.pathname.startsWith('/api/') ||
+    source.pathname === '/sw.js'
+  ) {
     return null;
   }
 

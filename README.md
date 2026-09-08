@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/icon.svg" width="92" alt="Swiss Scooters logo">
+  <img src="public/icon.svg" width="92" alt="Scooters logo">
 </p>
 
-<h1 align="center">Swiss Scooters</h1>
+<h1 align="center">Scooters</h1>
 
 <p align="center">
   A friendly map for finding shared e-scooters in Switzerland and selected cities in France, Germany and Italy.
@@ -16,14 +16,14 @@
 </p>
 
 <p align="center">
-  <a href="https://swiss-scooters.plhery.com"><strong>Open the live map →</strong></a>
+  <a href="https://scooters.plhery.com"><strong>Open the live map →</strong></a>
 </p>
 
 <p align="center">
-  <img src="docs/swiss-scooters-map.png" width="390" alt="Swiss Scooters showing fictional demo scooters around Zürich on a phone">
+  <img src="docs/swiss-scooters-map.png" width="390" alt="Scooters showing fictional demo scooters around Zürich on a phone">
 </p>
 
-Swiss Scooters brings the national shared-mobility feed, Swiss address search,
+Scooters brings the national shared-mobility feed, Swiss address search,
 provider and battery filters, and light/dark maps into one installable web app.
 It speaks German, French, Italian, and English. There is also a native SwiftUI
 app for iPhone.
@@ -99,7 +99,7 @@ The app stores no account or location history.
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 
-Swiss Scooters is open source under the [MIT License](LICENSE). Come build with us.
+Scooters is open source under the [MIT License](LICENSE). Come build with us.
 
 Published operator parking bays appear as **P** markers at street zoom. Tap a bay
 for the provider, published parking requirement and directions. Closed return

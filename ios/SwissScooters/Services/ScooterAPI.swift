@@ -15,7 +15,7 @@ extension URLSession: ScooterNetworkSession {
 }
 
 actor ScooterAPI: ScooterAPIClient {
-    static let productionBaseURL = URL(string: "https://swiss-scooters.plhery.com")!
+    static let productionBaseURL = URL(string: "https://scooters.plhery.com")!
 
     private let baseURL: URL
     private let session: any ScooterNetworkSession

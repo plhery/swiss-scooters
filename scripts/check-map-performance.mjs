@@ -1,5 +1,5 @@
 // Public city coordinates; never use saved user positions in a performance log.
-const base = process.env.SWISS_SCOOTERS_BASE_URL ?? 'https://swiss-scooters.plhery.com';
+const base = process.env.SWISS_SCOOTERS_BASE_URL ?? 'https://scooters.plhery.com';
 const cases = [
   ['Europe overview', { south: 40, west: -5, north: 56, east: 16, zoom: 5 }],
   ['Lyon clusters', { south: 45.72, west: 4.79, north: 45.8, east: 4.9, zoom: 13 }],

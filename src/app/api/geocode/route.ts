@@ -91,7 +91,7 @@ async function geocode(request: NextRequest, input: GeocodeInput) {
       headers: {
         Accept: 'application/json',
         'Accept-Language': `${language}-CH,${language};q=0.9,en;q=0.6`,
-        'User-Agent': 'swiss-scooters/2.0 (swiss-scooters.plhery.com)',
+        'User-Agent': 'scooters/2.0 (scooters.plhery.com)',
       },
       signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),
     });

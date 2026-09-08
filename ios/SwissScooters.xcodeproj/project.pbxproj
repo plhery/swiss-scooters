@@ -479,9 +479,9 @@
 				DEVELOPMENT_TEAM = HGC93X794T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Swiss Scooters";
+				INFOPLIST_KEY_CFBundleDisplayName = "Scooters";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Swiss Scooters uses your location to show nearby shared scooters and your distance from them.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Scooters uses your location to show nearby shared scooters and your distance from them.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -511,9 +511,9 @@
 				DEVELOPMENT_TEAM = HGC93X794T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Swiss Scooters";
+				INFOPLIST_KEY_CFBundleDisplayName = "Scooters";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Swiss Scooters uses your location to show nearby shared scooters and your distance from them.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Scooters uses your location to show nearby shared scooters and your distance from them.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;

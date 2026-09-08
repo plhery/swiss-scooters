@@ -211,7 +211,8 @@ test('city overview drills directly into the city and preserves unchanged marker
   const original = await marker.elementHandle();
   await marker.click();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
-  await expect(page.getByText('City totals · refreshed hourly')).toBeVisible();
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on map$/);
+  await expect(page.getByText('City totals · refreshed hourly')).toHaveCount(0);
   expect(await original?.evaluate(node => node.isConnected)).toBe(true);
 });
 
