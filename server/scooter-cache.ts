@@ -87,7 +87,7 @@ async function refresh() {
     for (const id of next.keys()) if (!active.has(id)) next.delete(id);
   }
   const feeds = [...next.values()];
-  const overview = overviewNeedsRefresh(snapshot, feeds, now)
+  const overview = !snapshot || overviewNeedsRefresh(snapshot, feeds, now)
     ? buildCityOverview(feeds, now) : snapshot.overview;
   snapshot = { version: 1, updatedAt: now, feeds, overview };
   const temporaryPath = `${snapshotPath}.${randomUUID()}.tmp`;
