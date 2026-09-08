@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MapWrapper from '@/components/MapWrapper';
 import BottomSheet, { type SelectedVehicle } from '@/components/BottomSheet';
@@ -232,6 +234,7 @@ export default function Home() {
       return true;
     } catch (e) {
       if (request.controller.signal.aborted || requestRef.current?.id !== request.id) return false;
+      track('data_error', { result: deadline.signal.aborted ? 'timeout' : 'request_failed' });
       console.error('Failed to fetch scooters:', e);
       setError(true);
       return false;
@@ -248,6 +251,7 @@ export default function Home() {
     if (!responseMeta) return;
     const expiry = responseExpiry(responseMeta, receivedAtRef.current);
     const expireVehicles = () => {
+      track('data_expired');
       setVehicles([]);
       setClusters([]);
       setSelectedVehicleKey(null);
@@ -302,6 +306,7 @@ export default function Home() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleProviderToggle = (provider: string) => {
+    track('provider_filter', { provider, enabled: !enabledProviders.has(provider), source: 'filters' });
     setEnabledProviders(current => {
       const next = new Set(current);
       if (next.has(provider)) next.delete(provider);
@@ -311,10 +316,12 @@ export default function Home() {
   };
 
   const handleShowAllProviders = () => {
+    track('providers_all');
     setEnabledProviders(new Set(Object.keys(PROVIDERS)));
   };
 
   const handleAddressSelect = (result: AddressResult) => {
+    track('search_select');
     const location: [number, number] = [result.lat, result.lng];
     setShowLocationIntro(false);
     setSelectedVehicleKey(null);
@@ -338,6 +345,7 @@ export default function Home() {
   }, []);
 
   const handleLocateMe = useCallback(() => {
+    track('locate');
     setShowLocationIntro(false);
     if (headingPermission !== 'granted') void requestHeadingPermission().then(setHeadingPermission);
     locate((coords) => {
@@ -346,6 +354,7 @@ export default function Home() {
   }, [headingPermission, locate]);
 
   const resetFilters = useCallback(() => {
+    track('filters_reset');
     setMinBattery(0);
     setEnabledProviders(new Set(Object.keys(PROVIDERS)));
   }, []);
@@ -439,6 +448,7 @@ export default function Home() {
   const locationIntroVisible = showLocationIntro && !searchExpanded && !userLocation && !searchedAddress;
 
   const openPanel = (panel: 'filters' | 'settings') => {
+    track(panel === 'filters' ? 'filters_open' : 'settings_open');
     selectionFeedback();
     setSearchExpanded(false);
     setShowLocationIntro(false);
@@ -447,6 +457,7 @@ export default function Home() {
   };
 
   const handleQuickProviderToggle = (provider: string) => {
+    track('provider_filter', { provider, source: 'quick' });
     setEnabledProviders(current => {
       if (current.size === 1 && current.has(provider)) return new Set(Object.keys(PROVIDERS));
       if (availableProviders.every(key => current.has(key))) return new Set([provider]);
@@ -477,6 +488,7 @@ export default function Home() {
         onViewportChange={handleViewportChange}
         selectedVehicleKey={selectedVehicleKey}
         onVehicleSelect={vehicle => {
+          track('vehicle_select', { provider: vehicle.provider });
           selectionFeedback();
           setShowLocationIntro(false);
           setSelectedVehicleKey(vehicle.vehicle_id
@@ -491,7 +503,7 @@ export default function Home() {
         hasLocation={Boolean(userLocation)}
         expanded={searchExpanded}
         hasActiveFilters={hasActiveFilters}
-        onExpandedChange={expanded => { setSearchExpanded(expanded); if (expanded) setShowLocationIntro(false); }}
+        onExpandedChange={expanded => { track(expanded ? 'search_open' : 'search_close'); setSearchExpanded(expanded); if (expanded) setShowLocationIntro(false); }}
         onSelect={handleAddressSelect}
         onClear={() => setSearchedAddress(null)}
         onLocate={handleLocateMe}
@@ -515,7 +527,7 @@ export default function Home() {
               <button type="button" className="intro-primary" onClick={() => { selectionFeedback(); handleLocateMe(); }}>
                 <Icon name="location" size={18} />{t('intro.useLocation')}
               </button>
-              <button type="button" onClick={() => { selectionFeedback(); setShowLocationIntro(false); }}>{t('intro.browse')}</button>
+              <button type="button" onClick={() => { track('browse_map'); selectionFeedback(); setShowLocationIntro(false); }}>{t('intro.browse')}</button>
             </div>
           </div>
         </div>
@@ -531,7 +543,7 @@ export default function Home() {
       {error && !locating && (
         <div className="toast glass toast-error" role="alert">
           {t('errors.fetchScooters')}
-          <button onClick={() => void fetchScooters()}>{t('status.retry')}</button>
+          <button onClick={() => { track('refresh'); void fetchScooters(); }}>{t('status.retry')}</button>
         </div>
       )}
 
@@ -572,23 +584,23 @@ export default function Home() {
         hidden={searchExpanded}
         onShowAllProviders={handleShowAllProviders}
         onProviderToggle={handleQuickProviderToggle}
-        onClearSelection={() => setSelectedVehicleKey(null)}
+        onClearSelection={() => { track('vehicle_dismiss'); setSelectedVehicleKey(null); }}
         onResetFilters={resetFilters}
       />
 
       <ControlSheet
         open={panelOpen}
         panel={activePanel}
-        onClose={() => setPanelOpen(false)}
+        onClose={() => { track('panel_close'); setPanelOpen(false); }}
         minBattery={minBattery}
         enabledProviders={enabledProviders}
         availableProviders={availableProviders}
         hasActiveFilters={hasActiveFilters}
         tileLayer={tileLayer}
-        onMinBatteryChange={setMinBattery}
+        onMinBatteryChange={value => { track('battery_filter', { value }); setMinBattery(value); }}
         onProviderToggle={handleProviderToggle}
         onResetFilters={resetFilters}
-        onTileLayerChange={setTileLayer}
+        onTileLayerChange={style => { track('map_style', { style }); setTileLayer(style); }}
       />
     </div>
   );

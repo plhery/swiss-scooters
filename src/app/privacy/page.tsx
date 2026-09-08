@@ -1,3 +1,4 @@
+import AnalyticsPreference from '@/components/AnalyticsPreference';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
@@ -13,12 +14,11 @@ export default function PrivacyPage() {
       <article className="legal-content">
         <Link className="legal-back" href="/">← Back to Scooters</Link>
         <h1>Privacy</h1>
-        <p>Last updated: 23 August 2026</p>
+        <p>Last updated: 8 September 2026</p>
 
         <h2>Overview</h2>
         <p>
-          Scooters has no user accounts, advertising, analytics SDK, or application
-          database. It does not intentionally retain your precise location or address searches.
+          Scooters has no user accounts or advertising. It does not intentionally retain your precise location or address searches.
         </p>
 
         <h2>Location and map requests</h2>
@@ -47,6 +47,28 @@ export default function PrivacyPage() {
           mobility providers. Scooters filters that data to the visible map area and does not
           build a history of vehicle movements.
         </p>
+
+        <h2>Usage analytics</h2>
+        <p>
+          The public website and iOS app send page or screen views and actions to our
+          self-hosted Umami service at u.plhery.com. These include searches (only result counts),
+          filters, map selections, directions and rental button taps, settings changes, and
+          generic error outcomes. Events distinguish web, installed web app, and iOS usage.
+          Rental taps do not tell us whether you actually rented a vehicle.
+        </p>
+        <p>
+          Analytics never includes address text, precise coordinates, vehicle identifiers,
+          full URLs, or advertising identifiers. Umami processes your IP address and user agent
+          to derive approximate location, device information, and short-lived session statistics.
+          It does not store raw IP addresses. We use no analytics cookies or persistent user IDs,
+          and do not record your screen or replay sessions.
+        </p>
+        <p>
+          You can disable usage analytics below, or in the iOS app&apos;s Settings.
+          The website also respects Do Not Track and Global Privacy Control. This browser
+          preference is saved locally and does not affect your iOS setting.
+        </p>
+        <p><AnalyticsPreference /></p>
 
         <h2>Local storage and service worker</h2>
         <p>

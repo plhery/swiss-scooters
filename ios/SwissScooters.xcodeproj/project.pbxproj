@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A00000000000000000000017 /* ScooterAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000001F /* ScooterAnalytics.swift */; };
 		A00000000000000000000016 /* ScooterUserLocationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000001E /* ScooterUserLocationView.swift */; };
 		A00000000000000000000001 /* SwissScootersApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* SwissScootersApp.swift */; };
 		A00000000000000000000002 /* ScooterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* ScooterModels.swift */; };
@@ -42,6 +43,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B0000000000000000000001F /* ScooterAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterAnalytics.swift; sourceTree = "<group>"; };
 		B0000000000000000000001E /* ScooterUserLocationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterUserLocationView.swift; sourceTree = "<group>"; };
 		B00000000000000000000001 /* SwissScootersApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwissScootersApp.swift; sourceTree = "<group>"; };
 		B00000000000000000000002 /* ScooterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScooterModels.swift; sourceTree = "<group>"; };
@@ -143,6 +145,7 @@
 			children = (
 				B00000000000000000000003 /* ScooterAPI.swift */,
 				B0000000000000000000001B /* AddressSearchAPI.swift */,
+				B0000000000000000000001F /* ScooterAnalytics.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -327,6 +330,7 @@
 				A00000000000000000000009 /* ScooterFiltering.swift in Sources */,
 				A00000000000000000000012 /* SwissAddressSearch.swift in Sources */,
 				A00000000000000000000013 /* AddressSearchAPI.swift in Sources */,
+				A00000000000000000000017 /* ScooterAnalytics.swift in Sources */,
 				A00000000000000000000014 /* ProviderCatalog.generated.swift in Sources */,
 				A00000000000000000000015 /* ScooterAPIContract.generated.swift in Sources */,
 			);

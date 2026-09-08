@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { shouldRefreshLocation } from '@/lib/geo';
 
@@ -63,6 +65,7 @@ export function useLiveLocation() {
 
   const handlePositionError = useCallback((positionError: GeolocationPositionError) => {
     const denied = positionError.code === positionError.PERMISSION_DENIED;
+    track('location_result', { result: denied ? 'denied' : 'unavailable' });
     setError(denied ? 'denied' : 'unavailable');
     setLocating(false);
     if (denied) setTracking(false);
@@ -108,6 +111,7 @@ export function useLiveLocation() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       position => {
+        track('location_result', { result: 'success' });
         const coordinates = acceptPosition(position, true);
         onLocated(coordinates);
         setTracking(true);

@@ -140,6 +140,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     var mapStyle: AppleMapStyle {
         didSet {
+            if oldValue != mapStyle { ScooterAnalytics.shared.track("map_style", result: mapStyle.rawValue) }
             defaults.set(mapStyle.rawValue, forKey: Self.mapStyleKey)
         }
     }
@@ -340,6 +341,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     func setRideEstimateMinutes(_ minutes: Int) {
         let normalizedMinutes = RideEstimateDuration.normalized(minutes)
         guard normalizedMinutes != rideEstimateMinutes else { return }
+        ScooterAnalytics.shared.track("ride_duration", value: normalizedMinutes)
         rideEstimateMinutes = normalizedMinutes
         defaults.set(normalizedMinutes, forKey: Self.rideEstimateMinutesKey)
     }
@@ -349,6 +351,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func setRidePass(_ pass: ProviderRidePass, for provider: ScooterProvider) {
+        ScooterAnalytics.shared.track("ride_pass_change", provider: provider.rawValue)
         ridePasses[provider] = pass
         persistRidePasses()
     }
@@ -456,10 +459,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func showAllProviders() {
+        ScooterAnalytics.shared.track("providers_all")
         enabledProviders = Set(ScooterProvider.allCases)
     }
 
     func showProviders(_ providers: Set<ScooterProvider>) {
+        ScooterAnalytics.shared.track("provider_filter", provider: providers.count == 1 ? providers.first?.rawValue : nil, value: providers.count)
         enabledProviders = providers
     }
 
@@ -474,6 +479,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func toggle(provider: ScooterProvider) {
+        ScooterAnalytics.shared.track("provider_filter", provider: provider.rawValue, result: enabledProviders.contains(provider) ? "disabled" : "enabled")
         if enabledProviders.contains(provider) {
             enabledProviders.remove(provider)
         } else {
@@ -482,6 +488,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func resetFilters() {
+        ScooterAnalytics.shared.track("filters_reset")
         let batteryChanged = minimumBattery != 0
         minimumBattery = 0
         enabledProviders = Set(ScooterProvider.allCases)
@@ -494,6 +501,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     func setMinimumBattery(_ value: Double) {
         let normalizedValue = min(100, max(0, (value / 5).rounded() * 5))
         guard normalizedValue != minimumBattery else { return }
+        ScooterAnalytics.shared.track("battery_filter", value: Int(normalizedValue))
         minimumBattery = normalizedValue
         if ScooterClusteringPolicy.shouldCluster(at: viewportZoom) {
             clusters = []
@@ -502,6 +510,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func focusOnUser() {
+        ScooterAnalytics.shared.track("locate")
         searchedDestination = nil
         if let userLocation {
             requestUserFocus(at: userLocation)
@@ -512,6 +521,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func focusOnAddress(_ destination: MapDestination) {
+        ScooterAnalytics.shared.track("search_select")
         selectedScooterID = nil
         searchedDestination = destination
         focusToken += 1
@@ -519,6 +529,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func focusOnSwitzerland() {
+        ScooterAnalytics.shared.track("browse_map")
         selectedScooterID = nil
         focusToken += 1
         focusRequest = MapFocusRequest(
@@ -530,7 +541,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func focusOnScooter(_ scooter: Scooter) {
-        selectedScooterID = scooter.id
+        selectScooter(scooter.id)
         focusToken += 1
         focusRequest = MapFocusRequest(point: GeoPoint(scooter.coordinate), token: focusToken)
     }
@@ -540,6 +551,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func selectScooter(_ id: String?) {
+        guard id != selectedScooterID else { return }
+        ScooterAnalytics.shared.track(id == nil ? "vehicle_dismiss" : "vehicle_select", provider: id.flatMap { vehiclesByID[$0]?.provider })
         selectedScooterID = id
     }
 
@@ -675,6 +688,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                 return
             } catch {
                 guard activeRequestID == requestID else { return }
+                ScooterAnalytics.shared.track("data_error", result: "request_failed")
                 errorMessage = error.localizedDescription
             }
 
@@ -878,6 +892,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
         let nextLocation = GeoPoint(location.coordinate)
         let hadLocation = userLocation != nil
+        if !hadLocation { ScooterAnalytics.shared.track("location_result", result: "success") }
         userLocation = nextLocation
         isLocating = false
 
@@ -944,6 +959,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     private func finishLocationAttemptWithoutFix() {
+        ScooterAnalytics.shared.track("location_result", result: locationAuthorizationIssue == .denied ? "denied" : "unavailable")
         locationTimeoutTask?.cancel()
         locationTimeoutTask = nil
         bestLocationCandidate = nil

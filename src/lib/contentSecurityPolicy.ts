@@ -22,7 +22,7 @@ export function documentContentSecurityPolicy({
     "style-src-attr 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' data: https://tile.openstreetmap.org",
-    `connect-src 'self'${development ? ' ws: wss:' : ''}`,
+    `connect-src 'self'${development ? ' ws: wss:' : ' https://u.plhery.com'}`,
     `worker-src 'self'${development ? ' blob:' : ''}`,
     "child-src 'self'",
     "frame-src 'none'",

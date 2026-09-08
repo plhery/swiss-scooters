@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { selectionFeedback } from '@/lib/feedback';
@@ -28,10 +30,12 @@ export default function MapControls({
   }, []);
 
   const handleRefresh = async () => {
+    track('refresh');
     selectionFeedback();
     if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
     setRefreshed(false);
     const succeeded = await onRefresh();
+    track('refresh_result', { result: succeeded ? 'success' : 'error' });
     if (!succeeded) return;
 
     setRefreshed(true);

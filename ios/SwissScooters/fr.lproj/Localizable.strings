@@ -179,3 +179,8 @@
 "Parking" = "Stationnement";
 
 "Availability has expired. Refresh to see current scooters." = "Les disponibilités ont expiré. Actualisez pour voir les trottinettes disponibles.";
+
+// Self-hosted usage analytics
+"Analytics" = "Statistiques";
+"Share anonymous usage" = "Partager les données d’utilisation anonymes";
+"Helps improve Scooters. No addresses or precise locations are sent." = "Aide à améliorer Scooters. Aucune adresse ni position précise n’est envoyée.";

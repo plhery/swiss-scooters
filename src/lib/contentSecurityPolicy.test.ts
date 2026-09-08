@@ -25,6 +25,7 @@ describe('documentContentSecurityPolicy', () => {
     expect(directive(csp, 'style-src-elem')).toBe(
       "style-src-elem 'self' 'nonce-test-nonce'"
     );
+    expect(directive(csp, 'connect-src')).toBe("connect-src 'self' https://u.plhery.com");
     expect(directive(csp, 'worker-src')).toBe("worker-src 'self'");
     expect(directive(csp, 'img-src')).not.toContain('blob:');
     expect(directive(csp, 'frame-src')).toBe("frame-src 'none'");

@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { PROVIDERS, type Vehicle } from '@/lib/types';
 import { useI18n } from '@/lib/i18n';
@@ -271,7 +273,7 @@ export default function BottomSheet({
                 href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${vehicle.lat},${vehicle.lng}`)}&travelmode=walking`}
                 target="_blank"
                 rel="noreferrer"
-                onClick={selectionFeedback}
+                onClick={() => { track('directions_open', { provider: vehicle.provider, target: 'vehicle' }); selectionFeedback(); }}
               >
                 <Icon name="walk" size={18} />
                 {t('marker.walkThere')}
@@ -282,7 +284,7 @@ export default function BottomSheet({
                   href={rentalLink}
                   target="_blank"
                   rel="noreferrer"
-                  onClick={selectionFeedback}
+                  onClick={() => { track('rental_open', { provider: vehicle.provider }); selectionFeedback(); }}
                 >
                   <Icon name="scooter" size={18} />
                   {t('marker.openIn', { name: provider?.name ?? t('marker.app') })}

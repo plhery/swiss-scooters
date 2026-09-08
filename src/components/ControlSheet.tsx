@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { SUPPORTED_LOCALES, useI18n, type AppLocale } from '@/lib/i18n';
 import { PROVIDERS } from '@/lib/types';
@@ -290,6 +292,7 @@ export default function ControlSheet({
                       type="button"
                       onClick={() => {
                         if (locale !== language) selectionFeedback();
+                        track('language_change', { language });
                         setLocale(language);
                       }}
                       aria-pressed={locale === language}

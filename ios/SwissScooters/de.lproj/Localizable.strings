@@ -179,3 +179,8 @@
 "Parking" = "Parkplatz";
 
 "Availability has expired. Refresh to see current scooters." = "Die Verfügbarkeiten sind veraltet. Aktualisiere, um aktuelle Scooter zu sehen.";
+
+// Self-hosted usage analytics
+"Analytics" = "Nutzungsstatistik";
+"Share anonymous usage" = "Anonyme Nutzung teilen";
+"Helps improve Scooters. No addresses or precise locations are sent." = "Hilft, Scooters zu verbessern. Adressen und genaue Standorte werden nicht gesendet.";

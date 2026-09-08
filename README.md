@@ -98,6 +98,7 @@ The app stores no account or location history.
 
 - [Data sources and attribution](DATA_SOURCES.md)
 - [Privacy](PRIVACY.md)
+- [Web and iOS analytics](docs/analytics.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 

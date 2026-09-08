@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { useEffect, useId, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import Icon from './Icon';
@@ -68,6 +70,7 @@ export default function AddressSearch({ onSelect, onClear, compact = false, auto
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextResults = await response.json() as AddressResult[];
       if (controller.signal.aborted || controllerRef.current !== controller) return;
+      track('search_results', { count: nextResults.length });
       setResults(nextResults);
       setActiveIndex(nextResults.length > 0 ? 0 : -1);
       setSearched(true);
@@ -76,6 +79,7 @@ export default function AddressSearch({ onSelect, onClear, compact = false, auto
       setResults([]);
       setActiveIndex(-1);
       setSearched(true);
+      track('search_error');
       setFailed(true);
     } finally {
       deadline.dispose();
@@ -120,6 +124,7 @@ export default function AddressSearch({ onSelect, onClear, compact = false, auto
   };
 
   const clear = () => {
+    track('search_clear');
     resetPendingSearch();
     setQuery('');
     setResults([]);

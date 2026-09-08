@@ -47,3 +47,12 @@ load Swiss feeds just because the phone is in Switzerland.
 
 The production API endpoint is centralized in `Services/ScooterAPI.swift` if a
 local or preview backend is needed later.
+
+## Usage analytics
+
+Native screen views and action events go to the same self-hosted Umami dashboard
+as the public website, with the `ios` tag. Settings → Analytics lets riders disable
+collection. No address text, precise locations, vehicle IDs or advertising IDs are
+sent. Simulators, previews and tests are excluded by default. See
+[the analytics event catalog](../docs/analytics.md). Rebuild/install the native app
+to receive analytics changes; a web deployment does not update an installed iOS binary.

@@ -134,7 +134,11 @@ struct ScooterMapScreen: View {
         // it fades back in within the keyboard's shrinking safe area and jumps.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .background(Color(.systemBackground))
-        .task { model.start() }
+        .task {
+            ScooterAnalytics.shared.track()
+            ScooterAnalytics.shared.track("app_open")
+            model.start()
+        }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
@@ -148,6 +152,7 @@ struct ScooterMapScreen: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                ScooterAnalytics.shared.track("app_foreground")
                 model.becameActive()
             } else {
                 model.becameInactive()
@@ -155,9 +160,18 @@ struct ScooterMapScreen: View {
         }
         .onDisappear { model.becameInactive() }
         .onChange(of: searchIsExpanded) { _, expanded in
+            ScooterAnalytics.shared.track(expanded ? "search_open" : "search_close")
             if expanded {
                 showLocationIntro = false
             }
+        }
+        .onChange(of: filtersPresented) { _, open in
+            ScooterAnalytics.shared.track(open ? "filters_open" : "panel_close")
+            if open { ScooterAnalytics.shared.track(screen: "/filters") }
+        }
+        .onChange(of: settingsPresented) { _, open in
+            ScooterAnalytics.shared.track(open ? "settings_open" : "panel_close")
+            if open { ScooterAnalytics.shared.track(screen: "/settings") }
         }
         .sheet(isPresented: $filtersPresented) {
             ScooterFilterSheet(model: model)
@@ -185,7 +199,7 @@ struct ScooterMapScreen: View {
                 message: errorMessage,
                 style: .error,
                 actionTitle: String(localized: "Retry"),
-                action: model.refresh
+                action: { ScooterAnalytics.shared.track("refresh"); model.refresh() }
             )
             .transition(.move(edge: .top).combined(with: .opacity))
         } else if model.locationAuthorizationIssue == .denied {

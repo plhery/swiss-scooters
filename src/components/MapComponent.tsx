@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { prefersReducedMotion, selectionFeedback } from '@/lib/feedback';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -171,7 +173,7 @@ function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
         type="button"
         aria-label={t('controls.zoomIn')}
         title={t('controls.zoomIn')}
-        onClick={() => { selectionFeedback(); mapRef.current?.zoomIn(1, { animate: !prefersReducedMotion() }); }}
+        onClick={() => { selectionFeedback(); track('map_zoom', { direction: 'in' }); mapRef.current?.zoomIn(1, { animate: !prefersReducedMotion() }); }}
       >
         <span aria-hidden="true">+</span>
       </button>
@@ -179,7 +181,7 @@ function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
         type="button"
         aria-label={t('controls.zoomOut')}
         title={t('controls.zoomOut')}
-        onClick={() => { selectionFeedback(); mapRef.current?.zoomOut(1, { animate: !prefersReducedMotion() }); }}
+        onClick={() => { selectionFeedback(); track('map_zoom', { direction: 'out' }); mapRef.current?.zoomOut(1, { animate: !prefersReducedMotion() }); }}
       >
         <span aria-hidden="true">−</span>
       </button>
@@ -379,6 +381,7 @@ export default function MapComponent({
       popup.appendChild(makeElement('p', '', t('parking.check')));
       const link = makeElement('a', 'popup-cta', t('parking.directions'));
       link.href = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}&travelmode=walking`;
+      link.addEventListener('click', () => track('directions_open', { provider: location.provider, target: 'parking' }));
       link.target = '_blank'; link.rel = 'noopener noreferrer'; popup.appendChild(link);
       const marker = L.marker([location.lat, location.lng], {
         icon: L.divIcon({ className: 'parking-marker-wrap',
@@ -389,6 +392,7 @@ export default function MapComponent({
         maxWidth: Math.min(260, map.getSize().x - 132),
         autoPan: false,
       }).addTo(map);
+      marker.on('click', () => track('parking_select', { provider: location.provider }));
       labelMarker(marker, label);
       markers.set(location.id, { marker, signature });
     }
@@ -522,6 +526,7 @@ export default function MapComponent({
         const marker = L.marker(center, { icon: createClusterIcon(cluster), zIndexOffset: 500, title: label })
           .on('click', () => {
             selectionFeedback();
+            track('cluster_select');
             map.flyTo(marker.getLatLng(), cluster.city ? 13 : Math.min(map.getZoom() + 2, 20), {
               animate: !prefersReducedMotion(), duration: 0.55,
             });

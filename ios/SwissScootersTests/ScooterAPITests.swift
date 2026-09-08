@@ -234,3 +234,27 @@ private actor StubAddressSearchSession: AddressSearchNetworkSession {
         )
     }
 }
+
+@MainActor
+final class ScooterAnalyticsTests: XCTestCase {
+    func testPayloadExcludesSensitiveValuesAndPersistentIdentity() {
+        let payload = ScooterAnalytics.payload("rental_open", provider: "lime", value: 10,
+            result: "47.123,8.456", target: "private address", screen: "/?lat=47.123")
+        XCTAssertEqual(payload["url"] as? String, "/")
+        XCTAssertEqual(payload["referrer"] as? String, "")
+        XCTAssertEqual(payload["tag"] as? String, "ios")
+        XCTAssertNil(payload["id"])
+        let data = payload["data"] as? [String: Any]
+        XCTAssertEqual(data?["provider"] as? String, "lime")
+        XCTAssertEqual(data?["platform"] as? String, "ios")
+        XCTAssertNil(data?["result"])
+        XCTAssertNil(data?["target"])
+    }
+
+    func testScreenViewDoesNotBecomeNamedEvent() {
+        let payload = ScooterAnalytics.payload(nil, screen: "/settings")
+        XCTAssertEqual(payload["url"] as? String, "/settings")
+        XCTAssertNil(payload["name"])
+        XCTAssertNil(payload["data"])
+    }
+}

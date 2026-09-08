@@ -620,6 +620,7 @@ struct ScooterMapView: UIViewRepresentable {
             }
 
             if let cluster = view.annotation as? ScooterServerClusterAnnotation {
+                ScooterAnalytics.shared.track("cluster_select")
                 let span = mapView.region.span
                 ScooterMapCameraPolicy.setRegionPreservingPerspective(
                     MKCoordinateRegion(
@@ -637,11 +638,15 @@ struct ScooterMapView: UIViewRepresentable {
             }
 
             if let cluster = view.annotation as? MKClusterAnnotation {
+                ScooterAnalytics.shared.track("cluster_select")
                 mapView.showAnnotations(cluster.memberAnnotations, animated: true)
                 mapView.deselectAnnotation(cluster, animated: false)
                 return
             }
 
+            if let parking = view.annotation as? ScooterParkingAnnotation {
+                ScooterAnalytics.shared.track("parking_select", provider: parking.parking.provider)
+            }
             guard let annotation = view.annotation as? ScooterMapAnnotation else { return }
             if Self.shouldSuppressMapKitSelection(
                 candidateID: annotation.scooter.id,
@@ -673,6 +678,7 @@ struct ScooterMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView,
             calloutAccessoryControlTapped control: UIControl) {
             guard let annotation = view.annotation as? ScooterParkingAnnotation else { return }
+            ScooterAnalytics.shared.track("directions_open", provider: annotation.parking.provider, target: "parking")
             let item = MKMapItem(location: CLLocation(latitude: annotation.coordinate.latitude,
                 longitude: annotation.coordinate.longitude), address: nil)
             item.name = annotation.parking.name

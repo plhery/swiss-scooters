@@ -639,6 +639,7 @@ private struct ScooterDetailCard: View {
     @ViewBuilder
     private var actionButtons: some View {
         Button {
+            ScooterAnalytics.shared.track("directions_open", provider: scooter.provider, target: "vehicle")
             openWalkingDirections(to: scooter)
         } label: {
             Group {
@@ -653,7 +654,10 @@ private struct ScooterDetailCard: View {
         .buttonStyle(.glass)
 
         if let rentalURL = scooter.rentalURL {
-            Link(destination: rentalURL) {
+            Button {
+                ScooterAnalytics.shared.track("rental_open", provider: scooter.provider)
+                UIApplication.shared.open(rentalURL)
+            } label: {
                 Group {
                     if dynamicTypeSize.isAccessibilitySize {
                         Text("Rent")
@@ -963,6 +967,7 @@ struct ScooterFilterSheet: View {
 }
 
 struct ScooterSettingsSheet: View {
+    @AppStorage(ScooterAnalytics.disabledKey) private var analyticsDisabled = false
     @Bindable var model: ScooterMapModel
     let onUseCurrentLocation: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -970,6 +975,13 @@ struct ScooterSettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Analytics") {
+                    Toggle("Share anonymous usage", isOn: Binding(
+                        get: { !analyticsDisabled }, set: { analyticsDisabled = !$0 }
+                    ))
+                    Text("Helps improve Scooters. No addresses or precise locations are sent.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Map") {
                     Picker("Appearance", selection: $model.mapStyle) {
                         ForEach(AppleMapStyle.allCases) { style in
@@ -985,7 +997,10 @@ struct ScooterSettingsSheet: View {
                         Label("Use current location", systemImage: "location.fill")
                     }
 
-                    Button(action: model.refresh) {
+                    Button {
+                        ScooterAnalytics.shared.track("refresh")
+                        model.refresh()
+                    } label: {
                         HStack {
                             Label("Refresh availability", systemImage: "arrow.clockwise")
                             Spacer()

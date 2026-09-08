@@ -179,3 +179,8 @@
 "Parking" = "Parking";
 
 "Availability has expired. Refresh to see current scooters." = "Availability has expired. Refresh to see current scooters.";
+
+// Self-hosted usage analytics
+"Analytics" = "Analytics";
+"Share anonymous usage" = "Share anonymous usage";
+"Helps improve Scooters. No addresses or precise locations are sent." = "Helps improve Scooters. No addresses or precise locations are sent.";

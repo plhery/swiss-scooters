@@ -53,6 +53,7 @@ struct SwissAddressSearch: View {
                         .accessibilityLabel(String(localized: "Searching addresses…"))
                 } else if !searchModel.query.isEmpty {
                     Button {
+                        ScooterAnalytics.shared.track("search_clear")
                         searchModel.clear()
                         onClear()
                     } label: {
@@ -518,6 +519,7 @@ final class SwissAddressSearchModel {
                 guard query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery else {
                     return
                 }
+                ScooterAnalytics.shared.track("search_results", value: results.count)
                 suggestions = results.map(SwissAddressSuggestion.init)
                 statusMessage = suggestions.isEmpty
                     ? String(localized: "No addresses or cities found.")
@@ -530,6 +532,7 @@ final class SwissAddressSearchModel {
                 guard let self, !Task.isCancelled else { return }
                 suggestions = []
                 isSearching = false
+                ScooterAnalytics.shared.track("search_error")
                 statusMessage = String(localized: "Address search is unavailable. Try again.")
                 searchTask = nil
             }

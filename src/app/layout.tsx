@@ -1,3 +1,4 @@
+import Analytics from "@/components/Analytics";
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
@@ -64,6 +65,7 @@ export default async function RootLayout({
       <body className={geistSans.variable}>
         <I18nProvider>{children}</I18nProvider>
         <ServiceWorkerRegistration />
+        <Analytics />
       </body>
     </html>
   );

@@ -1,5 +1,7 @@
 'use client';
 
+import { track } from '@/lib/analytics';
+
 import { useEffect, useId, useRef, useState } from 'react';
 import type L from 'leaflet';
 import { prefersReducedMotion, selectionFeedback } from '@/lib/feedback';
@@ -77,7 +79,7 @@ export default function MapCompass({ map }: { map: L.Map | null }) {
         title={t('controls.compass')}
         data-bearing={Math.round(bearing)}
         disabled={!map}
-        onClick={() => rotateTo(0)}
+        onClick={() => { track('compass_reset'); rotateTo(0); }}
         onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
           event.preventDefault();
