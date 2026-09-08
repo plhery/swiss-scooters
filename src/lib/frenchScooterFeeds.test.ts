@@ -163,13 +163,21 @@ describe('French scooter feeds', () => {
   });
 
   it('reports partial and stale independently when one Marseille provider fails', async () => {
+    let now = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    let statusFails = false;
     const serve = fixture('lime_fr_marseille', { ageSeconds: 120 });
     vi.stubGlobal('fetch', vi.fn(async url => {
+      if (statusFails && String(url).endsWith('/free_bike_status.json')) return new Response('{}', { status: 503 });
       const result = serve(String(url));
       if (!result) throw new Error('Voi unavailable');
       return result;
     }));
-    const result = await fetchScooters({ bounds: marseille, minBattery: 0 });
+    const query = { bounds: marseille, minBattery: 0 };
+    expect((await fetchScooters(query)).meta).toMatchObject({ partial: true, stale: false });
+    now += 31_000;
+    statusFails = true;
+    const result = await fetchScooters(query);
     expect(result.vehicles).toHaveLength(1);
     expect(result.meta).toMatchObject({
       partial: true, stale: true, failedSources: ['france:voi_fr_66'], sources: { france: 'partial' },

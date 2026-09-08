@@ -691,7 +691,7 @@ async function fetchSystemVehicles(
       query,
       pricingByPlanId
     ),
-    stale: discovery.stale || types.stale || coverageStale || status.stale || Date.now() - statusObservedAt(status.data) > 90_000,
+    stale: discovery.stale || types.stale || coverageStale || status.stale,
   };
 }
 
@@ -792,7 +792,7 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
       query,
       pricingByPlanId
     ),
-    stale: discovery.stale || status.stale || types.stale || Date.now() - statusObservedAt(status.data) > 90_000,
+    stale: discovery.stale || status.stale || types.stale,
   };
 }
 
@@ -891,7 +891,7 @@ async function fetchRegionalSystemVehicles(
       ...query,
       bounds,
     }, pricing).filter(vehicle => serviceAreas(system).some(area => boundsContainPoint(area.bounds, vehicle.lat, vehicle.lng))),
-    stale: discovery.stale || types.stale || status.stale || Date.now() - statusObservedAt(status.data) > 90_000,
+    stale: discovery.stale || types.stale || status.stale,
   };
 }
 

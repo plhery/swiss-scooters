@@ -799,6 +799,20 @@ describe('fetchScooters source health', () => {
 });
 
 describe('feed validation and tariff regressions', () => {
+  it('does not call a valid Swiss observation cached solely because it is four minutes old', async () => {
+    const observedAt = Date.now() - 240_000;
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const response = nationalResponse(String(input))!;
+      if (String(input).endsWith('/free_bike_status')) {
+        return Response.json({ ...(await response.json() as Record<string, unknown>), last_updated: observedAt / 1000 });
+      }
+      return response;
+    }));
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+    expect(result.vehicles).toHaveLength(1);
+    expect(result.meta).toMatchObject({ stale: false, expiresAt: new Date(observedAt + 300_000).toISOString() });
+  });
+
   it.each([null, 0, Math.floor((Date.now() - 86400_000) / 1000)])('rejects a missing or expired Swiss status timestamp: %s', async timestamp => {
     vi.stubGlobal('fetch', vi.fn(async input => {
       const response = nationalResponse(String(input))!;

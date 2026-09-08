@@ -55,7 +55,9 @@ function healthFor(feeds: FeedSnapshot[], now: number): ScooterFetchMetadata {
     if (!relevant.length) continue;
     const usable = relevant.filter(feed => now - feed.observedAt <= VEHICLE_MAX_AGE_MS);
     const failed = relevant.filter(feed => feed.failed || now - feed.observedAt > VEHICLE_MAX_AGE_MS);
-    const stale = usable.some(feed => feed.stale || now - feed.observedAt > 90_000);
+    // A successfully collected feed is not a fallback just because its provider
+    // publishes every few minutes. Observation age still controls hard expiry.
+    const stale = usable.some(feed => feed.stale || feed.failed);
     meta.sources[source] = usable.length === 0 ? 'failed' : failed.length ? 'partial' : stale ? 'stale' : 'fresh';
     meta.failedSources.push(...failed.map(feed => feed.id));
     meta.stale ||= stale;

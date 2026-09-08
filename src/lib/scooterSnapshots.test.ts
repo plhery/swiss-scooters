@@ -3,6 +3,7 @@ import { buildCityOverview, overviewNeedsRefresh, querySnapshot, VEHICLE_MAX_AGE
 import { ScooterFeedsUnavailableError } from './scooterFeeds';
 import { providersForViewport, mapRepresentationsMatch } from './mapCoverage';
 import type { Vehicle } from './types';
+import { scooterDataHealthNotice } from './dataHealth';
 
 const now = Date.parse('2026-09-08T12:00:00Z');
 const lyon = { south: 45.70, west: 4.7, north: 45.9, east: 5.0 };
@@ -70,6 +71,19 @@ describe('persistent map snapshots', () => {
     expect(response.vehicles).toHaveLength(2);
     expect(response.meta).toMatchObject({ partial: true, stale: true });
     expect(() => querySnapshot(cached, query, 16, now + VEHICLE_MAX_AGE_MS + 1)).toThrow(ScooterFeedsUnavailableError);
+  });
+
+  it('reports an unavailable provider without calling a successfully collected four-minute observation cached', () => {
+    const cached = snapshot([
+      feed({ observedAt: now - 240_000 }),
+      feed({ id: 'france:voi', provider: 'voi', observedAt: now - 600_000, failed: true, stale: true }),
+    ]);
+    const response = querySnapshot(cached, query, null, now);
+    expect(response.vehicles).toHaveLength(2);
+    expect(response.meta).toMatchObject({ partial: true, stale: false,
+      failedSources: ['france:voi'], expiresAt: new Date(now + 60_000).toISOString() });
+    expect(scooterDataHealthNotice(response.meta, response.vehicles.length)).toBe('Some providers unavailable');
+    expect(() => querySnapshot(cached, query, 16, now + 60_001)).toThrow(ScooterFeedsUnavailableError);
   });
 
   it('does not confuse an empty operating area with an upstream failure', () => {
