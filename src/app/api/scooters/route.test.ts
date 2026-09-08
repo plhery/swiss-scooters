@@ -1,3 +1,4 @@
+import { SUPPORTED_MOBILITY_BOUNDS } from '@/lib/feedCoverage';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { Vehicle } from '@/lib/types';
@@ -80,12 +81,7 @@ describe('GET /api/scooters', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.fetchScooters).toHaveBeenCalledWith(expect.objectContaining({
-      bounds: {
-        south: 41.81,
-        west: -3.58,
-        north: 50.9,
-        east: 10.75,
-      },
+      bounds: SUPPORTED_MOBILITY_BOUNDS,
       outsideCoverage: false,
     }));
   });

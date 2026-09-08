@@ -31,6 +31,14 @@ afterEach(() => {
 });
 
 describe('GET /api/geocode', () => {
+  it.each([['Munich', 'München, Germany'], ['Rome', 'Roma, Italy']])('finds %s without a Swiss geocoding request', async (query, name) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await POST(postRequest(query));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual(expect.arrayContaining([expect.objectContaining({ display_name: name })]));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('includes French scooter cities in searches', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"results":[]}')));
     const result = await POST(postRequest('Marseille', 'fr'));

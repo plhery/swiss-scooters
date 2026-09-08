@@ -222,6 +222,18 @@ test('French map controls omit Swiss providers while keeping the local operator'
   await expect(page.getByRole('button', { name: /^Hopp, / })).toHaveCount(0);
 });
 
+for (const city of [
+  { name: 'Berlin', origin: '52.52,13.405', provider: 'Dott' },
+  { name: 'Roma', origin: '41.9028,12.4964', provider: 'Bird' },
+]) {
+  test(`${city.name} offers only its reviewed providers`, async ({ page }) => {
+    await page.goto(`/?origin=${city.origin}`);
+    await expect(page.getByRole('button', { name: new RegExp(`^${city.provider}, `) })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^PubliBike, / })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Pony, / })).toHaveCount(0);
+  });
+}
+
 test('combines provider filters and resets them together', async ({ page }) => {
   await page.goto('/');
   await focusFixtureArea(page);

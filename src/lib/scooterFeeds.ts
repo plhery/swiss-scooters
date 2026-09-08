@@ -7,7 +7,7 @@ import {
   SWISS_MOBILITY_BOUNDS,
 } from '@/lib/feedCoverage';
 import { boundsContainPoint, boundsIntersection, haversineM } from '@/lib/geo';
-import { FRENCH_SCOOTER_SYSTEMS, type FrenchScooterSystem } from '@/lib/frenchScooterSystems';
+import { REGIONAL_SCOOTER_SYSTEMS, regionalSource, serviceAreas, type RegionalScooterSystem, type ScooterCountry } from '@/lib/regionalScooterSystems';
 import type { MapBounds, Vehicle } from '@/lib/types';
 import { legacyRentalLink, normalizeRentalUris } from '@/lib/rentalLinks';
 import { upstreamJsonCache, type CachedJson } from '@/lib/upstreamJsonCache';
@@ -161,6 +161,8 @@ export interface ScooterFetchMetadata {
     hopp: FeedSourceStatus;
     publibike: FeedSourceStatus;
     france: FeedSourceStatus;
+    germany?: FeedSourceStatus;
+    italy?: FeedSourceStatus;
   };
 }
 
@@ -214,10 +216,10 @@ export function independentCollectableFeeds(): CollectableScooterFeed[] {
     { id: 'publibike', source: 'publibike', provider: 'publibike',
       coverage: [PUBLIBIKE_FREE_FLOATING_COVERAGE],
       collect: () => fetchPubliBikeFreeFloatingVehicles(query) },
-    ...FRENCH_SCOOTER_SYSTEMS.map(system => ({
-      id: `france:${system.id}`, source: 'france' as const, provider: system.provider,
-      coverage: [system.bounds],
-      collect: () => fetchFrenchSystemVehicles(system, { bounds: system.bounds, minBattery: 0 }),
+    ...REGIONAL_SCOOTER_SYSTEMS.map(system => ({
+      id: `${regionalSource(system)}:${system.id}`, source: regionalSource(system), provider: system.provider,
+      coverage: serviceAreas(system).map(area => area.bounds),
+      collect: () => fetchRegionalSystemVehicles(system, { bounds: system.bounds, minBattery: 0 }),
     })),
   ];
 }
@@ -827,8 +829,8 @@ async function fetchPubliBikeFreeFloatingVehicles(
   return { vehicles, stale: result.stale };
 }
 
-async function fetchFrenchSystemVehicles(
-  system: FrenchScooterSystem,
+async function fetchRegionalSystemVehicles(
+  system: RegionalScooterSystem,
   query: FeedQuery
 ): Promise<SourceVehicles> {
   const bounds = boundsIntersection(system.bounds, query.bounds);
@@ -867,7 +869,7 @@ async function fetchFrenchSystemVehicles(
     ? status.data.last_updated * 1000
     : Date.parse(status.data.last_updated ?? '');
   const ageSeconds = (Date.now() - updatedAt) / 1000;
-  // Several published French endpoints still return successful but abandoned
+  // Several published endpoints still return successful but abandoned
   // feeds. HTTP 200 alone must not make old locations look live.
   if (!Number.isFinite(updatedAt) || ageSeconds > 900 || ageSeconds < -300) {
     throw new Error(`${system.id} status timestamp is missing or out of date`);
@@ -877,15 +879,15 @@ async function fetchFrenchSystemVehicles(
     vehicles: filterVehicles(system.id, rawVehicles(status.data), typesById, {
       ...query,
       bounds,
-    }, pricing),
+    }, pricing).filter(vehicle => serviceAreas(system).some(area => boundsContainPoint(area.bounds, vehicle.lat, vehicle.lng))),
     stale: discovery.stale || types.stale || status.stale || ageSeconds > 300,
   };
 }
 
-async function fetchFrenchVehicles(query: FeedQuery): Promise<SourceVehicles> {
-  const systems = FRENCH_SCOOTER_SYSTEMS.filter(system => (
-    (!query.providers || query.providers.has(system.provider)) &&
-    coverageIntersects([system.bounds], query.bounds)
+async function fetchRegionalVehicles(query: FeedQuery, country: ScooterCountry): Promise<SourceVehicles> {
+  const systems = REGIONAL_SCOOTER_SYSTEMS.filter(system => (
+    system.country === country && (!query.providers || query.providers.has(system.provider)) &&
+    coverageIntersects(serviceAreas(system).map(area => area.bounds), query.bounds)
   ));
   if (systems.length === 0) return { vehicles: [], stale: false, skipped: true };
 
@@ -897,9 +899,9 @@ async function fetchFrenchVehicles(query: FeedQuery): Promise<SourceVehicles> {
     while (nextSystem < systems.length) {
       const system = systems[nextSystem++];
       try {
-        available.push(await fetchFrenchSystemVehicles(system, query));
+        available.push(await fetchRegionalSystemVehicles(system, query));
       } catch (error) {
-        failedSources.push(`france:${system.id}`);
+        failedSources.push(`${regionalSource(system)}:${system.id}`);
         logFallback(system.id, error);
       }
     }
@@ -961,12 +963,12 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
         partial: false,
         stale: false,
         failedSources: [],
-        sources: { national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'skipped' },
+        sources: { national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'skipped', germany: 'skipped', italy: 'skipped' },
       },
     };
   }
 
-  const [nationalResult, hoppResult, publibikeResult, franceResult] = await Promise.allSettled([
+  const [nationalResult, hoppResult, publibikeResult, franceResult, germanyResult, italyResult] = await Promise.allSettled([
     nationalSourceIsRelevant(query)
       ? fetchNationalVehicles({
         ...query,
@@ -975,7 +977,9 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
       : Promise.resolve<SourceVehicles>({ vehicles: [], stale: false, skipped: true }),
     fetchHoppVehicles(query),
     fetchPubliBikeFreeFloatingVehicles(query),
-    fetchFrenchVehicles(query),
+    fetchRegionalVehicles(query, 'FR'),
+    fetchRegionalVehicles(query, 'DE'),
+    fetchRegionalVehicles(query, 'IT'),
   ]);
 
   const sourceResults = [
@@ -983,6 +987,8 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
     ['hopp', hoppResult],
     ['publibike', publibikeResult],
     ['france', franceResult],
+    ['germany', germanyResult],
+    ['italy', italyResult],
   ] as const;
   const failedSources: string[] = [];
   let rejectedSourceCount = 0;
@@ -1033,6 +1039,8 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
     hopp: sourceStatus(hoppResult),
     publibike: sourceStatus(publibikeResult),
     france: sourceStatus(franceResult),
+    germany: sourceStatus(germanyResult),
+    italy: sourceStatus(italyResult),
   };
   return {
     vehicles: filtered,

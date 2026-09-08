@@ -1,5 +1,5 @@
 import { SWISS_SCOOTER_AREAS, coverageIntersects } from '@/lib/feedCoverage';
-import { FRENCH_SCOOTER_SYSTEMS } from '@/lib/frenchScooterSystems';
+import { REGIONAL_SCOOTER_CITIES, COUNTRY_SOURCES, isRegionalSource } from '@/lib/regionalScooterSystems';
 import { boundsContainPoint, haversineM } from '@/lib/geo';
 import { CITY_OVERVIEW_MAX_ZOOM, providersForViewport } from '@/lib/mapCoverage';
 import { PARKING_MAX_AGE_MS, PARKING_MIN_ZOOM, type ParkingSnapshot } from '@/lib/parking';
@@ -45,7 +45,7 @@ export interface MobilitySnapshot {
 
 function emptyHealth(): ScooterFetchMetadata {
   return { partial: false, stale: false, failedSources: [],
-    sources: { national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'skipped' } };
+    sources: { national: 'skipped', hopp: 'skipped', publibike: 'skipped', france: 'skipped', germany: 'skipped', italy: 'skipped' } };
 }
 
 function healthFor(feeds: FeedSnapshot[], now: number): ScooterFetchMetadata {
@@ -64,15 +64,14 @@ function healthFor(feeds: FeedSnapshot[], now: number): ScooterFetchMetadata {
   return meta;
 }
 
-const frenchCities = [...new Map(FRENCH_SCOOTER_SYSTEMS.map(system => [system.city, {
-  id: `fr:${system.city}`, city: system.city, center: system.center, bounds: system.bounds,
-}])).values()];
+const regionalCities = REGIONAL_SCOOTER_CITIES;
 
 export function buildCityOverview(feeds: FeedSnapshot[], now: number): MobilitySnapshot['overview'] {
   const totals = new Map<string, CityTotals>();
-  for (const city of [...frenchCities, ...SWISS_SCOOTER_AREAS]) {
-    const countrySource = city.id.startsWith('fr:') ? 'france' : 'switzerland';
-    const relevant = feeds.filter(feed => (countrySource === 'france' ? feed.source === 'france' : feed.source !== 'france') && coverageIntersects(feed.coverage, city.bounds));
+  for (const city of [...regionalCities, ...SWISS_SCOOTER_AREAS]) {
+    const country = regionalCities.find(candidate => candidate.id === city.id)?.country;
+    const countrySource = country ? COUNTRY_SOURCES[country] : null;
+    const relevant = feeds.filter(feed => (countrySource ? feed.source === countrySource : !isRegionalSource(feed.source)) && coverageIntersects(feed.coverage, city.bounds));
     const health = healthFor(relevant, now);
     totals.set(city.id, { id: city.id, city: city.city, lat: city.center[0], lng: city.center[1],
       batteries: {}, sources: health.sources, failedSources: health.failedSources });
@@ -80,7 +79,9 @@ export function buildCityOverview(feeds: FeedSnapshot[], now: number): MobilityS
   const seen = new Set<string>();
   for (const feed of feeds) {
     if (feed.skipped || now - feed.observedAt > VEHICLE_MAX_AGE_MS) continue;
-    const cities = feed.source === 'france' ? frenchCities : SWISS_SCOOTER_AREAS;
+    const cities = isRegionalSource(feed.source)
+      ? regionalCities.filter(city => COUNTRY_SOURCES[city.country] === feed.source) : SWISS_SCOOTER_AREAS;
+    if (!cities.length) continue;
     for (const vehicle of feed.vehicles) {
       const key = `${vehicle.provider}:${vehicle.vehicle_id ?? `${vehicle.lat}:${vehicle.lng}`}`;
       if (seen.has(key)) continue;
@@ -119,7 +120,7 @@ function overviewResponse(snapshot: MobilitySnapshot, query: FeedQuery, zoom: nu
     const count = Object.values(counts).reduce((a, b) => a + b, 0);
     if (count) clusters.push({ id: `city:${city.id}`, city: city.city, lat: city.lat, lng: city.lng, count, providers: counts });
     for (const source of Object.keys(meta.sources) as Array<keyof typeof meta.sources>) {
-      const status = city.sources[source];
+      const status = city.sources[source] ?? 'skipped';
       const previous = meta.sources[source];
       if (status === 'skipped') continue;
       meta.sources[source] = previous === 'skipped' || previous === status ? status
@@ -172,7 +173,7 @@ export function querySnapshot(snapshot: MobilitySnapshot, query: FeedQuery, zoom
     availableProviders: providersForViewport(query.bounds),
   });
   if (zoom !== null && zoom >= PARKING_MIN_ZOOM) {
-    const systems = relevant.filter(feed => feed.source === 'france');
+    const systems = relevant.filter(feed => isRegionalSource(feed.source));
     const available = systems.filter(feed => feed.parking && now - feed.parking.observedAt <= PARKING_MAX_AGE_MS);
     response.parking = available.flatMap(feed => feed.parking!.locations)
       .filter(location => boundsContainPoint(query.bounds, location.lat, location.lng));

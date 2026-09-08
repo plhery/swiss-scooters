@@ -1047,6 +1047,8 @@ struct ScooterSettingsSheet: View {
                     Link(destination: URL(string: "https://transport.data.gouv.fr/datasets?type=vehicles-sharing")!) {
                         Label("French mobility data", systemImage: "network")
                     }
+                    Link("MobiData BW", destination: URL(string: "https://www.mobidata-bw.de/")!)
+                    Link("DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird", destination: URL(string: "https://github.com/MobilityData/gbfs")!)
                     Link(destination: URL(string: "https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api")!) {
                         Label("Address data © swisstopo", systemImage: "map")
                     }

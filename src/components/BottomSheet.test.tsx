@@ -79,7 +79,7 @@ describe('BottomSheet', () => {
     renderSheet();
 
     const body = document.querySelector('#scooter-controls-body');
-    const search = screen.getByRole('combobox', { name: 'Swiss address or French city' });
+    const search = screen.getByRole('combobox', { name: 'City or Swiss address' });
     expect(body).toContainElement(search);
     expect(screen.queryByText('Nearby scooters')).not.toBeInTheDocument();
   });

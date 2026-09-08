@@ -5,7 +5,7 @@
 <h1 align="center">Swiss Scooters</h1>
 
 <p align="center">
-  A friendly map for finding shared e-scooters in Switzerland and selected French cities.
+  A friendly map for finding shared e-scooters in Switzerland and selected cities in France, Germany and Italy.
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@ app for iPhone.
 **Supported providers:** Bolt, Bird, Dott, Hopp, Lime, Voi, Pony, and PubliBike / Velospot.
 
 French coverage includes 27 verified feeds across 25 cities or operating areas,
-with city-name search. See the [French feed investigation](docs/french-scooter-feeds.md)
+with city-name search. German coverage adds 90 feeds across 86 cities (Dott, Bolt, Hopp, Lime and Voi); Italian coverage currently includes Bird in Rome. See the [German/Italian feed audit](docs/german-italian-scooter-feeds.md) for coverage and known gaps. See the [French feed investigation](docs/french-scooter-feeds.md)
 for the city list, live-check command, and source terms to review before deployment.
 
 ## Run it locally
@@ -60,7 +60,7 @@ npm run build
 ```
 
 Provider metadata shared by the web and iPhone apps is generated from
-`data/providers.json`; the same generator includes Swiss/French service-area
+`data/providers.json`; the same generator includes Swiss, French, German and Italian service-area
 coverage for native provider filters. Run `npm run generate:providers` after
 changing the provider or service-area catalogs.
 The scooter API wire types are generated for both clients from
@@ -101,7 +101,7 @@ The app stores no account or location history.
 
 Swiss Scooters is open source under the [MIT License](LICENSE). Come build with us.
 
-French operator parking bays appear as **P** markers at street zoom. Tap a bay
+Published operator parking bays appear as **P** markers at street zoom. Tap a bay
 for the provider, published parking requirement and directions. Closed return
 locations are removed when the operator publishes that status. Coverage depends
 on the operator's public feed; check its app before ending a ride.

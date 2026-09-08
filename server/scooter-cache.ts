@@ -6,8 +6,9 @@ import { discoverCollectableFeeds, independentCollectableFeeds, ScooterFeedsUnav
 import { parseScooterQuery } from '../src/lib/scooterQuery';
 import { buildCityOverview, OVERVIEW_REFRESH_MS, querySnapshot, type FeedSnapshot, type MobilitySnapshot } from '../src/lib/scooterSnapshots';
 import { scooterResponseHeaders } from '../src/lib/scooterResponse';
-import { FRENCH_SCOOTER_SYSTEMS } from '../src/lib/frenchScooterSystems';
-import { fetchFrenchParking } from '../src/lib/parkingFeeds';
+import { REGIONAL_SCOOTER_SYSTEMS, REGIONAL_SCOOTER_CITIES, regionalSource, isRegionalSource } from '../src/lib/regionalScooterSystems';
+import { SWISS_SCOOTER_AREAS } from '../src/lib/feedCoverage';
+import { fetchRegionalParking } from '../src/lib/parkingFeeds';
 
 const snapshotPath = process.env.SCOOTER_SNAPSHOT_PATH ?? '/data/scooters.json';
 const port = Number(process.env.PORT ?? 3001);
@@ -59,11 +60,11 @@ async function refresh() {
         console.warn(JSON.stringify({ event: 'snapshot_feed_failed', feed: definition.id,
           error: error instanceof Error ? error.message : String(error) }));
       }
-      const frenchSystem = FRENCH_SCOOTER_SYSTEMS.find(system => definition.id === `france:${system.id}`);
-      if (frenchSystem) {
+      const regionalSystem = REGIONAL_SCOOTER_SYSTEMS.find(system => definition.id === `${regionalSource(system)}:${system.id}`);
+      if (regionalSystem) {
         const record = next.get(definition.id)!;
         try {
-          const parking = await fetchFrenchParking(frenchSystem);
+          const parking = await fetchRegionalParking(regionalSystem);
           record.parking = { ...parking, observedAt: parking.stale ? old?.parking?.observedAt ?? 0 : Date.now() };
         } catch (error) {
           if (old?.parking) record.parking = { ...old.parking, stale: true };
@@ -82,7 +83,7 @@ async function refresh() {
     for (const id of next.keys()) if (!active.has(id)) next.delete(id);
   }
   const feeds = [...next.values()];
-  const overview = !snapshot || now - snapshot.overview.generatedAt >= OVERVIEW_REFRESH_MS
+  const overview = !snapshot || snapshot.overview.cities.length !== REGIONAL_SCOOTER_CITIES.length + SWISS_SCOOTER_AREAS.length || now - snapshot.overview.generatedAt >= OVERVIEW_REFRESH_MS
     ? buildCityOverview(feeds, now) : snapshot.overview;
   snapshot = { version: 1, updatedAt: now, feeds, overview };
   const temporaryPath = `${snapshotPath}.${randomUUID()}.tmp`;
@@ -124,7 +125,7 @@ const server = createServer((request, response) => {
     response.end(JSON.stringify({ ready: healthy, updatedAt: snapshot?.updatedAt,
       feeds: snapshot?.feeds.length, failedFeeds: snapshot?.feeds.filter(feed => feed.failed).map(feed => feed.id),
       parkingLocations: snapshot?.feeds.reduce((total, feed) => total + (feed.parking?.locations.length ?? 0), 0),
-      failedParkingFeeds: snapshot?.feeds.filter(feed => feed.source === 'france' &&
+      failedParkingFeeds: snapshot?.feeds.filter(feed => isRegionalSource(feed.source) &&
         (!feed.parking || feed.parking.stale || Date.now() - feed.parking.observedAt > 5 * interval)).map(feed => feed.id),
       cities: snapshot?.overview.cities.length, version: process.env.SOURCE_COMMIT ?? 'local' }));
     return;

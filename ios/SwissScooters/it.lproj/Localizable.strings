@@ -57,13 +57,13 @@
 "The scooter request failed (HTTP %lld)." = "La richiesta dei monopattini non è riuscita (HTTP %lld).";
 "A network error prevented the scooter update: %@" = "Un errore di rete ha impedito l’aggiornamento dei monopattini: %@";
 "Address search" = "Ricerca indirizzo";
-"Swiss address or French city" = "Indirizzo svizzero o città francese";
+"City or Swiss address" = "Città o indirizzo svizzero";
 "Clear address search" = "Cancella la ricerca dell’indirizzo";
 "Searching addresses…" = "Ricerca degli indirizzi…";
 "No addresses or cities found." = "Nessun indirizzo o città trovato.";
 "Address search is unavailable. Try again." = "La ricerca degli indirizzi non è disponibile. Riprova.";
 "Find a scooter nearby" = "Trova un monopattino vicino";
-"Use your location for nearby distances, or search a Swiss address or French city." = "Usa la posizione oppure cerca un indirizzo svizzero o una città francese.";
+"Use your location for nearby distances, or search a supported city or Swiss address." = "Usa la posizione oppure cerca una città supportata o un indirizzo svizzero.";
 "Use my location" = "Usa la mia posizione";
 "Browse the map" = "Esplora la mappa";
 "Finding scooters…" = "Ricerca dei monopattini…";

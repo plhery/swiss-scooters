@@ -220,7 +220,7 @@ struct ScooterMapScreen: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Find a scooter nearby")
                     .font(.headline)
-                Text("Use your location for nearby distances, or search a Swiss address or French city.")
+                Text("Use your location for nearby distances, or search a supported city or Swiss address.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -1,6 +1,6 @@
 import { boundsIntersect } from '@/lib/geo';
 import type { MapBounds } from '@/lib/types';
-import { FRENCH_SCOOTER_SYSTEMS } from '@/lib/frenchScooterSystems';
+import { REGIONAL_SCOOTER_SYSTEMS, serviceAreas } from '@/lib/regionalScooterSystems';
 import swissAreas from '../../data/swiss-scooter-areas.json';
 
 // The Swiss registry is queried only within this padded national envelope.
@@ -13,10 +13,10 @@ export const SWISS_MOBILITY_BOUNDS: MapBounds = {
 
 export const MOBILITY_COVERAGE = [
   SWISS_MOBILITY_BOUNDS,
-  ...FRENCH_SCOOTER_SYSTEMS.map(system => system.bounds),
+  ...REGIONAL_SCOOTER_SYSTEMS.flatMap(system => serviceAreas(system).map(area => area.bounds)),
 ];
 
-// Bound world-level queries while retaining both Swiss and French systems.
+// Bound world-level queries while retaining all reviewed countries.
 export const SUPPORTED_MOBILITY_BOUNDS: MapBounds = {
   south: Math.min(...MOBILITY_COVERAGE.map(bounds => bounds.south)),
   west: Math.min(...MOBILITY_COVERAGE.map(bounds => bounds.west)),

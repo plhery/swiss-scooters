@@ -1,4 +1,4 @@
-import type { FrenchScooterSystem } from './frenchScooterSystems';
+import { serviceAreas, type RegionalScooterSystem } from './regionalScooterSystems';
 import type { ParkingLocation } from './types';
 import { boundsContainPoint } from './geo';
 
@@ -37,17 +37,17 @@ function polygons(geometry: Geometry): number[][][][] {
 function timestamp(value: number | string | undefined, fallback: number) {
   return value === undefined ? fallback : typeof value === 'number' ? value * 1000 : Date.parse(value);
 }
-function stationName(name: unknown, fallback: string): string {
+function stationName(name: unknown, fallback: string, language: string): string {
   if (typeof name === 'string' && name.trim()) return name.trim().replaceAll('_', ' ').slice(0, 200);
   if (Array.isArray(name)) {
-    const localized = name.find(x => x?.language === 'fr') ?? name.find(x => typeof x?.text === 'string');
-    if (localized) return stationName(localized.text, fallback);
+    const localized = name.find(x => x?.language === language) ?? name.find(x => typeof x?.text === 'string');
+    if (localized) return stationName(localized.text, fallback, language);
   }
   return fallback;
 }
 
 /** Only actual scooter parking infrastructure, never synthetic whole-city stations. */
-export function normalizeParkingLocations(system: FrenchScooterSystem, types: ParkingTypesFeed,
+export function normalizeParkingLocations(system: RegionalScooterSystem, types: ParkingTypesFeed,
   information: ParkingStationsFeed, geofencing: ParkingZonesFeed, now = Date.now()): ParkingLocation[] {
   const scooterTypes = (types.data?.vehicle_types ?? []).filter(type =>
     ['scooter', 'scooter_standing'].includes(type.form_factor ?? '') && type.propulsion_type === 'electric'
@@ -72,7 +72,7 @@ export function normalizeParkingLocations(system: FrenchScooterSystem, types: Pa
     if (typeof station.station_id !== 'string' || !station.station_id ||
       typeof station.lat !== 'number' || typeof station.lon !== 'number' ||
       !Number.isFinite(station.lat) || !Number.isFinite(station.lon) ||
-      !boundsContainPoint(system.bounds, station.lat, station.lon) ||
+      !serviceAreas(system).some(area => boundsContainPoint(area.bounds, station.lat!, station.lon!)) ||
       !(station.is_virtual_station === true || station.station_area || station.parking_type)) continue;
     const allowedTypes = scooterTypes.filter(type =>
       (!station.vehicle_type_ids || station.vehicle_type_ids.includes(type)) &&
@@ -89,7 +89,7 @@ export function normalizeParkingLocations(system: FrenchScooterSystem, types: Pa
       return ruleFor(geofencing.data?.global_rules, type)?.station_parking === true;
     });
     const location = { id: `${system.id}:${station.station_id}`, provider: system.provider,
-      name: stationName(station.name, system.city), lat: station.lat, lng: station.lon, mandatory };
+      name: stationName(station.name, system.city, system.country.toLowerCase()), lat: station.lat, lng: station.lon, mandatory };
     unique.set(location.id, location);
   }
   return [...unique.values()];

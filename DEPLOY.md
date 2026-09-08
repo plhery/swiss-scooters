@@ -154,3 +154,11 @@ format; old clients and persisted snapshots remain readable. Deploy the cache
 before the clients, then verify `/health` reports `parkingLocations > 0` and an
 empty `failedParkingFeeds` list. A French request at zoom 16 includes `parking`
 and `meta.parkingStatus`; zoom 15 and below omit individual parking locations.
+
+
+The Germany/Italy catalog expands the collector to approximately 146 feeds.
+Allocate 1536 MiB to the cache container (local validation peaked around 750 MiB).
+The upstream cache holds 2048 documents to retain hourly metadata across minute
+refreshes. The country catalogs are bundled into both the cache backend and the
+Cloudflare web app; deploy the cache before the web app. City totals rebuild on
+startup when the catalog adds/removes cities, even if the old hourly cache is fresh.

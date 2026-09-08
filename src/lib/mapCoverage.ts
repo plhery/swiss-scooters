@@ -1,4 +1,4 @@
-import { FRENCH_SCOOTER_SYSTEMS } from '@/lib/frenchScooterSystems';
+import { REGIONAL_SCOOTER_SYSTEMS, serviceAreas } from '@/lib/regionalScooterSystems';
 import { SWISS_SCOOTER_AREAS } from '@/lib/feedCoverage';
 import { boundsIntersect } from '@/lib/geo';
 import { PROVIDER_KEYS } from '@/generated/providers';
@@ -13,8 +13,8 @@ export function providersForViewport(bounds: MapBounds): string[] {
   if (SWISS_SCOOTER_AREAS.some(area => boundsIntersect(area.bounds, bounds))) {
     for (const key of PROVIDER_KEYS) if (key !== 'pony') providers.add(key);
   }
-  for (const system of FRENCH_SCOOTER_SYSTEMS) {
-    if (boundsIntersect(system.bounds, bounds)) providers.add(system.provider);
+  for (const system of REGIONAL_SCOOTER_SYSTEMS) {
+    if (serviceAreas(system).some(area => boundsIntersect(area.bounds, bounds))) providers.add(system.provider);
   }
   return PROVIDER_KEYS.filter(key => providers.has(key));
 }
