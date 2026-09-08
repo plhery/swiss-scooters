@@ -8,6 +8,8 @@ import MapCredits from '@/components/MapCredits';
 import Icon from '@/components/Icon';
 import SearchIsland from '@/components/SearchIsland';
 import ControlSheet from '@/components/ControlSheet';
+import { requestDeadline } from '@/lib/requestDeadline';
+import { responseExpiry } from '@/lib/dataExpiry';
 import { selectionFeedback } from '@/lib/feedback';
 import type { AddressResult } from '@/components/AddressSearch';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle, ScooterResponse } from '@/lib/types';
@@ -37,6 +39,7 @@ const VIEWPORT_FETCH_PADDING = 0.25;
 const AUTO_REFRESH_INTERVAL_MS = 60_000;
 
 const STORAGE_KEY = 'scooters-params';
+const PROVIDERS_STORAGE_KEY = 'scooters-providers';
 
 interface ScooterMapQuery {
   bounds: MapBounds;
@@ -118,6 +121,8 @@ export default function Home() {
   const [showLocationIntro, setShowLocationIntro] = useState(true);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
   const initializedRef = useRef(false);
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const receivedAtRef = useRef(0);
   const mapQueryRef = useRef<ScooterMapQuery | null>(null);
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestSequenceRef = useRef(0);
@@ -132,6 +137,13 @@ export default function Home() {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(PROVIDERS_STORAGE_KEY) ?? 'null');
+      if (Array.isArray(saved) && saved.every(key => typeof key === 'string' && Object.hasOwn(PROVIDERS, key))) {
+        setEnabledProviders(new Set(saved));
+      }
+    } catch {}
+    setPreferencesReady(true);
     const params = readUrlParams();
     if (params.minBattery !== undefined) setMinBattery(params.minBattery);
     if (params.tileLayer) setTileLayer(params.tileLayer);
@@ -144,8 +156,14 @@ export default function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!preferencesReady) return;
+    try { localStorage.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify([...enabledProviders].sort())); } catch {}
+  }, [enabledProviders, preferencesReady]);
+
   // Sync state to URL + localStorage
   useEffect(() => {
+    if (!preferencesReady) return;
     const p = serializeClientParams({ minBattery, tileLayer });
     const qs = p.toString();
     const newUrl = qs ? `?${qs}` : window.location.pathname;
@@ -155,7 +173,7 @@ export default function Home() {
     const stored: Record<string, string> = {};
     p.forEach((v, k) => { stored[k] = v; });
     saveParamsToStorage(stored);
-  }, [minBattery, tileLayer]);
+  }, [minBattery, tileLayer, preferencesReady]);
 
   useEffect(() => {
     const darkMap = tileLayer === 'dark';
@@ -182,6 +200,7 @@ export default function Home() {
       controller: new AbortController(),
     };
     requestRef.current = request;
+    const deadline = requestDeadline(request.controller.signal, 20_000);
     setLoading(true);
     setError(false);
     try {
@@ -194,11 +213,13 @@ export default function Home() {
         minBattery: String(queryMinimumBattery),
       });
       const res = await fetch(`/api/scooters?${params}`, {
-        signal: request.controller.signal,
+        signal: deadline.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ScooterResponse = await res.json();
       if (requestRef.current?.id !== request.id) return false;
+      if (!Array.isArray(data.vehicles) || !data.meta) throw new Error('Invalid scooter response');
+      receivedAtRef.current = Date.now();
       setVehicles(data.vehicles);
       setClusters(data.clusters ?? []);
       setParking(data.parking ?? []);
@@ -210,17 +231,42 @@ export default function Home() {
       setLastUpdated(updatedAt);
       return true;
     } catch (e) {
-      if ((e as Error).name === 'AbortError' || requestRef.current?.id !== request.id) return false;
+      if (request.controller.signal.aborted || requestRef.current?.id !== request.id) return false;
       console.error('Failed to fetch scooters:', e);
       setError(true);
       return false;
     } finally {
+      deadline.dispose();
       if (requestRef.current?.id === request.id) {
         requestRef.current = null;
         setLoading(false);
       }
     }
   }, [queryMinimumBattery]);
+
+  useEffect(() => {
+    if (!responseMeta) return;
+    const expiry = responseExpiry(responseMeta, receivedAtRef.current);
+    const expireVehicles = () => {
+      setVehicles([]);
+      setClusters([]);
+      setSelectedVehicleKey(null);
+      setError(true);
+    };
+    const expireParking = () => setParking([]);
+    const onVisibility = () => {
+      if (Date.now() >= expiry.vehicles) expireVehicles();
+      if (Date.now() >= expiry.parking) expireParking();
+    };
+    const vehicleTimer = window.setTimeout(expireVehicles, Math.max(0, expiry.vehicles - Date.now()));
+    const parkingTimer = window.setTimeout(expireParking, Math.max(0, expiry.parking - Date.now()));
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearTimeout(vehicleTimer);
+      window.clearTimeout(parkingTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [responseMeta]);
 
   useEffect(() => {
     if (!mapQuery) return;

@@ -92,7 +92,7 @@ const scooterResponse = {
     stale: false,
     failedSources: [],
     sources: { national: 'fresh', hopp: 'fresh' },
-    generatedAt: '2026-08-05T12:00:00.000Z',
+    generatedAt: new Date().toISOString(),
     truncated: false,
     totalVehicles: 3,
     mode: 'vehicles',

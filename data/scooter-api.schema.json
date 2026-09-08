@@ -230,6 +230,8 @@
         "zoom"
       ],
       "properties": {
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "parkingExpiresAt": { "type": "string", "format": "date-time" },
         "parkingStatus": { "$ref": "#/$defs/FeedSourceStatus" },
         "partial": { "type": "boolean" },
         "stale": { "type": "boolean" },

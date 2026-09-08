@@ -13,6 +13,8 @@ const query: FeedQuery = {
 };
 
 function jsonResponse(value: unknown): Response {
+  if (value && typeof value === 'object' && 'data' in value && value.data && typeof value.data === 'object' &&
+      ('bikes' in value.data || 'vehicles' in value.data)) value = { last_updated: Date.now() / 1000, ...value };
   return new Response(JSON.stringify(value), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
@@ -154,7 +156,7 @@ function hoppResponse(url: string): Response | null {
           plan_id: 'hopp-standard',
           currency: 'chf',
           price: 1,
-          per_min_price: [{ start: 0, rate: 0.8, interval: 2 }],
+          per_min_price: [{ start: 0, rate: 0.4, interval: 1 }],
         }],
       },
     });
@@ -259,7 +261,7 @@ describe('fetchScooters source health', () => {
         vehicle_id: 'publibike-freefloating:publibike-zurich-1',
       }),
     ]));
-    expect(result.meta).toEqual({
+    expect(result.meta).toMatchObject({
       partial: false,
       stale: false,
       failedSources: [],
@@ -282,7 +284,7 @@ describe('fetchScooters source health', () => {
 
     expect(result.vehicles).toHaveLength(1);
     expect(result.vehicles[0]).not.toHaveProperty('pricing');
-    expect(result.meta).toEqual({
+    expect(result.meta).toMatchObject({
       partial: false,
       stale: false,
       failedSources: [],
@@ -357,7 +359,7 @@ describe('fetchScooters source health', () => {
       rental_uris: { ios: null, android: null, web: null },
       distance_m: expect.any(Number),
     }]);
-    expect(result.meta).toEqual({
+    expect(result.meta).toMatchObject({
       partial: false,
       stale: false,
       failedSources: [],
@@ -452,7 +454,7 @@ describe('fetchScooters source health', () => {
     });
 
     expect(result.vehicles).toHaveLength(1);
-    expect(result.meta).toEqual({
+    expect(result.meta).toMatchObject({
       partial: true,
       stale: false,
       failedSources: ['national:dott_zurich'],
@@ -793,5 +795,79 @@ describe('fetchScooters source health', () => {
     expect(result.vehicles).toEqual([]);
     expect(result.meta.sources.national).toBe('skipped');
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/lime_newmarket/free_bike_status'))).toBe(false);
+  });
+});
+
+describe('feed validation and tariff regressions', () => {
+  it.each([null, 0, Math.floor((Date.now() - 86400_000) / 1000)])('rejects a missing or expired Swiss status timestamp: %s', async timestamp => {
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const response = nationalResponse(String(input))!;
+      if (String(input).endsWith('/free_bike_status')) {
+        return Response.json({ ...(await response.json() as Record<string, unknown>), last_updated: timestamp });
+      }
+      return response;
+    }));
+    await expect(fetchScooters({ ...query, providers: new Set(['lime']) })).rejects.toBeInstanceOf(ScooterFeedsUnavailableError);
+  });
+
+  it('retains the last valid registry when an HTTP 200 response has an invalid shape', async () => {
+    const { discoverCollectableFeeds } = await import('./scooterFeeds');
+    let now = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    let invalid = false;
+    vi.stubGlobal('fetch', vi.fn(async input => invalid ? Response.json({}) : nationalResponse(String(input))!));
+    expect((await discoverCollectableFeeds()).some(feed => feed.id === 'national:lime_zurich')).toBe(true);
+    now += 3600_001;
+    invalid = true;
+    expect((await discoverCollectableFeeds()).some(feed => feed.id === 'national:lime_zurich')).toBe(true);
+  });
+
+  it('keeps live observation time advancing when only metadata uses stale fallback', async () => {
+    const { discoverCollectableFeeds } = await import('./scooterFeeds');
+    let now = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    let metadataFails = false;
+    vi.stubGlobal('fetch', vi.fn(async input => metadataFails && !String(input).endsWith('/free_bike_status')
+      ? new Response('{}', { status: 503 }) : nationalResponse(String(input))!));
+    const feed = (await discoverCollectableFeeds()).find(feed => feed.id === 'national:lime_zurich')!;
+    await feed.collect();
+    now += 3600_001;
+    metadataFails = true;
+    const collected = await feed.collect();
+    expect(collected.stale).toBe(true);
+    expect(collected.observedAt).toBe(now);
+    expect(collected.vehicles).toHaveLength(1);
+  });
+
+  it.each([
+    { per_min_pricing: [{ start: 0, rate: 0, interval: 1, end: 5 }, { start: 5, rate: 0.4, interval: 1 }] },
+    { per_min_pricing: [{ start: 0, rate: 0.8, interval: 2 }] },
+    { per_km_pricing: [{ start: 0, rate: 0.1, interval: 1 }] },
+    { is_taxable: true },
+  ])('omits estimates for tariffs the flat-minute contract cannot represent: %j', async changes => {
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const response = nationalResponse(String(input))!;
+      if (String(input).endsWith('/system_pricing_plans')) {
+        const body = await response.json() as { data: { plans: Record<string, unknown>[] } };
+        Object.assign(body.data.plans[0], changes);
+        return Response.json(body);
+      }
+      return response;
+    }));
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+    expect(result.vehicles).toHaveLength(1);
+    expect(result.vehicles[0].pricing).toBeUndefined();
+  });
+
+  it('uses a vehicle type default tariff when the vehicle has no override', async () => {
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const response = nationalResponse(String(input))!;
+      const body = await response.json() as { data: { bikes: Record<string, unknown>[]; vehicle_types: Record<string, unknown>[] } };
+      if (String(input).endsWith('/free_bike_status')) delete body.data.bikes[0].pricing_plan_id;
+      if (String(input).endsWith('/vehicle_types')) body.data.vehicle_types[0].default_pricing_plan_id = 'lime-standard';
+      return Response.json(body);
+    }));
+    const result = await fetchScooters({ ...query, providers: new Set(['lime']) });
+    expect(result.vehicles[0].pricing?.minute_fee_minor_units).toBe(42);
   });
 });

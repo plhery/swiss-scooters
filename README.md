@@ -72,7 +72,9 @@ changing the response contract.
 The included configuration targets Cloudflare Workers through OpenNext. Give
 your fork a Worker name and hostname in `wrangler.jsonc`. Deploy the persistent
 cache with `server/Dockerfile` and a `/data` volume, and set
-`SCOOTER_SNAPSHOT_API_URL` to that origin. Then:
+`SCOOTER_SNAPSHOT_API_URL` to that origin. Configure the same
+`SCOOTER_SNAPSHOT_API_TOKEN` secret on the cache and Worker (see the initial
+rollout order in [DEPLOY.md](DEPLOY.md)). Then:
 
 ```bash
 npx wrangler login

@@ -30,13 +30,13 @@ describe('UpstreamJsonCache', () => {
 
     resolveResponse?.(jsonResponse({ version: 1 }));
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { data: { version: 1 }, stale: false },
-      { data: { version: 1 }, stale: false },
+      { data: { version: 1 }, stale: false, fetchedAt: expect.any(Number) },
+      { data: { version: 1 }, stale: false, fetchedAt: expect.any(Number) },
     ]);
 
     await expect(cache.fetch('https://example.com/feed', options)).resolves.toEqual({
       data: { version: 1 },
-      stale: false,
+      stale: false, fetchedAt: expect.any(Number),
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
@@ -76,14 +76,14 @@ describe('UpstreamJsonCache', () => {
 
     await expect(cache.fetch(sensitiveUrl, options)).resolves.toEqual({
       data: { version: 1 },
-      stale: false,
+      stale: false, fetchedAt: expect.any(Number),
     });
 
     now = 31_000;
     failing = true;
     await expect(cache.fetch(sensitiveUrl, options)).resolves.toEqual({
       data: { version: 1 },
-      stale: true,
+      stale: true, fetchedAt: 0,
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(warning).toHaveBeenCalledOnce();
@@ -100,7 +100,7 @@ describe('UpstreamJsonCache', () => {
     now = 32_000;
     await expect(cache.fetch(sensitiveUrl, options)).resolves.toEqual({
       data: { version: 1 },
-      stale: true,
+      stale: true, fetchedAt: 0,
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
 
@@ -118,4 +118,14 @@ describe('UpstreamJsonCache', () => {
     await expect(cache.fetch('https://example.com/feed', options)).rejects.toThrow('HTTP 503');
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+});
+
+it('rejects invalid HTTP 200 data before it can replace a good cached document', async () => {
+  let now = 0;
+  const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse({ version: 1 })).mockResolvedValue(jsonResponse({ invalid: true }));
+  const cache = new UpstreamJsonCache({ fetcher, now: () => now });
+  const validate = (value: unknown) => { if (!value || typeof value !== 'object' || !('version' in value)) throw Error('invalid feed'); };
+  await cache.fetch('https://test.example/feed', { ...options, validate });
+  now = 31_000;
+  await expect(cache.fetch('https://test.example/feed', { ...options, validate })).resolves.toEqual({ data: { version: 1 }, stale: true, fetchedAt: 0 });
 });

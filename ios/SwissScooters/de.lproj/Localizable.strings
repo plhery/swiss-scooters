@@ -177,3 +177,5 @@
 "Parking data is temporarily unavailable" = "Parkplatzdaten sind vorübergehend nicht verfügbar";
 "Parking data may be out of date" = "Parkplatzdaten sind möglicherweise veraltet";
 "Parking" = "Parkplatz";
+
+"Availability has expired. Refresh to see current scooters." = "Die Verfügbarkeiten sind veraltet. Aktualisiere, um aktuelle Scooter zu sehen.";

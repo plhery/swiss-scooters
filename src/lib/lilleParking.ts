@@ -32,6 +32,7 @@ export function normalizeLilleParking(features: LilleParkingFeature[], system: R
 export async function fetchLilleParking(system: RegionalScooterSystem) {
   const features: LilleParkingFeature[] = [];
   let stale = false;
+  let observedAt = Date.now();
   // Construct pagination on the reviewed endpoint; never follow arbitrary feed links.
   for (let page = 0; page < 10; page++) {
     const url = new URL(endpoint);
@@ -39,11 +40,12 @@ export async function fetchLilleParking(system: RegionalScooterSystem) {
     const response = await fetchJson<{ features?: LilleParkingFeature[]; numberMatched?: number }>(url.toString(), { revalidate: 3600 });
     if (!Array.isArray(response.data.features)) throw new Error('Invalid MEL parking inventory');
     stale ||= response.stale;
+    observedAt = Math.min(observedAt, response.fetchedAt + 3600_000);
     features.push(...response.data.features);
     if (!response.data.features.length && features.length < (response.data.numberMatched ?? 0)) throw new Error('Incomplete MEL parking inventory');
     if (!response.data.features.length || features.length >= (response.data.numberMatched ?? Infinity) ||
       (response.data.numberMatched === undefined && response.data.features.length < 1000)) {
-      return { locations: normalizeLilleParking(features, system), stale };
+      return { locations: normalizeLilleParking(features, system), stale, observedAt };
     }
   }
   throw new Error('MEL parking inventory exceeds the collection limit');

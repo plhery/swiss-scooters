@@ -177,3 +177,5 @@
 "Parking data is temporarily unavailable" = "Parking data is temporarily unavailable";
 "Parking data may be out of date" = "Parking data may be out of date";
 "Parking" = "Parking";
+
+"Availability has expired. Refresh to see current scooters." = "Availability has expired. Refresh to see current scooters.";

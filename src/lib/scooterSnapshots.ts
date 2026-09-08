@@ -144,6 +144,7 @@ function overviewResponse(snapshot: MobilitySnapshot, query: FeedQuery, zoom: nu
   return {
     vehicles: [], clusters, providers,
     meta: { ...meta, generatedAt: new Date(snapshot.overview.generatedAt).toISOString(),
+      expiresAt: new Date(snapshot.overview.generatedAt + OVERVIEW_MAX_AGE_MS).toISOString(),
       truncated: false, totalVehicles: Object.values(providers).reduce((a, b) => a + b, 0),
       mode: 'clusters', zoom, overview: true, refreshAfterSeconds: 3600,
       availableProviders: providersForViewport(query.bounds) },
@@ -174,14 +175,19 @@ export function querySnapshot(snapshot: MobilitySnapshot, query: FeedQuery, zoom
   }
   const vehicles = [...unique.values()];
   if (query.origin) vehicles.sort((a, b) => (a.distance_m ?? 0) - (b.distance_m ?? 0));
+  const usableTimes = relevant.filter(feed => !feed.skipped && now - feed.observedAt <= VEHICLE_MAX_AGE_MS)
+    .map(feed => feed.observedAt);
+  const observedAt = Math.min(now, ...usableTimes);
   const response = scooterResponse({ vehicles, meta }, zoom, {
-    generatedAt: new Date(Math.min(now, ...relevant.filter(feed => !feed.skipped && feed.observedAt > 0).map(feed => feed.observedAt))).toISOString(),
+    generatedAt: new Date(observedAt).toISOString(),
+    expiresAt: new Date(observedAt + VEHICLE_MAX_AGE_MS).toISOString(),
     refreshAfterSeconds: 60,
     availableProviders: providersForViewport(query.bounds),
   });
   if (zoom !== null && zoom >= PARKING_MIN_ZOOM) {
     const systems = relevant.filter(feed => isRegionalSource(feed.source));
     const available = systems.filter(feed => feed.parking && now - feed.parking.observedAt <= PARKING_MAX_AGE_MS);
+    response.meta.parkingExpiresAt = new Date(Math.min(now, ...available.map(feed => feed.parking!.observedAt)) + PARKING_MAX_AGE_MS).toISOString();
     response.parking = available.flatMap(feed => feed.parking!.locations)
       .filter(location => boundsContainPoint(query.bounds, location.lat, location.lng));
     response.meta.parkingStatus = !systems.length ? 'skipped' : available.length === 0 ? 'failed'

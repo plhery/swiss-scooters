@@ -144,3 +144,25 @@ describe('GET /api/geocode', () => {
     expect(url.searchParams.get('lang')).toBe('fr');
   });
 });
+
+it('rate limits malformed bodies before attempting to read them', async () => {
+  rateLimitAllows.mockResolvedValue(false);
+  const req = new NextRequest('https://example.com/api/geocode', { method: 'POST', body: '{' });
+  const response = await POST(req);
+  expect(response.status).toBe(429);
+  expect(req.bodyUsed).toBe(false);
+  expect(rateLimitAllows).toHaveBeenCalledOnce();
+});
+
+it('caps streamed bodies without a Content-Length, counting UTF-8 bytes', async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({ start(controller) {
+    controller.enqueue(encoder.encode('{"q":"Zurich","extra":"'));
+    controller.enqueue(encoder.encode('é'.repeat(2100)));
+    controller.enqueue(encoder.encode('"}'));
+    controller.close();
+  } });
+  const req = new NextRequest('https://example.com/api/geocode', { method: 'POST', body: stream });
+  expect((await POST(req)).status).toBe(413);
+  expect(rateLimitAllows).toHaveBeenCalledOnce();
+});

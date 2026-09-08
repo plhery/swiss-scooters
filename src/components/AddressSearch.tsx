@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import Icon from './Icon';
+import { requestDeadline } from '@/lib/requestDeadline';
 
 export interface AddressResult {
   lat: number;
@@ -52,6 +53,7 @@ export default function AddressSearch({ onSelect, onClear, compact = false, auto
   const search = async (value: string) => {
     const controller = new AbortController();
     controllerRef.current = controller;
+    const deadline = requestDeadline(controller.signal, 12_000);
     setLoading(true);
     setFailed(false);
 
@@ -61,20 +63,22 @@ export default function AddressSearch({ onSelect, onClear, compact = false, auto
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ q: value, lang: locale }),
         cache: 'no-store',
-        signal: controller.signal,
+        signal: deadline.signal,
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextResults = await response.json() as AddressResult[];
+      if (controller.signal.aborted || controllerRef.current !== controller) return;
       setResults(nextResults);
       setActiveIndex(nextResults.length > 0 ? 0 : -1);
       setSearched(true);
-    } catch (error) {
-      if ((error as Error).name === 'AbortError') return;
+    } catch {
+      if (controller.signal.aborted || controllerRef.current !== controller) return;
       setResults([]);
       setActiveIndex(-1);
       setSearched(true);
       setFailed(true);
     } finally {
+      deadline.dispose();
       if (controllerRef.current === controller) {
         controllerRef.current = null;
         setLoading(false);
@@ -138,6 +142,7 @@ export default function AddressSearch({ onSelect, onClear, compact = false, auto
         </svg>
         <input
           type="search"
+          maxLength={160}
           autoFocus={autoFocus}
           enterKeyHint="search"
           autoComplete="off"

@@ -23,8 +23,8 @@ it('completes pagination when the server returns fewer records than the requeste
   const bay = { id: 'one', geometry: { type: 'Point', coordinates: [3.05, 50.65] },
     properties: { typologie: 'ESPACE PIETON', type_engin: 'TE + VAE' } };
   const fetch = vi.mocked(fetchJson);
-  fetch.mockResolvedValueOnce({ data: { features: [bay], numberMatched: 2 }, stale: false });
-  fetch.mockResolvedValueOnce({ data: { features: [{ ...bay, id: 'two' }], numberMatched: 2 }, stale: false });
+  fetch.mockResolvedValueOnce({ data: { features: [bay], numberMatched: 2 }, stale: false, fetchedAt: Date.now() });
+  fetch.mockResolvedValueOnce({ data: { features: [{ ...bay, id: 'two' }], numberMatched: 2 }, stale: false, fetchedAt: Date.now() });
   const result = await fetchLilleParking(system);
   expect(result.locations).toHaveLength(2);
   expect(new URL(fetch.mock.calls[1][0]).searchParams.get('startIndex')).toBe('1');

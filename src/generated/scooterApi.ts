@@ -49,6 +49,8 @@ export interface ScooterCluster {
 }
 
 export interface ScooterResponseMeta {
+  expiresAt?: string;
+  parkingExpiresAt?: string;
   parkingStatus?: FeedSourceStatus;
   partial: boolean;
   stale: boolean;

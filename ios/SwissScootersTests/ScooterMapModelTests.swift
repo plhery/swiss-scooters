@@ -769,3 +769,75 @@ private actor StubScooterAPI: ScooterAPIClient {
         (calls, cancellations, lastZoom, lastMinimumBattery)
     }
 }
+
+extension ScooterMapModelTests {
+    func testReturningToLoadedAreaDiscardsPendingOtherArea() async throws {
+        let api = DelayedSecondAPI()
+        let model = makeModel(api: api)
+        let a = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 47.377, longitude: 8.542), span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
+        let b = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 45.75, longitude: 4.85), span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
+        model.updateViewport(a, zoom: 16)
+        let aLoaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(aLoaded)
+        XCTAssertEqual(model.visibleCount, 1)
+        model.updateViewport(b, zoom: 16)
+        let bRequested = await waitUntil { await api.callCount() == 2 }
+        XCTAssertTrue(bRequested)
+        model.updateViewport(a, zoom: 16)
+        try await Task.sleep(for: .milliseconds(650))
+        XCTAssertEqual(model.viewport, GeoBounds(region: a))
+        XCTAssertEqual(model.visibleCount, 1, "Returning to cached A must not let pending B erase A's scooter")
+        XCTAssertEqual(model.mapScooters.first?.latitude, 47.377)
+    }
+
+    func testUnsolicitedNetworkCancellationClearsLoading() async throws {
+        let model = makeModel(api: CancelledAPI())
+        model.refresh()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(model.isLoading, "A cancelled URLSession request should clear loading and pending state")
+        model.autoRefreshIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(model.isLoading)
+    }
+}
+
+private actor DelayedSecondAPI: ScooterAPIClient {
+    private var calls = 0
+    func callCount() -> Int { calls }
+    func scooters(bounds: GeoBounds, zoom: Int, minimumBattery: Int) async throws -> ScooterResponse {
+        calls += 1
+        let second = calls == 2
+        if second { try await Task.sleep(for: .milliseconds(500)) }
+        return ScooterResponse(vehicles: [Scooter(provider: "lime", latitude: second ? 45.75 : 47.377, longitude: second ? 4.85 : 8.542, battery: 80, rangeMeters: nil, vehicleID: second ? "B" : "A", deepLink: nil, rentalURIs: nil, distanceMeters: nil)])
+    }
+}
+
+private actor CancelledAPI: ScooterAPIClient {
+    func scooters(bounds: GeoBounds, zoom: Int, minimumBattery: Int) async throws -> ScooterResponse { throw CancellationError() }
+}
+
+
+extension ScooterMapModelTests {
+    func testExpiresVehiclesAndParkingWithoutWaitingForAnotherSuccessfulResponse() async {
+        let now = Date()
+        let formatter = ISO8601DateFormatter()
+        let scooter = scooter(id: "one", provider: "lime")
+        let location = ScooterParking(id: "bay", provider: "lime", name: "Bay", latitude: 47.377, longitude: 8.542, mandatory: true)
+        let response = ScooterResponse(vehicles: [scooter], meta: ScooterResponseMetadata(
+            partial: false, failedSources: [], generatedAt: formatter.string(from: now),
+            expiresAt: formatter.string(from: now.addingTimeInterval(60)),
+            parkingExpiresAt: formatter.string(from: now.addingTimeInterval(120))), parking: [location])
+        let model = makeModel(api: StubScooterAPI(response: response))
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        model.selectScooter(scooter.id)
+        model.expireDataIfNeeded(now: now.addingTimeInterval(61))
+        XCTAssertTrue(model.mapScooters.isEmpty)
+        XCTAssertNil(model.selectedScooter)
+        XCTAssertEqual(model.parking, [location])
+        XCTAssertNotNil(model.errorMessage)
+        model.expireDataIfNeeded(now: now.addingTimeInterval(121))
+        XCTAssertTrue(model.parking.isEmpty)
+    }
+}

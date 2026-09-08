@@ -1,3 +1,4 @@
+import { BodyTooLargeError, readJsonBody } from '@/lib/readJsonBody';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimitAllows } from '@/lib/rateLimit';
 import { searchRegionalScooterCities } from '@/lib/regionalScooterSystems';
@@ -55,11 +56,7 @@ function errorResponse(message: string, status: number, retryAfter?: string) {
   );
 }
 
-async function geocode(request: NextRequest, input: GeocodeInput) {
-  if (!await rateLimitAllows(request, 'GEOCODE_API_RATE_LIMITER')) {
-    return errorResponse('Too many address searches. Please try again shortly.', 429, '60');
-  }
-
+async function geocode(input: GeocodeInput) {
   const query = input.query.trim();
   if (query.length < 2 || query.length > MAX_QUERY_LENGTH) {
     return errorResponse('Address search must contain between 2 and 160 characters.', 400);
@@ -112,7 +109,7 @@ async function geocode(request: NextRequest, input: GeocodeInput) {
       const lat = Number(result.attrs?.lat ?? result.attrs?.y);
       const lng = Number(result.attrs?.lon ?? result.attrs?.x);
       const displayName = result.attrs?.label ? plainTextLabel(result.attrs.label) : '';
-      if (!Number.isFinite(lat) || !Number.isFinite(lng) || !displayName) return [];
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180 || !displayName) return [];
       return [{ lat, lng, display_name: displayName }];
     });
 
@@ -133,26 +130,29 @@ async function geocode(request: NextRequest, input: GeocodeInput) {
 }
 
 export async function GET(request: NextRequest) {
-  return geocode(request, {
+  if (!await rateLimitAllows(request, 'GEOCODE_API_RATE_LIMITER')) return errorResponse('Too many address searches. Please try again shortly.', 429, '60');
+  return geocode({
     query: request.nextUrl.searchParams.get('q') ?? '',
     requestedLanguage: request.nextUrl.searchParams.get('lang') ?? 'en',
   });
 }
 
 export async function POST(request: NextRequest) {
+  if (!await rateLimitAllows(request, 'GEOCODE_API_RATE_LIMITER')) return errorResponse('Too many address searches. Please try again shortly.', 429, '60');
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = await readJsonBody(request, 4096);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return errorResponse('Address search request is too large.', 413);
     return errorResponse('Address search request must be valid JSON.', 400);
   }
 
-  if (!body || typeof body !== 'object') {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return errorResponse('Address search request must be a JSON object.', 400);
   }
 
   const { q, lang } = body as { q?: unknown; lang?: unknown };
-  return geocode(request, {
+  return geocode({
     query: typeof q === 'string' ? q : '',
     requestedLanguage: typeof lang === 'string' ? lang : 'en',
   });

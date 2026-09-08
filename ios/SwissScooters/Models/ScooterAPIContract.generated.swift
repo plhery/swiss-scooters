@@ -88,6 +88,8 @@ struct ScooterClusterPayload: Decodable, Sendable {
 }
 
 struct ScooterResponseMetadataPayload: Decodable, Sendable {
+    let expiresAt: String?
+    let parkingExpiresAt: String?
     let parkingStatus: ScooterFeedSourceStatusPayload?
     let partial: Bool
     let stale: Bool

@@ -163,7 +163,7 @@ describe('French scooter feeds', () => {
   });
 
   it('reports partial and stale independently when one Marseille provider fails', async () => {
-    const serve = fixture('lime_fr_marseille', { ageSeconds: 360 });
+    const serve = fixture('lime_fr_marseille', { ageSeconds: 120 });
     vi.stubGlobal('fetch', vi.fn(async url => {
       const result = serve(String(url));
       if (!result) throw new Error('Voi unavailable');

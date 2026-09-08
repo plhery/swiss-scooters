@@ -22,6 +22,7 @@ function safeUpstreamTarget(value: string): { host: string; path: string } {
 }
 
 interface CacheEntry {
+  fetchedAt: number;
   freshUntil: number;
   staleUntil: number;
   retryAfter: number;
@@ -33,9 +34,11 @@ interface CacheEntry {
 export interface CachedJson<T> {
   data: T;
   stale: boolean;
+  fetchedAt: number;
 }
 
 export interface UpstreamJsonOptions {
+  validate?: (value: unknown) => void;
   headers: Record<string, string>;
   freshSeconds: number;
   staleIfErrorSeconds: number;
@@ -70,10 +73,10 @@ export class UpstreamJsonCache {
     let entry = this.entries.get(url);
 
     if (entry?.hasValue && entry.freshUntil > now) {
-      return { data: entry.value as T, stale: false };
+      return { data: entry.value as T, stale: false, fetchedAt: entry.fetchedAt };
     }
     if (entry?.hasValue && entry.staleUntil > now && entry.retryAfter > now) {
-      return { data: entry.value as T, stale: true };
+      return { data: entry.value as T, stale: true, fetchedAt: entry.fetchedAt };
     }
     if (entry?.pending) {
       return entry.pending as Promise<CachedJson<T>>;
@@ -129,13 +132,15 @@ export class UpstreamJsonCache {
       }
 
       const data = await response.json() as T;
+      options.validate?.(data);
       const completedAt = this.now();
+      entry.fetchedAt = completedAt;
       entry.value = data;
       entry.hasValue = true;
       entry.freshUntil = completedAt + options.freshSeconds * 1000;
       entry.staleUntil = entry.freshUntil + options.staleIfErrorSeconds * 1000;
       entry.retryAfter = 0;
-      return { data, stale: false };
+      return { data, stale: false, fetchedAt: completedAt };
     } catch (error) {
       const failedAt = this.now();
       if (entry.hasValue && entry.staleUntil > failedAt) {
@@ -147,7 +152,7 @@ export class UpstreamJsonCache {
             ? { httpStatus: error.status }
             : { errorType: error instanceof Error ? error.name : 'UnknownError' }),
         }));
-        return { data: entry.value as T, stale: true };
+        return { data: entry.value as T, stale: true, fetchedAt: entry.fetchedAt };
       }
 
       this.entries.delete(url);
@@ -163,6 +168,7 @@ export class UpstreamJsonCache {
     }
 
     const entry: CacheEntry = {
+      fetchedAt: 0,
       freshUntil: 0,
       staleUntil: 0,
       retryAfter: 0,

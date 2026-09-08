@@ -1,3 +1,4 @@
+import { statusObservedAt, validateDiscovery, validateRegistry, validateTypes, validateVehicleStatus } from './feedValidation';
 import {
   coverageForRegionNames,
   coverageIntersects,
@@ -61,6 +62,7 @@ interface VehicleType {
   vehicle_type_id: string;
   form_factor?: string;
   propulsion_type?: string;
+  default_pricing_plan_id?: string;
 }
 
 interface StatusFeed {
@@ -78,6 +80,7 @@ interface VehicleTypesFeed {
 }
 
 interface PerMinutePrice {
+  end?: number;
   start?: number;
   rate?: number;
   interval?: number;
@@ -89,6 +92,8 @@ interface PricingPlan {
   price?: number;
   description?: string | Array<{ language: string; text: string }>;
   per_min_pricing?: PerMinutePrice[];
+  per_km_pricing?: unknown[];
+  is_taxable?: boolean;
   // Hopp currently publishes this singular key instead of the GBFS key above.
   per_min_price?: PerMinutePrice[];
 }
@@ -153,6 +158,7 @@ export interface FeedQuery {
 export type FeedSourceStatus = 'fresh' | 'stale' | 'partial' | 'failed' | 'skipped';
 
 export interface ScooterFetchMetadata {
+  expiresAt?: string;
   partial: boolean;
   stale: boolean;
   failedSources: string[];
@@ -172,6 +178,7 @@ export interface ScooterFetchResult {
 }
 
 interface SourceVehicles {
+  observedAt?: number;
   vehicles: Vehicle[];
   stale: boolean;
   skipped?: boolean;
@@ -184,6 +191,7 @@ export interface CollectableScooterFeed {
   provider: ProviderKey;
   coverage: MapBounds[];
   collect: () => Promise<SourceVehicles>;
+  host: string;
 }
 
 // The persistent collector refreshes each system independently. A failing
@@ -191,6 +199,7 @@ export interface CollectableScooterFeed {
 export async function discoverCollectableFeeds(): Promise<CollectableScooterFeed[]> {
   const query: FeedQuery = { bounds: SWISS_MOBILITY_BOUNDS, minBattery: 0 };
   const registry = await fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
+    validate: validateRegistry,
     authenticated: true, revalidate: METADATA_REVALIDATE_SECONDS,
   });
   return [
@@ -198,6 +207,7 @@ export async function discoverCollectableFeeds(): Promise<CollectableScooterFeed
       const system = registrySystem(entry.id, entry.url);
       return system ? [{
         id: `national:${system.id}`,
+        host: new URL(system.discoveryUrl).hostname,
         source: 'national' as const,
         provider: system.provider,
         coverage: knownSystemCoverage(system.id) ?? [SWISS_MOBILITY_BOUNDS],
@@ -211,12 +221,13 @@ export async function discoverCollectableFeeds(): Promise<CollectableScooterFeed
 export function independentCollectableFeeds(): CollectableScooterFeed[] {
   const query: FeedQuery = { bounds: SWISS_MOBILITY_BOUNDS, minBattery: 0 };
   return [
-    { id: 'hopp', source: 'hopp', provider: 'hopp', coverage: [HOPP_COVERAGE],
+    { id: 'hopp', host: new URL(HOPP_DISCOVERY_URL).hostname, source: 'hopp', provider: 'hopp', coverage: [HOPP_COVERAGE],
       collect: () => fetchHoppVehicles(query) },
-    { id: 'publibike', source: 'publibike', provider: 'publibike',
+    { id: 'publibike', host: new URL(PUBLIBIKE_FREE_FLOATING_URL).hostname, source: 'publibike', provider: 'publibike',
       coverage: [PUBLIBIKE_FREE_FLOATING_COVERAGE],
       collect: () => fetchPubliBikeFreeFloatingVehicles(query) },
     ...REGIONAL_SCOOTER_SYSTEMS.map(system => ({
+      host: new URL(system.discoveryUrl).hostname,
       id: `${regionalSource(system)}:${system.id}`, source: regionalSource(system), provider: system.provider,
       coverage: serviceAreas(system).map(area => area.bounds),
       collect: () => fetchRegionalSystemVehicles(system, { bounds: system.bounds, minBattery: 0 }),
@@ -251,7 +262,7 @@ function sharedMobilityHeaders(): Record<string, string> {
 
 export async function fetchJson<T>(
   url: string,
-  options: { authenticated?: boolean; revalidate: number }
+  options: { authenticated?: boolean; revalidate: number; validate?: (value: unknown) => void }
 ): Promise<CachedJson<T>> {
   const headers = options.authenticated
     ? sharedMobilityHeaders()
@@ -259,6 +270,7 @@ export async function fetchJson<T>(
 
   return upstreamJsonCache.fetch<T>(url, {
     headers,
+    validate: options.validate,
     freshSeconds: options.revalidate,
     staleIfErrorSeconds: options.revalidate === STATUS_REVALIDATE_SECONDS
       ? STATUS_STALE_IF_ERROR_SECONDS
@@ -299,7 +311,7 @@ function batteryPercent(vehicle: RawVehicle): number | null {
 
 function vehicleId(systemId: string, vehicle: RawVehicle): string | null {
   const id = vehicle.bike_id ?? vehicle.vehicle_id ?? vehicle.id;
-  if (!id) return null;
+  if (typeof id !== 'string' || !id) return null;
   return id.startsWith(`${systemId}:`) ? id : `${systemId}:${id}`;
 }
 
@@ -308,7 +320,8 @@ function toVehicle(
   provider: ProviderKey,
   raw: RawVehicle,
   query: Pick<FeedQuery, 'origin'>,
-  pricingByPlanId: Map<string, VehiclePricing>
+  pricingByPlanId: Map<string, VehiclePricing>,
+  defaultPricingPlanId?: string
 ): Vehicle | null {
   const lat = raw.lat;
   const lng = raw.lon ?? raw.lng;
@@ -324,16 +337,15 @@ function toVehicle(
   const distance = query.origin
     ? Math.round(haversineM(query.origin[0], query.origin[1], lat, lng) * 10) / 10
     : null;
-  const pricing = raw.pricing_plan_id
-    ? pricingByPlanId.get(raw.pricing_plan_id)
-    : undefined;
+  const planId = raw.pricing_plan_id ?? defaultPricingPlanId;
+  const pricing = planId ? pricingByPlanId.get(planId) : undefined;
 
   return {
     provider,
     lat,
     lng,
     battery: batteryPercent(raw),
-    range_m: range != null && Number.isFinite(Number(range)) ? Math.round(Number(range)) : null,
+    range_m: range != null && Number.isFinite(Number(range)) && Number(range) >= 0 ? Math.round(Number(range)) : null,
     vehicle_id: vehicleId(systemId, raw),
     deep_link: legacyRentalLink(rentalUris),
     rental_uris: rentalUris,
@@ -365,7 +377,7 @@ function filterVehicles(
       !boundsContainPoint(query.bounds, lat, lng)
     ) continue;
 
-    const vehicle = toVehicle(systemId, provider, raw, query, pricingByPlanId);
+    const vehicle = toVehicle(systemId, provider, raw, query, pricingByPlanId, types.get(raw.vehicle_type_id)?.default_pricing_plan_id);
     if (!vehicle) continue;
     filtered.push(vehicle);
   }
@@ -406,15 +418,12 @@ function vehiclePricing(plan: PricingPlan): VehiclePricing | null {
   const minuteBands = plan.per_min_pricing?.length
     ? plan.per_min_pricing
     : plan.per_min_price;
-  const firstMinuteBand = minuteBands
-    ?.filter(band => (
-      band.rate != null && Number.isFinite(band.rate) && band.rate >= 0 &&
-      band.interval != null && Number.isFinite(band.interval) && band.interval > 0
-    ))
-    .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))[0];
-  const minuteFee = firstMinuteBand
-    ? minorUnits(firstMinuteBand.rate! / firstMinuteBand.interval!)
-    : null;
+  // The wire contract models one uniform minute price. Do not flatten tariffs
+  // with introductory periods, interval billing, distance charges or extra tax.
+  if (minuteBands?.length !== 1 || plan.per_km_pricing?.length || plan.is_taxable === true) return null;
+  const band = minuteBands[0];
+  if (band.start !== 0 || band.interval !== 1 || band.end !== undefined) return null;
+  const minuteFee = minorUnits(band.rate);
 
   if (!currency?.match(/^[A-Z]{3}$/) || unlockFee == null || minuteFee == null) {
     return null;
@@ -629,6 +638,7 @@ async function fetchSystemVehicles(
   }
 
   const discovery = await fetchJson<DiscoveryFeed>(system.discoveryUrl, {
+    validate: validateDiscovery,
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
@@ -641,6 +651,7 @@ async function fetchSystemVehicles(
   }
 
   const types = await fetchJson<VehicleTypesFeed>(typesUrl, {
+    validate: validateTypes,
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
@@ -664,6 +675,7 @@ async function fetchSystemVehicles(
 
   const [status, pricingByPlanId] = await Promise.all([
     fetchJson<StatusFeed>(statusUrl, {
+      validate: validateVehicleStatus,
       authenticated: true,
       revalidate: STATUS_REVALIDATE_SECONDS,
     }),
@@ -671,6 +683,7 @@ async function fetchSystemVehicles(
   ]);
 
   return {
+    observedAt: statusObservedAt(status.data),
     vehicles: filterVehicles(
       system.id,
       rawVehicles(status.data),
@@ -678,12 +691,13 @@ async function fetchSystemVehicles(
       query,
       pricingByPlanId
     ),
-    stale: discovery.stale || types.stale || coverageStale || status.stale,
+    stale: discovery.stale || types.stale || coverageStale || status.stale || Date.now() - statusObservedAt(status.data) > 90_000,
   };
 }
 
 async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> {
   const registry = await fetchJson<RegistryFeed>(NATIONAL_V23_REGISTRY_URL, {
+    validate: validateRegistry,
     authenticated: true,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
@@ -730,6 +744,7 @@ async function fetchNationalVehicles(query: FeedQuery): Promise<SourceVehicles> 
   }
 
   return {
+    observedAt: Math.min(...availableResults.map(result => result.observedAt ?? Date.now())),
     vehicles: availableResults.flatMap(result => result.vehicles),
     stale: registry.stale || availableResults.some(result => result.stale),
     failedSources,
@@ -746,6 +761,7 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
   }
 
   const discovery = await fetchJson<DiscoveryFeed>(HOPP_DISCOVERY_URL, {
+    validate: validateDiscovery,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
   const entries = discoveryFeedEntries(discovery.data);
@@ -758,8 +774,8 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
   }
 
   const [status, types, pricingByPlanId] = await Promise.all([
-    fetchJson<StatusFeed>(statusUrl, { revalidate: STATUS_REVALIDATE_SECONDS }),
-    fetchJson<VehicleTypesFeed>(typesUrl, { revalidate: METADATA_REVALIDATE_SECONDS }),
+    fetchJson<StatusFeed>(statusUrl, { validate: validateVehicleStatus, revalidate: STATUS_REVALIDATE_SECONDS }),
+    fetchJson<VehicleTypesFeed>(typesUrl, { validate: validateTypes, revalidate: METADATA_REVALIDATE_SECONDS }),
     fetchPricingPlans(pricingUrl, { source: 'hopp' }),
   ]);
   const typesById = typeMap(types.data);
@@ -768,6 +784,7 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
   }
 
   return {
+    observedAt: statusObservedAt(status.data),
     vehicles: filterVehicles(
       'hopp',
       rawVehicles(status.data),
@@ -775,7 +792,7 @@ async function fetchHoppVehicles(query: FeedQuery): Promise<SourceVehicles> {
       query,
       pricingByPlanId
     ),
-    stale: discovery.stale || status.stale || types.stale,
+    stale: discovery.stale || status.stale || types.stale || Date.now() - statusObservedAt(status.data) > 90_000,
   };
 }
 
@@ -826,7 +843,7 @@ async function fetchPubliBikeFreeFloatingVehicles(
     });
   }
 
-  return { vehicles, stale: result.stale };
+  return { vehicles, stale: result.stale, observedAt: result.fetchedAt };
 }
 
 async function fetchRegionalSystemVehicles(
@@ -838,6 +855,7 @@ async function fetchRegionalSystemVehicles(
 
   const baseUrl = new URL('.', system.discoveryUrl).toString();
   const discovery = await fetchJson<DiscoveryFeed>(system.discoveryUrl, {
+    validate: validateDiscovery,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
   const entries = discoveryFeedEntries(discovery.data);
@@ -849,6 +867,7 @@ async function fetchRegionalSystemVehicles(
   }
 
   const types = await fetchJson<VehicleTypesFeed>(typesUrl, {
+    validate: validateTypes,
     revalidate: METADATA_REVALIDATE_SECONDS,
   });
   const typesById = typeMap(types.data);
@@ -857,7 +876,7 @@ async function fetchRegionalSystemVehicles(
   }
 
   const [status, pricing] = await Promise.all([
-    fetchJson<StatusFeed>(statusUrl, { revalidate: STATUS_REVALIDATE_SECONDS }),
+    fetchJson<StatusFeed>(statusUrl, { validate: validateVehicleStatus, revalidate: STATUS_REVALIDATE_SECONDS }),
     fetchPricingPlans(discoveredFeedUrl(entries, 'system_pricing_plans', baseUrl), {
       source: system.id,
     }),
@@ -865,22 +884,14 @@ async function fetchRegionalSystemVehicles(
   if (!Array.isArray(status.data.data?.bikes) && !Array.isArray(status.data.data?.vehicles)) {
     throw new Error(`${system.id} status contains no vehicle array`);
   }
-  const updatedAt = typeof status.data.last_updated === 'number'
-    ? status.data.last_updated * 1000
-    : Date.parse(status.data.last_updated ?? '');
-  const ageSeconds = (Date.now() - updatedAt) / 1000;
-  // Several published endpoints still return successful but abandoned
-  // feeds. HTTP 200 alone must not make old locations look live.
-  if (!Number.isFinite(updatedAt) || ageSeconds > 900 || ageSeconds < -300) {
-    throw new Error(`${system.id} status timestamp is missing or out of date`);
-  }
 
   return {
+    observedAt: statusObservedAt(status.data),
     vehicles: filterVehicles(system.id, rawVehicles(status.data), typesById, {
       ...query,
       bounds,
     }, pricing).filter(vehicle => serviceAreas(system).some(area => boundsContainPoint(area.bounds, vehicle.lat, vehicle.lng))),
-    stale: discovery.stale || types.stale || status.stale || ageSeconds > 300,
+    stale: discovery.stale || types.stale || status.stale || Date.now() - statusObservedAt(status.data) > 90_000,
   };
 }
 
@@ -912,6 +923,7 @@ async function fetchRegionalVehicles(query: FeedQuery, country: ScooterCountry):
     throw new ScooterFeedsUnavailableError(failedSources.sort());
   }
   return {
+    observedAt: Math.min(...served.map(result => result.observedAt ?? Date.now())),
     vehicles: served.flatMap(result => result.vehicles),
     stale: served.some(result => result.stale),
     skipped: served.length === 0,
@@ -1045,6 +1057,9 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
   return {
     vehicles: filtered,
     meta: {
+      expiresAt: new Date(Math.min(Date.now(), ...sourceResults.flatMap(([, result]) =>
+        result.status === 'fulfilled' && !result.value.skipped && result.value.observedAt !== undefined
+          ? [result.value.observedAt] : [])) + 300_000).toISOString(),
       partial: failedSources.length > 0,
       stale: sourceResults.some(([, result]) => result.status === 'fulfilled' && result.value.stale),
       failedSources,

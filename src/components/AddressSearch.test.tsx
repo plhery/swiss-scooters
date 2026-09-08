@@ -50,3 +50,18 @@ describe('AddressSearch', () => {
     expect(input).toHaveAttribute('aria-expanded', 'false');
   });
 });
+
+it('shows an error after a search stalls and can search again', async () => {
+  const fetcher = vi.fn().mockImplementationOnce((_url: unknown, init: RequestInit) => new Promise((_resolve, reject) => {
+    init.signal!.addEventListener('abort', () => reject(init.signal!.reason));
+  })).mockImplementation(async () => Response.json([{ lat: 47.378, lng: 8.54, display_name: 'Zurich' }]));
+  vi.stubGlobal('fetch', fetcher);
+  render(<I18nProvider><AddressSearch onSelect={vi.fn()} onClear={vi.fn()} /></I18nProvider>);
+  const input = screen.getByRole('combobox');
+  fireEvent.change(input, { target: { value: 'Zur' } });
+  await act(async () => vi.advanceTimersByTimeAsync(12_350));
+  expect(screen.getByRole('status')).toHaveClass('search-status-error');
+  fireEvent.change(input, { target: { value: 'Zurich' } });
+  await act(async () => vi.advanceTimersByTimeAsync(350));
+  expect(screen.getByRole('option', { name: 'Zurich' })).toBeVisible();
+});

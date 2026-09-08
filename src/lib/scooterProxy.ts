@@ -3,6 +3,7 @@ import { API_CONTENT_SECURITY_POLICY } from '@/lib/contentSecurityPolicy';
 
 interface SnapshotProxyEnvironment {
   SCOOTER_SNAPSHOT_API_URL: string;
+  SCOOTER_SNAPSHOT_API_TOKEN?: string;
   SCOOTER_API_RATE_LIMITER: { limit(options: { key: string }): Promise<{ success: boolean }> };
 }
 
@@ -29,12 +30,16 @@ export async function proxyScooterSnapshot(request: Request, env: SnapshotProxyE
         mode: parsed.zoom !== null && parsed.zoom <= 15 ? 'clusters' : 'vehicles',
         zoom: parsed.zoom, availableProviders: [] },
     }, { headers: { ...headers, 'Cache-Control': 'public, max-age=300' } });
+    if (!env.SCOOTER_SNAPSHOT_API_TOKEN) throw new Error('Missing origin credential');
     const upstream = new URL('/api/scooters', env.SCOOTER_SNAPSHOT_API_URL);
     upstream.search = url.search;
-    const response = await fetch(upstream, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
-    if (response.status >= 500) return Response.json({ error: 'Scooter data is temporarily unavailable. Please try again shortly.' },
+    const response = await fetch(upstream, { headers: { Accept: 'application/json', Authorization: `Bearer ${env.SCOOTER_SNAPSHOT_API_TOKEN}`,
+      'X-Scooter-Client-IP': request.headers.get('cf-connecting-ip') ?? 'unknown' }, redirect: 'error', signal: AbortSignal.timeout(5000) });
+    if (response.status >= 500 || response.status === 401 || response.status === 403) return Response.json({ error: 'Scooter data is temporarily unavailable. Please try again shortly.' },
       { status: 503, headers: { ...headers, 'Retry-After': '30' } });
     const result = new Response(response.body, response);
+    result.headers.set('Cache-Control', response.headers.get('X-Scooter-Public-Cache-Control') ?? 'private, no-store');
+    result.headers.delete('X-Scooter-Public-Cache-Control');
     for (const [key, value] of Object.entries(securityHeaders)) result.headers.set(key, value);
     return result;
   } catch {

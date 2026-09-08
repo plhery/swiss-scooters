@@ -399,6 +399,8 @@ struct ScooterResponseMetadata: Sendable {
     let overview: Bool
     let refreshAfterSeconds: Int?
     let parkingStatus: String?
+    let expiresAt: String?
+    let parkingExpiresAt: String?
 
     init(
         partial: Bool,
@@ -412,7 +414,9 @@ struct ScooterResponseMetadata: Sendable {
         zoom: Int? = nil,
         overview: Bool = false,
         refreshAfterSeconds: Int? = nil,
-        parkingStatus: String? = nil
+        parkingStatus: String? = nil,
+        expiresAt: String? = nil,
+        parkingExpiresAt: String? = nil
     ) {
         self.partial = partial
         self.stale = stale
@@ -426,6 +430,8 @@ struct ScooterResponseMetadata: Sendable {
         self.overview = overview
         self.refreshAfterSeconds = refreshAfterSeconds
         self.parkingStatus = parkingStatus
+        self.expiresAt = expiresAt
+        self.parkingExpiresAt = parkingExpiresAt
     }
 }
 
@@ -486,7 +492,9 @@ extension ScooterResponseMetadataPayload {
             zoom: zoom,
             overview: overview ?? false,
             refreshAfterSeconds: refreshAfterSeconds,
-            parkingStatus: parkingStatus?.rawValue
+            parkingStatus: parkingStatus?.rawValue,
+            expiresAt: expiresAt,
+            parkingExpiresAt: parkingExpiresAt
         )
     }
 }

@@ -159,6 +159,9 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var pendingQueryZoom: Int?
     @ObservationIgnored private var pendingQueryMinimumBattery: Int?
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
+    @ObservationIgnored private var expirationTask: Task<Void, Never>?
+    @ObservationIgnored private var vehiclesExpireAt: Date?
+    @ObservationIgnored private var parkingExpireAt: Date?
     @ObservationIgnored private var locationTimeoutTask: Task<Void, Never>?
     @ObservationIgnored private var activeRequestID: UUID?
     @ObservationIgnored private var bestLocationCandidate: CLLocation?
@@ -202,7 +205,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         self.defaults = defaults
 
         let savedBattery = defaults.object(forKey: Self.minimumBatteryKey) as? Int ?? 0
-        minimumBattery = Double(savedBattery)
+        minimumBattery = Double(min(100, max(0, savedBattery)))
 
         let savedStyle = defaults.string(forKey: Self.mapStyleKey)
         mapStyle = AppleMapStyle(rawValue: savedStyle ?? "") ?? .standard
@@ -388,6 +391,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func becameActive() {
+        expireDataIfNeeded()
         isSceneActive = true
         if hasStarted { startHeadingUpdates() }
         refreshIfStale()
@@ -415,6 +419,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func autoRefreshIfNeeded() {
+        expireDataIfNeeded()
         refreshIfStale()
     }
 
@@ -436,8 +441,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         viewportZoom = zoom
         clearSelectionIfHidden()
 
-        guard !queryCovers(nextViewport, zoom: zoom, pending: false),
-              !queryCovers(nextViewport, zoom: zoom, pending: true) else { return }
+        if queryCovers(nextViewport, zoom: zoom, pending: false) {
+            if fetchTask != nil && !queryCovers(nextViewport, zoom: zoom, pending: true) {
+                cancelPendingFetch()
+            }
+            return
+        }
+        guard !queryCovers(nextViewport, zoom: zoom, pending: true) else { return }
         scheduleFetch(for: nextViewport.expanded(by: 0.25), zoom: zoom, debounce: true)
     }
 
@@ -615,6 +625,9 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         fetchTask = Task { [weak self] in
             guard let self else { return }
 
+            defer {
+                if activeRequestID == requestID { clearPendingFetch() }
+            }
             if debounce {
                 do {
                     try await Task.sleep(for: .milliseconds(180))
@@ -655,6 +668,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                     return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
                 } ?? Date()
+                scheduleDataExpiry(response.meta)
+                expireDataIfNeeded()
                 clearSelectionIfHidden()
             } catch is CancellationError {
                 return
@@ -663,14 +678,68 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                 errorMessage = error.localizedDescription
             }
 
-            if activeRequestID == requestID {
-                isLoading = false
-                pendingQueryBounds = nil
-                pendingQueryZoom = nil
-                pendingQueryMinimumBattery = nil
-                fetchTask = nil
-            }
         }
+    }
+
+    private func clearPendingFetch() {
+        isLoading = false
+        activeRequestID = nil
+        pendingQueryBounds = nil
+        pendingQueryZoom = nil
+        pendingQueryMinimumBattery = nil
+        fetchTask = nil
+    }
+
+    private func cancelPendingFetch() {
+        fetchTask?.cancel()
+        clearPendingFetch()
+    }
+
+    private static func apiDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    private func scheduleDataExpiry(_ meta: ScooterResponseMetadata?) {
+        let receivedAt = Date()
+        let observedAt = min(receivedAt, Self.apiDate(meta?.generatedAt) ?? receivedAt)
+        let maximumAge: TimeInterval = meta?.overview == true ? 3 * 3600 : 300
+        vehiclesExpireAt = min(Self.apiDate(meta?.expiresAt) ?? .distantFuture,
+            observedAt.addingTimeInterval(maximumAge))
+        parkingExpireAt = min(Self.apiDate(meta?.parkingExpiresAt) ?? .distantFuture,
+            receivedAt.addingTimeInterval(300))
+        scheduleExpirationTimer()
+    }
+
+    private func scheduleExpirationTimer() {
+        expirationTask?.cancel()
+        guard let deadline = [vehiclesExpireAt, parkingExpireAt].compactMap({ $0 }).min() else { return }
+        let delay = max(0, deadline.timeIntervalSinceNow)
+        expirationTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            self?.expireDataIfNeeded()
+        }
+    }
+
+    func expireDataIfNeeded(now: Date = .now) {
+        var expired = false
+        if let deadline = vehiclesExpireAt, now >= deadline {
+            vehiclesExpireAt = nil
+            vehicles = []
+            clusters = []
+            selectedScooterID = nil
+            queryBounds = nil
+            errorMessage = String(localized: "Availability has expired. Refresh to see current scooters.")
+            expired = true
+        }
+        if let deadline = parkingExpireAt, now >= deadline {
+            parkingExpireAt = nil
+            parking = []
+            expired = true
+        }
+        if expired { scheduleExpirationTimer() }
     }
 
     private func fetchIfNeeded(
@@ -679,8 +748,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         debounce: Bool = false
     ) {
         let targetZoom = zoom ?? viewportZoom
-        guard !queryCovers(targetViewport, zoom: targetZoom, pending: false),
-              !queryCovers(targetViewport, zoom: targetZoom, pending: true) else { return }
+        if queryCovers(targetViewport, zoom: targetZoom, pending: false) {
+            if fetchTask != nil && !queryCovers(targetViewport, zoom: targetZoom, pending: true) {
+                cancelPendingFetch()
+            }
+            return
+        }
+        guard !queryCovers(targetViewport, zoom: targetZoom, pending: true) else { return }
         scheduleFetch(
             for: targetViewport.expanded(by: 0.25),
             zoom: targetZoom,

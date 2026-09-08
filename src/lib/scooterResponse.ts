@@ -24,6 +24,7 @@ export function scooterResponse(
   return {
     vehicles, clusters, providers,
     meta: {
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
       ...result.meta,
       generatedAt: new Date().toISOString(),
       truncated: clusters.length < representation.clusters.length || vehicles.length < representation.vehicles.length,

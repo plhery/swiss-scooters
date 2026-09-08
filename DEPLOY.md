@@ -20,8 +20,11 @@ worker that clears old app caches and opens the new address.
 - A Cloudflare account
 - Wrangler authenticated with `npx wrangler login`
 
-The cache service uses a persistent `/data` volume. No secret API key or database
-is required. The optional
+The cache service uses a persistent `/data` volume. Production requires a shared
+`SCOOTER_SNAPSHOT_API_TOKEN` (at least 32 characters) on the cache and Worker.
+The cache refuses to start in production without it; the Worker fails closed if
+its secret is absent. Store it as a Coolify environment secret and a Wrangler
+encrypted secret, never in `wrangler.jsonc` or source control. No database is required. The optional
 `SHAREDMOBILITY_AUTH_EMAIL` setting is a public contact identifier, not a
 credential. Do not put actual credentials in Wrangler `vars`; use encrypted
 Worker secrets if future features require them.
@@ -43,9 +46,30 @@ npm run preview
 
 ## Deploy
 
-```bash
-npm run deploy
-```
+For the first release requiring authenticated origin access, use this order:
+
+1. Generate a random service token (for example `openssl rand -hex 32`). Save the
+   same value in the cache's Coolify environment as `SCOOTER_SNAPSHOT_API_TOKEN`
+   and in the Worker using `npx wrangler secret put SCOOTER_SNAPSHOT_API_TOKEN`.
+   Do not print or commit the token. Update the Coolify setting before redeploying
+   the cache, but leave the existing container running until step 3.
+2. Deploy the Worker with `npm run deploy`. It sends the token to the existing
+   origin; this remains compatible with the previous cache release.
+3. Deploy the cache. Its scooter API now requires the Worker credential. Normal
+   requests to the public origin without it must return 401, while requests through
+   `https://scooters.plhery.com/api/scooters` must succeed.
+4. Check `/health` for collector liveness and `/ready` for usable live feeds.
+   Alert on `/ready` failures and on `snapshot_health.expiredFeeds` or rising
+   observation ages. Keep the container's restart health check on `/health` so
+   operator outages do not cause a restart loop.
+
+The origin also limits authenticated clients to 60 requests/minute and bounds
+open API responses. The Worker overwrites the forwarded client IP using
+Cloudflare's trusted header. Origin responses are private/no-store; only the
+Worker publishes the public response cache policy.
+
+After this one-time migration, keep both sides on the same secret during normal
+releases. Update the secret on both sides before any planned rotation cutover.
 
 OpenNext builds `.open-next/worker.js`; `worker.ts` applies the legacy-host
 redirect, proxies `/api/scooters` to `SCOOTER_SNAPSHOT_API_URL`, and delegates
@@ -88,20 +112,25 @@ app name and canonical domain are Scooters and `scooters.plhery.com`.
 - Repository: `plhery/swiss-scooters`, branch `main`, Dockerfile `/server/Dockerfile`.
 - Origin: `https://scooter-data.plhery.com`, container port 3001.
 - Persistent named volume: `mouc13tsnvylg0v9ee9wp5v5-scooter-snapshots`, mounted at `/data`.
-- Resource limits: 1 CPU, 512 MB. No host port is exposed.
+- Resource limits: 1 CPU, 1536 MiB. No host port is exposed.
 - Coolify HTTP health check: `http://127.0.0.1:3001/health`, 15-second start
   period. Use the IPv4 address because the server binds to `0.0.0.0`.
 - Netcup tunnel: `b1f36e92-77d5-4c92-846c-28848a492643`; exact hostname rule to
   `http://127.0.0.1:80`, routed by Coolify's proxy.
 
 Deploy this application from Coolify after pushing a tested commit to `main`,
-then wait for `/health` to return 200 before deploying the Cloudflare Worker.
+then wait for `/health` and `/ready` to return 200. For the initial origin-authentication
+migration, follow the Worker-first sequence above.
 Automatic deployment is disabled so backend and edge releases can be ordered.
 Coolify remains the source of truth for the application, storage, and resource limits.
 
-The collector refreshes feeds every minute with six concurrent systems and no
-overlapping cycles. Discovery/type/pricing metadata lasts an hour. Feed failures
-retain vehicles for at most five minutes and mark responses degraded. Snapshots
+The collector schedules each feed independently at most once per minute with
+six concurrent systems and at most two per host. A slow host cannot monopolize
+collection slots. Vehicle results are published immediately, before optional
+parking completes; disk writes and city overview rebuilding are batched every five seconds. Discovery/type/pricing metadata lasts an hour. Status feeds must carry a timestamp within five minutes; failed feeds retain
+vehicles only until that observation expires. Cached metadata is reported as
+degraded independently and does not prevent live vehicle timestamps advancing.
+Both clients honor response expiry times, including parking expiry, during outages. Snapshots
 are written atomically and restored after restarts. City totals are rebuilt
 hourly, marked as an overview in the API, and rejected after three hours without
 a replacement. Unknown battery values count only when no minimum is selected.
@@ -119,8 +148,8 @@ SCOOTER_SNAPSHOT_PATH=/tmp/scooters.json node /tmp/scooter-cache.mjs
 curl http://localhost:3001/health
 ```
 
-The public API has edge rate limiting. The cache server logs refresh duration,
-counts, and feed failures; it does not log map URLs, coordinates, or caller IPs.
+The public API has edge rate limiting. The cache server logs feed counts,
+observation ages, and feed failures; it does not log map URLs, coordinates, or caller IPs.
 
 ## Public launch checklist
 
@@ -150,7 +179,10 @@ Cloudflare dashboard or Wrangler, then point all three custom domains at the las
 known-good version. Do not remove the legacy hostname until installed native
 clients have had a reasonable migration window.
 
-For cache rollback, redeploy the previous commit in Coolify and keep `/data`.
+For cache rollback, keep origin authentication enforced. Rolling the Worker back
+to a version that does not send the token breaks API access; rolling the cache
+back to a version that ignores it reopens the public origin. Prefer a tested
+fix-forward or an earlier authenticated release. Keep `/data`.
 The persisted snapshot format is versioned. Removing `SCOOTER_SNAPSHOT_API_URL`
 restores the older direct-feed route, but also restores its broad-view Worker
 subrequest limitation; prefer rolling back the cache image.
