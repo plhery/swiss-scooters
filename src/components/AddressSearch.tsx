@@ -295,24 +295,25 @@ export default function AddressSearch({ recentPlaces, nearbyCities, onSelect, on
           </div>
         )}
 
-        {status.kind !== 'idle' && !places && (
-          <>
-            <p className="search-status" role="status">
+        {/* Always there, so that screen readers announce what comes to stand in it. */}
+        <div role="status">
+          {status.kind !== 'idle' && !places && (
+            <p className="search-status">
               {status.kind === 'searching' && <span className="mini-spinner" aria-hidden="true" />}
               {status.kind === 'failed' && <Icon name="warning" size={15} />}
               {t(status.kind === 'searching' ? 'find.loading' : status.kind === 'failed' ? 'find.error' : 'find.noResults')}
             </p>
-            {status.kind === 'failed' && (
-              <button
-                type="button"
-                className="search-retry"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={retry}
-              >
-                {t('find.retry')}
-              </button>
-            )}
-          </>
+          )}
+        </div>
+        {status.kind === 'failed' && (
+          <button
+            type="button"
+            className="search-retry"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={retry}
+          >
+            {t('find.retry')}
+          </button>
         )}
       </div>
     </div>

@@ -53,6 +53,8 @@ describe('with nothing typed', () => {
     expect(input).toHaveAttribute('aria-expanded', 'false');
     // Neither a title nor a shortcut to the filters.
     expect(screen.queryByRole('heading')).toBeNull();
+    // Nothing to report yet; the place for it is there for screen readers.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
     expect(screen.queryByRole('button', { name: 'Filters' })).toBeNull();
     // Nothing chosen during this visit and no city to offer: no empty sections.
     expect(screen.queryByText('Recent')).toBeNull();
@@ -135,7 +137,7 @@ describe('typing', () => {
     expect(within(options[2]).getByText('No data')).toBeVisible();
     expect(options[2].querySelector('.place-tile')).toHaveClass('place-tile-muted');
     expect(options[0].querySelector('.place-tile')).not.toHaveClass('place-tile-muted');
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
     expect(input).toHaveAttribute('aria-expanded', 'true');
   });
 
@@ -237,7 +239,7 @@ describe('when there is nothing to list', () => {
     }));
     expect(input).toHaveFocus();
     expect(screen.getAllByRole('option')).toHaveLength(3);
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('gives up on a search that stalls, and searches again when the text changes', async () => {

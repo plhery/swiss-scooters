@@ -684,6 +684,33 @@ test('the search bar says what the map is based on: nothing, a location on its w
   await expect(island).not.toContainText(/origin/i);
 });
 
+test('the bar keeps its second line whole beside the clear button in every language', async ({ page }) => {
+  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(paradeplatz) }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const island = page.locator('.search-island');
+  const height = (await island.boundingBox())!.height;
+  // The sentences are longer than in English; in Italian the line does not fit beside the button.
+  for (const [locale, sentence] of [
+    ['de', 'Scooter in der Nähe dieses Orts'],
+    ['fr', 'Trottinettes près de ce lieu'],
+    ['it', 'Monopattini vicino a questo luogo'],
+  ]) {
+    await page.evaluate(language => localStorage.setItem('scooters-locale', language), locale);
+    await page.reload();
+    await island.locator('.bar-button').click();
+    await page.getByRole('combobox').fill('Zürich HB');
+    await page.getByRole('option').first().click();
+    const line = island.locator('.bar-copy span');
+    await expect(line).toHaveText(sentence);
+    // It may take two lines; nothing of it is cut off, and the bar is as tall as before.
+    expect(await line.evaluate(element =>
+      element.scrollHeight <= element.clientHeight + 1 && element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await expect.poll(async () => (await island.boundingBox())!.height).toBe(height);
+    await expect(island.locator('.bar-copy strong')).toHaveText('Zürich HB');
+  }
+});
+
 test('the open search starts on the field and offers your location, recent places and cities with scooters', async ({ page }) => {
   await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: '[]' }));
   await page.setViewportSize({ width: 390, height: 844 });
@@ -839,7 +866,7 @@ test('the search says that it is searching, that nothing was found, and that it 
   answer = 'places';
   await retry.click();
   await expect(page.getByRole('option')).toHaveCount(3);
-  await expect(status).toHaveCount(0);
+  await expect(status).toBeEmpty();
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('Paradeplatz');
 });
