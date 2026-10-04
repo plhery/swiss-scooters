@@ -4,6 +4,9 @@ import UIKit
 
 enum ScooterMapCameraPolicy {
     static let openingPitch: CGFloat = 28
+    /// A map without a size cannot take a region: it lost the opening view of
+    /// Switzerland and started out empty. This stands in until the first layout.
+    static let openingFrame = CGRect(x: 0, y: 0, width: 390, height: 844)
 
     @MainActor
     static func applyOpeningPitch(to mapView: MKMapView) {
@@ -64,7 +67,7 @@ struct ScooterMapView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView(frame: .zero)
+        let mapView = MKMapView(frame: ScooterMapCameraPolicy.openingFrame)
         mapView.delegate = context.coordinator
         mapView.mapType = mapStyle.mapType
         mapView.showsUserLocation = false
@@ -138,7 +141,7 @@ struct ScooterMapView: UIViewRepresentable {
         private var clusterAnnotationsByID: [String: ScooterServerClusterAnnotation] = [:]
         private var parkingAnnotationsByID: [String: ScooterParkingAnnotation] = [:]
         private var reconciledParking: [ScooterParking] = []
-        private var lastFocusToken: Int?
+        private(set) var lastFocusToken: Int?
         private var appliedSelectionID: String?
         private var appliedParkingID: String?
         private var reconciledScooterRevision: Int?
@@ -315,6 +318,9 @@ struct ScooterMapView: UIViewRepresentable {
 
         func applyFocus(_ request: MapFocusRequest?, on mapView: MKMapView) {
             guard let request, request.token != lastFocusToken else { return }
+            // A map without a size drops the region it is given, so the request
+            // waits for the layout; the first region change then applies it.
+            guard mapView.bounds.width > 0, mapView.bounds.height > 0 else { return }
             lastFocusToken = request.token
             guard !request.keepsZoom else {
                 mapView.setCenter(
@@ -371,6 +377,7 @@ struct ScooterMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            applyFocus(parent.focusRequest, on: mapView)
             updateClusteringMode(on: mapView)
             let region = mapView.region
             let zoom = ScooterClusteringPolicy.apiZoom(for: Self.zoomLevel(on: mapView))

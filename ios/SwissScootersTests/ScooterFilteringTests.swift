@@ -104,6 +104,55 @@ final class ScooterFilteringTests: XCTestCase {
     }
 
     @MainActor
+    func testMapStartsWithASizeSoItOpensOnSwitzerland() {
+        // A map created without a size drops the region it is given.
+        XCTAssertFalse(ScooterMapCameraPolicy.openingFrame.isEmpty)
+
+        let mapView = MKMapView(frame: ScooterMapCameraPolicy.openingFrame)
+        mapView.setRegion(ScooterMapModel.initialRegion, animated: false)
+        ScooterMapCameraPolicy.applyOpeningPitch(to: mapView)
+
+        let center = mapView.camera.centerCoordinate
+        XCTAssertEqual(center.latitude, ScooterMapModel.switzerlandCenter.latitude, accuracy: 0.5)
+        XCTAssertEqual(center.longitude, ScooterMapModel.switzerlandCenter.longitude, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testFocusRequestWaitsUntilTheMapHasASize() {
+        let request = MapFocusRequest(
+            point: GeoPoint(latitude: 47.3769, longitude: 8.5417),
+            token: 7,
+            latitudinalMeters: 350,
+            longitudinalMeters: 350
+        )
+        let parent = ScooterMapView(
+            scooters: [],
+            scooterRevision: 0,
+            clusters: [],
+            clusterRevision: 0,
+            usesServerClusters: false,
+            mapStyle: .standard,
+            showsUserLocation: false,
+            focusRequest: request,
+            destination: nil,
+            selectedScooterID: nil,
+            onRegionChange: { _, _ in },
+            onSelectionChange: { _ in }
+        )
+        let coordinator = ScooterMapView.Coordinator(parent: parent)
+        let mapView = MKMapView(frame: .zero)
+
+        // Before the first layout the request is kept for later, not dropped.
+        coordinator.applyFocus(request, on: mapView)
+        XCTAssertNil(coordinator.lastFocusToken)
+
+        // The region change that follows the layout applies it.
+        mapView.frame = ScooterMapCameraPolicy.openingFrame
+        coordinator.mapView(mapView, regionDidChangeAnimated: false)
+        XCTAssertEqual(coordinator.lastFocusToken, 7)
+    }
+
+    @MainActor
     func testAnnotationPinsCannotBeHiddenByCollisions() {
         let view = ScooterAnnotationView(annotation: nil, reuseIdentifier: nil)
 
