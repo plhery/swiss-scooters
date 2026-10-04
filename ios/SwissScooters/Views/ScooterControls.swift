@@ -400,6 +400,19 @@ struct HeightLimit: Layout {
             proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
         )
     }
+
+    // The default answers a question about alignment by placing the content again.
+    // With very large text, a card taller than the limit that opened in a dock
+    // already on screen kept the layout busy without end and the app froze.
+    func explicitAlignment(
+        of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+        subviews: Subviews, cache: inout ()
+    ) -> CGFloat? { nil }
+
+    func explicitAlignment(
+        of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+        subviews: Subviews, cache: inout ()
+    ) -> CGFloat? { nil }
 }
 
 /// Rows that wrap: pills and chips move to the next line when one is full.

@@ -2099,6 +2099,47 @@ extension ScooterMapModelTests {
         assertRenders(ScooterControlDock(model: waiting), "waiting")
     }
 
+    /// With very large text a card can be taller than the room above the dock
+    /// and scrolls. Opening one in a dock already on screen froze the app.
+    func testATallCardOpensOnTheMapScreenWithVeryLargeText() async throws {
+        let tall = Scooter(
+            provider: "publibike", latitude: 47.3769, longitude: 8.5417, battery: 82, rangeMeters: 24_000,
+            vehicleID: "tall", deepLink: nil,
+            rentalURIs: ScooterRentalURIs(ios: "https://publibike.ch/ride", android: nil, web: nil),
+            distanceMeters: 0,
+            pricing: ScooterRidePricing(currency: "CHF", unlockFeeMinorUnits: 100, minuteFeeMinorUnits: 35)
+        )
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [tall])))
+        model.userLocation = GeoPoint(latitude: 47.3779, longitude: 8.5417)
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.rootViewController = UIHostingController(
+            rootView: ScooterMapScreen(model: model).environment(\.dynamicTypeSize, .accessibility3)
+        )
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(600))
+        guard case .summary = model.dock else { return XCTFail("Expected the summary") }
+
+        // A freeze never gives the main thread back, so the test could not fail by
+        // itself: this ends the run instead of leaving it to hang.
+        let watchdog = DispatchWorkItem {
+            fatalError("The map screen froze while a tall card opened with very large text")
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 20, execute: watchdog)
+        model.selectScooter("publibike:tall")
+        try await Task.sleep(for: .milliseconds(600))
+        watchdog.cancel()
+
+        guard case .scooter = model.dock else { return XCTFail("Expected the scooter card") }
+    }
+
     func testTopOfTheMapRendersWithoutCrashing() {
         let covered = MapDestination(title: "Zürich HB", point: GeoPoint(latitude: 47.3782, longitude: 8.5402))
         let uncovered = MapDestination(
