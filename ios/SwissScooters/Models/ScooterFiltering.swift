@@ -62,8 +62,11 @@ enum ScooterFiltering {
     }
 
     /// The filter sheet's primary button: "Show 1 scooter", "Show 2'000 scooters".
+    /// Nothing to show has its own sentence, because French counts it in the
+    /// singular: "Afficher 0 trottinette".
     static func showResultsTitle(count: Int) -> String {
         if count == 1 { return String(localized: "Show 1 scooter") }
+        if count == 0 { return String(localized: "Show 0 scooters") }
         return String(format: String(localized: "Show %lld scooters"), locale: .current, Int64(count))
     }
 }

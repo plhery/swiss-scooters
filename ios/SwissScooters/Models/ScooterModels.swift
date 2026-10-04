@@ -927,13 +927,27 @@ struct ScooterDockSummary: Equatable, Sendable {
     }
 }
 
+/// Which form of a counted word a number takes.
+enum ScooterPlural {
+    /// The language the app's strings are in: "en", "de", "fr" or "it".
+    static var language: String {
+        Bundle.main.preferredLocalizations.first
+            .flatMap { Locale(identifier: $0).language.languageCode?.identifier } ?? "en"
+    }
+
+    /// One takes the singular. In French nothing does as well: "0 trottinette".
+    static func isSingular(_ count: Int, language: String = ScooterPlural.language) -> Bool {
+        language == "fr" ? (0 ... 1).contains(count) : count == 1
+    }
+}
+
 enum ScooterCountContext: Equatable, Sendable {
     /// Your location or the chosen place is on screen.
     case nearby
     case onThisMap
 
-    func label(for count: Int) -> String {
-        switch (self, count == 1) {
+    func label(for count: Int, language: String = ScooterPlural.language) -> String {
+        switch (self, ScooterPlural.isSingular(count, language: language)) {
         case (.nearby, true): String(localized: "scooter nearby")
         case (.nearby, false): String(localized: "scooters nearby")
         case (.onThisMap, true): String(localized: "scooter on this map")

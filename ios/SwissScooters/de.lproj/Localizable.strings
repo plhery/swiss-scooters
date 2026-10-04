@@ -180,6 +180,7 @@
 "Reset" = "Zurücksetzen";
 "Scooters without battery info are hidden while a minimum is set." = "Scooter ohne Akkuangabe werden ausgeblendet, solange ein Mindestakku gewählt ist.";
 "Not sharing data right now" = "Liefert gerade keine Daten";
+"Show 0 scooters" = "0 Scooter anzeigen";
 "Show 1 scooter" = "1 Scooter anzeigen";
 "Show %lld scooters" = "%lld Scooter anzeigen";
 

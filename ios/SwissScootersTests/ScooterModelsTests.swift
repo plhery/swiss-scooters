@@ -646,6 +646,43 @@ extension ScooterModelsTests {
         XCTAssertEqual(ScooterCountContext.onThisMap.label(for: 1), String(localized: "scooter on this map"))
         XCTAssertEqual(ScooterCountContext.onThisMap.label(for: 2), String(localized: "scooters on this map"))
         XCTAssertNotEqual(ScooterDockHint.tapCity.text, ScooterDockHint.emptyArea.text)
+
+        // French counts nothing in the singular: "0 trottinette à proximité".
+        XCTAssertEqual([0, 1, 2].map { ScooterPlural.isSingular($0, language: "fr") }, [true, true, false])
+        for language in ["en", "de", "it"] {
+            XCTAssertEqual(
+                [0, 1, 2].map { ScooterPlural.isSingular($0, language: language) },
+                [false, true, false],
+                language
+            )
+        }
+        XCTAssertEqual(
+            ScooterCountContext.nearby.label(for: 0, language: "fr"),
+            String(localized: "scooter nearby")
+        )
+        XCTAssertEqual(
+            ScooterCountContext.onThisMap.label(for: 0, language: "fr"),
+            String(localized: "scooter on this map")
+        )
+        XCTAssertEqual(
+            ScooterCountContext.onThisMap.label(for: 2, language: "fr"),
+            String(localized: "scooters on this map")
+        )
+        XCTAssertTrue(["en", "de", "fr", "it"].contains(ScooterPlural.language))
+    }
+
+    func testFrenchAndItalianNameTheOperatorWithOneWordAndFrenchShowsNothingInTheSingular() throws {
+        func strings(_ language: String) throws -> Bundle {
+            try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)))
+        }
+        let french = try strings("fr")
+        let italian = try strings("it")
+        let pricing = "Pricing can vary. Confirm the final price and pass eligibility in the provider app before riding."
+
+        XCTAssertEqual(french.localizedString(forKey: "Show 0 scooters", value: nil, table: nil), "Afficher 0 trottinette")
+        XCTAssertEqual(italian.localizedString(forKey: "Show 0 scooters", value: nil, table: nil), "Mostra 0 monopattini")
+        XCTAssertTrue(french.localizedString(forKey: pricing, value: nil, table: nil).contains("l’app de l’opérateur"))
+        XCTAssertTrue(italian.localizedString(forKey: pricing, value: nil, table: nil).contains("nell’app dell’operatore"))
     }
 
     func testClosestCityLabelsShowWholeKilometres() throws {

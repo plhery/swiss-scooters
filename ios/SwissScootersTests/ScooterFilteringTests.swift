@@ -654,6 +654,8 @@ extension ScooterFilteringTests {
             ScooterFiltering.showResultsTitle(count: 0),
             ScooterFiltering.showResultsTitle(count: 1)
         )
+        // Nothing to show is its own sentence, which each language writes in its own form.
+        XCTAssertEqual(ScooterFiltering.showResultsTitle(count: 0), String(localized: "Show 0 scooters"))
     }
 
     func testFilterSummaryDescribesTheActiveFilters() {

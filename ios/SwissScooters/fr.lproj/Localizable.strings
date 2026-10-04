@@ -68,7 +68,7 @@
 "This pass has expired" = "Ce pass a expiré";
 "Expiry" = "Expiration";
 "Benefits remain active through the end of the selected day." = "Les avantages restent actifs jusqu’à la fin du jour sélectionné.";
-"Pricing can vary. Confirm the final price and pass eligibility in the provider app before riding." = "Les prix peuvent varier. Confirmez le prix final et l’éligibilité du pass dans l’app du fournisseur avant le trajet.";
+"Pricing can vary. Confirm the final price and pass eligibility in the provider app before riding." = "Les prix peuvent varier. Confirmez le prix final et l’éligibilité du pass dans l’app de l’opérateur avant le trajet.";
 "%@ pass" = "Pass %@";
 "French mobility data" = "Données de mobilité françaises";
 
@@ -180,6 +180,7 @@
 "Reset" = "Réinitialiser";
 "Scooters without battery info are hidden while a minimum is set." = "Les trottinettes sans niveau de batterie sont masquées tant qu’un minimum est défini.";
 "Not sharing data right now" = "Pas de données partagées pour le moment";
+"Show 0 scooters" = "Afficher 0 trottinette";
 "Show 1 scooter" = "Afficher 1 trottinette";
 "Show %lld scooters" = "Afficher %lld trottinettes";
 

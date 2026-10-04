@@ -180,6 +180,7 @@
 "Reset" = "Reset";
 "Scooters without battery info are hidden while a minimum is set." = "Scooters without battery info are hidden while a minimum is set.";
 "Not sharing data right now" = "Not sharing data right now";
+"Show 0 scooters" = "Show 0 scooters";
 "Show 1 scooter" = "Show 1 scooter";
 "Show %lld scooters" = "Show %lld scooters";
 
