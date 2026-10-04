@@ -2023,6 +2023,17 @@ test.describe('on a desktop', () => {
     await expect(marker).toBeFocused();
     await expect(page.locator('.scooter-marker-selected')).toHaveCount(0);
 
+    // Another ride length leaves the focus on its list; Escape closes the card from there too.
+    await marker.click();
+    const length = card.getByRole('combobox', { name: /^Ride estimate/ });
+    await length.selectOption('20');
+    await length.focus();
+    await expect(card.getByText(/for 20 min/)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
+    await expect(marker).toBeFocused();
+    await page.evaluate(() => localStorage.removeItem('scooters-ride-minutes'));
+
     // Dragged towards the right edge, the marker takes its card along, and the card changes sides.
     await marker.click();
     await expect.poll(beside).toMatchObject({ right: 31, arrow: true });

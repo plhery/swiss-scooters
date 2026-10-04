@@ -3,9 +3,10 @@ export type Shortcut = 'search' | 'locate' | 'zoomIn' | 'zoomOut' | 'close';
 
 type KeyPress = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'defaultPrevented' | 'target'>;
 
-function typingIn(target: EventTarget | null): boolean {
-  if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+function fieldOf(target: EventTarget | null): 'text' | 'choice' | null {
+  if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return null;
+  if (target.tagName === 'SELECT') return 'choice';
+  return target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(target.tagName) ? 'text' : null;
 }
 
 /**
@@ -15,7 +16,10 @@ function typingIn(target: EventTarget | null): boolean {
  */
 export function shortcutFor(event: KeyPress): Shortcut | null {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return null;
-  if (typingIn(event.target)) return null;
+  const field = fieldOf(event.target);
+  // A list of choices keeps the focus after a choice and takes letters to find
+  // an entry, but Escape is not typing: it still closes the card around the list.
+  if (field === 'text' || (field === 'choice' && event.key !== 'Escape')) return null;
   switch (event.key) {
     case '/': return 'search';
     case 'l':

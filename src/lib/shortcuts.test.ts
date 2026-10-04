@@ -39,7 +39,7 @@ describe('shortcutFor', () => {
   });
 
   it('does nothing while typing in a field', () => {
-    for (const tag of ['input', 'textarea', 'select']) {
+    for (const tag of ['input', 'textarea']) {
       const field = document.createElement(tag);
       expect(press('l', { target: field })).toBeNull();
       expect(press('/', { target: field })).toBeNull();
@@ -47,6 +47,16 @@ describe('shortcutFor', () => {
     }
     // A button is not a field.
     expect(press('l', { target: document.createElement('button') })).toBe('locate');
+  });
+
+  it('closes with Escape from a list of choices, which keeps the focus after a choice', () => {
+    // The ride length of the scooter card: its letters and signs find an entry, Escape closes the card.
+    const select = document.createElement('select');
+    expect(press('Escape', { target: select })).toBe('close');
+    expect(press('l', { target: select })).toBeNull();
+    expect(press('/', { target: select })).toBeNull();
+    expect(press('+', { target: select })).toBeNull();
+    expect(press('Escape', { target: select, defaultPrevented: true })).toBeNull();
   });
 
   it('does nothing when the key was already handled', () => {
