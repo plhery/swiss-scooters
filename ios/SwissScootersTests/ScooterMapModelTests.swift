@@ -1951,6 +1951,41 @@ extension ScooterMapModelTests {
         XCTAssertEqual(model.nearbyCities.count, 6)
     }
 
+    func testATypedCoveredCityShowsTheWholeCityLikeItsChip() throws {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        let bulle = try XCTUnwrap(ScooterCityCatalog.cities.first { $0.id == "ch:bulle" })
+
+        // What the address search answers for "Bulle": the catalogue's centre.
+        let answer = Data("""
+        [{"lat": \(bulle.center.latitude), "lng": \(bulle.center.longitude),
+          "display_name": "Bulle, Switzerland", "title": "Bulle", "subtitle": "Suisse", "covered": true}]
+        """.utf8)
+        let typed = try XCTUnwrap(JSONDecoder().decode([AddressSearchResult].self, from: answer).first)
+        XCTAssertEqual(typed.destination.kind, .city)
+        XCTAssertEqual(typed.destination.subtitle, "Suisse")
+
+        model.focusOnAddress(typed.destination)
+        let typedFocus = try XCTUnwrap(model.focusRequest)
+        XCTAssertEqual(model.searchedDestination?.title, "Bulle")
+
+        // The same span as the "Cities with scooters" chip.
+        model.chooseCity(bulle)
+        let chipFocus = try XCTUnwrap(model.focusRequest)
+        XCTAssertEqual(typedFocus, .city(bulle.center, token: typedFocus.token))
+        XCTAssertEqual(typedFocus.latitudinalMeters, chipFocus.latitudinalMeters)
+        XCTAssertEqual(typedFocus.longitudinalMeters, chipFocus.longitudinalMeters)
+
+        // An address, a station or a place in the city keeps the street-level view.
+        let station = AddressSearchResult(
+            latitude: bulle.center.latitude + 0.002, longitude: bulle.center.longitude,
+            displayName: "Bulle, gare", title: "Bulle, gare", subtitle: "Train", isCovered: true
+        )
+        XCTAssertEqual(station.destination.kind, .address)
+        model.focusOnAddress(station.destination)
+        XCTAssertEqual(model.focusRequest?.latitudinalMeters, 850)
+        XCTAssertNil(ScooterCityCatalog.city(centredAt: GeoPoint(latitude: 46.7741, longitude: 8.1558)))
+    }
+
     func testStoredBatteryValuesSnapDownToAPreset() {
         for (stored, expected) in [(45, 30.0), (95, 80.0), (60, 60.0), (10, 0.0), (-5, 0.0)] {
             let defaults = isolatedDefaults()

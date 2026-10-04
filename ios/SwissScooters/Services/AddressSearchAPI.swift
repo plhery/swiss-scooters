@@ -13,10 +13,13 @@ struct AddressSearchResult: Decodable, Equatable, Identifiable, Sendable {
     var id: String { "\(latitude):\(longitude):\(displayName)" }
 
     var destination: MapDestination {
-        MapDestination(
+        let point = GeoPoint(latitude: latitude, longitude: longitude)
+        return MapDestination(
             title: title,
             subtitle: subtitle,
-            point: GeoPoint(latitude: latitude, longitude: longitude),
+            point: point,
+            // A typed city with scooter data shows the whole city, like its chip.
+            kind: ScooterCityCatalog.city(centredAt: point) == nil ? .address : .city,
             isCovered: isCovered
         )
     }

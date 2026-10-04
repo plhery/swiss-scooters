@@ -717,6 +717,17 @@ struct MapDestination: Equatable, Identifiable, Sendable {
     var id: String { "\(title)|\(point.latitude)|\(point.longitude)" }
 }
 
+extension ScooterCityCatalog {
+    /// The city whose centre the point is. The address search answers a typed
+    /// city name with that centre; addresses, stations and places lie elsewhere.
+    static func city(centredAt point: GeoPoint) -> ScooterCity? {
+        cities.first {
+            abs($0.center.latitude - point.latitude) < 0.000_001 &&
+                abs($0.center.longitude - point.longitude) < 0.000_001
+        }
+    }
+}
+
 extension ScooterCity {
     /// The country in the user's language, such as "Germany".
     var countryName: String {
