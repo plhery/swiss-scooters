@@ -55,6 +55,25 @@ enum ScooterProvider: String, CaseIterable, Identifiable, Sendable {
         case .publibike: UIColor(red: 0.607843, green: 0.349020, blue: 0.713725, alpha: 1)
         }
     }
+
+    private static let systemIDMatchers: [(provider: ScooterProvider, exact: [String], prefixes: [String])] = [
+        (.bolt, [], ["bolt"]),
+        (.bird, [], ["bird"]),
+        (.dott, [], ["dott"]),
+        (.hopp, [], ["hopp"]),
+        (.lime, [], ["lime"]),
+        (.voi, [], ["voi"]),
+        (.pony, [], ["pony"]),
+        (.publibike, ["velospot"], ["publibike"]),
+    ]
+
+    /// The provider behind a feed or system ID such as "lime_zurich", like providerKeyForSystemId on the web.
+    static func provider(forSystemID systemID: String) -> ScooterProvider? {
+        let normalized = systemID.lowercased()
+        return systemIDMatchers.first { matcher in
+            matcher.exact.contains(normalized) || matcher.prefixes.contains { normalized.hasPrefix($0) }
+        }?.provider
+    }
 }
 
 enum ScooterProviderCoverage {
@@ -217,5 +236,191 @@ enum ScooterProviderCoverage {
             available.insert(provider)
         }
         return ScooterProvider.allCases.filter { available.contains($0) }
+    }
+
+    static func contains(latitude: Double, longitude: Double) -> Bool {
+        swissAreas.contains { $0.contains(latitude: latitude, longitude: longitude) } ||
+            regionalSystems.contains { $0.1.contains(latitude: latitude, longitude: longitude) }
+    }
+}
+
+struct ScooterCity: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    /// CH, FR, DE or IT.
+    let countryCode: String
+    let center: GeoPoint
+    let bounds: GeoBounds
+}
+
+struct ScooterCityDistance: Identifiable, Equatable, Sendable {
+    let city: ScooterCity
+    let distanceMeters: Double
+
+    var id: String { city.id }
+}
+
+/// Every city with scooter data, one entry per city, like COVERED_CITIES on the web.
+enum ScooterCityCatalog {
+    static let cities: [ScooterCity] = [
+        ScooterCity(id: "ch:basel", name: "Basel", countryCode: "CH", center: GeoPoint(latitude: 47.5596, longitude: 7.5886), bounds: GeoBounds(south: 47.42, west: 7.38, north: 47.7, east: 7.82)),
+        ScooterCity(id: "ch:bern", name: "Bern", countryCode: "CH", center: GeoPoint(latitude: 46.948, longitude: 7.4474), bounds: GeoBounds(south: 46.82, west: 7.2, north: 47.08, east: 7.7)),
+        ScooterCity(id: "ch:biel", name: "Biel/Bienne", countryCode: "CH", center: GeoPoint(latitude: 47.1368, longitude: 7.2468), bounds: GeoBounds(south: 47.03, west: 7.05, north: 47.27, east: 7.45)),
+        ScooterCity(id: "ch:bulle", name: "Bulle", countryCode: "CH", center: GeoPoint(latitude: 46.6, longitude: 6.970000000000001), bounds: GeoBounds(south: 46.5, west: 6.82, north: 46.7, east: 7.12)),
+        ScooterCity(id: "ch:frauenfeld", name: "Frauenfeld", countryCode: "CH", center: GeoPoint(latitude: 47.565, longitude: 8.91), bounds: GeoBounds(south: 47.45, west: 8.72, north: 47.68, east: 9.1)),
+        ScooterCity(id: "ch:grenchen", name: "Grenchen", countryCode: "CH", center: GeoPoint(latitude: 47.18, longitude: 7.4), bounds: GeoBounds(south: 47.08, west: 7.28, north: 47.28, east: 7.52)),
+        ScooterCity(id: "ch:illnau-effretikon", name: "Illnau-Effretikon", countryCode: "CH", center: GeoPoint(latitude: 47.44, longitude: 8.73), bounds: GeoBounds(south: 47.33, west: 8.58, north: 47.55, east: 8.88)),
+        ScooterCity(id: "ch:kloten", name: "Kloten", countryCode: "CH", center: GeoPoint(latitude: 47.4515, longitude: 8.5849), bounds: GeoBounds(south: 47.4, west: 8.47, north: 47.56, east: 8.74)),
+        ScooterCity(id: "ch:locarno", name: "Locarno", countryCode: "CH", center: GeoPoint(latitude: 46.169, longitude: 8.799), bounds: GeoBounds(south: 46.1, west: 8.67, north: 46.25, east: 8.9)),
+        ScooterCity(id: "ch:nyon", name: "Nyon", countryCode: "CH", center: GeoPoint(latitude: 46.3833, longitude: 6.2396), bounds: GeoBounds(south: 46.25, west: 6.05, north: 46.55, east: 6.45)),
+        ScooterCity(id: "ch:opfikon", name: "Opfikon", countryCode: "CH", center: GeoPoint(latitude: 47.4317, longitude: 8.5759), bounds: GeoBounds(south: 47.39, west: 8.47, north: 47.5, east: 8.68)),
+        ScooterCity(id: "ch:romanshorn", name: "Romanshorn", countryCode: "CH", center: GeoPoint(latitude: 47.555, longitude: 9.39), bounds: GeoBounds(south: 47.45, west: 9.2, north: 47.66, east: 9.58)),
+        ScooterCity(id: "ch:rorschach", name: "Rorschach", countryCode: "CH", center: GeoPoint(latitude: 47.478, longitude: 9.493), bounds: GeoBounds(south: 47.36, west: 9.3, north: 47.58, east: 9.68)),
+        ScooterCity(id: "ch:schaffhausen", name: "Schaffhausen", countryCode: "CH", center: GeoPoint(latitude: 47.715, longitude: 8.65), bounds: GeoBounds(south: 47.6, west: 8.42, north: 47.83, east: 8.88)),
+        ScooterCity(id: "ch:st-gallen", name: "St. Gallen", countryCode: "CH", center: GeoPoint(latitude: 47.4245, longitude: 9.3767), bounds: GeoBounds(south: 47.28, west: 9.1, north: 47.6, east: 9.65)),
+        ScooterCity(id: "ch:uster", name: "Uster", countryCode: "CH", center: GeoPoint(latitude: 47.34, longitude: 8.719999999999999), bounds: GeoBounds(south: 47.25, west: 8.58, north: 47.43, east: 8.86)),
+        ScooterCity(id: "ch:wetzikon", name: "Wetzikon", countryCode: "CH", center: GeoPoint(latitude: 47.3, longitude: 8.83), bounds: GeoBounds(south: 47.2, west: 8.68, north: 47.4, east: 8.98)),
+        ScooterCity(id: "ch:winterthur", name: "Winterthur", countryCode: "CH", center: GeoPoint(latitude: 47.499, longitude: 8.7241), bounds: GeoBounds(south: 47.38, west: 8.53, north: 47.64, east: 8.97)),
+        ScooterCity(id: "ch:zug", name: "Zug", countryCode: "CH", center: GeoPoint(latitude: 47.1724, longitude: 8.5174), bounds: GeoBounds(south: 47.03, west: 8.32, north: 47.31, east: 8.74)),
+        ScooterCity(id: "ch:zurich", name: "Zürich", countryCode: "CH", center: GeoPoint(latitude: 47.3769, longitude: 8.5417), bounds: GeoBounds(south: 47.27, west: 8.34, north: 47.49, east: 8.73)),
+        ScooterCity(id: "fr:Ajaccio", name: "Ajaccio", countryCode: "FR", center: GeoPoint(latitude: 41.9192, longitude: 8.7386), bounds: GeoBounds(south: 41.81, west: 8.53, north: 42.03, east: 8.87)),
+        ScooterCity(id: "fr:Blois", name: "Blois", countryCode: "FR", center: GeoPoint(latitude: 47.5861, longitude: 1.3359), bounds: GeoBounds(south: 47.46, west: 1.2, north: 47.71, east: 1.44)),
+        ScooterCity(id: "fr:Châlons-en-Champagne", name: "Châlons-en-Champagne", countryCode: "FR", center: GeoPoint(latitude: 48.9566, longitude: 4.3523), bounds: GeoBounds(south: 48.85, west: 4.22, north: 49.07, east: 4.49)),
+        ScooterCity(id: "fr:Laval", name: "Laval", countryCode: "FR", center: GeoPoint(latitude: 48.0706, longitude: -0.7733), bounds: GeoBounds(south: 47.95, west: -0.94, north: 48.19, east: -0.65)),
+        ScooterCity(id: "fr:Vichy", name: "Vichy", countryCode: "FR", center: GeoPoint(latitude: 46.1278, longitude: 3.4266), bounds: GeoBounds(south: 46, west: 3.28, north: 46.27, east: 3.62)),
+        ScooterCity(id: "fr:Bordeaux", name: "Bordeaux", countryCode: "FR", center: GeoPoint(latitude: 44.8378, longitude: -0.5792), bounds: GeoBounds(south: 44.66, west: -0.86, north: 45.07, east: -0.32)),
+        ScooterCity(id: "fr:Bourgoin-Jallieu", name: "Bourgoin-Jallieu", countryCode: "FR", center: GeoPoint(latitude: 45.5864, longitude: 5.2736), bounds: GeoBounds(south: 45.49, west: 5.14, north: 45.7, east: 5.39)),
+        ScooterCity(id: "fr:Lyon", name: "Lyon", countryCode: "FR", center: GeoPoint(latitude: 45.7578, longitude: 4.832), bounds: GeoBounds(south: 45.63, west: 4.68, north: 45.92, east: 5)),
+        ScooterCity(id: "fr:Marne-la-Vallée (SIEMU)", name: "Marne-la-Vallée (SIEMU)", countryCode: "FR", center: GeoPoint(latitude: 48.855, longitude: 2.7067), bounds: GeoBounds(south: 48.73, west: 2.58, north: 48.97, east: 2.86)),
+        ScooterCity(id: "fr:Tignes", name: "Tignes", countryCode: "FR", center: GeoPoint(latitude: 45.4687, longitude: 6.9063), bounds: GeoBounds(south: 45.36, west: 6.81, north: 45.56, east: 7)),
+        ScooterCity(id: "fr:Versailles Grand Parc", name: "Versailles Grand Parc", countryCode: "FR", center: GeoPoint(latitude: 48.8049, longitude: 2.1204), bounds: GeoBounds(south: 48.73, west: 2.02, north: 48.96, east: 2.24)),
+        ScooterCity(id: "fr:Lille Métropole", name: "Lille Métropole", countryCode: "FR", center: GeoPoint(latitude: 50.6292, longitude: 3.0573), bounds: GeoBounds(south: 50.4, west: 2.75, north: 50.9, east: 3.4)),
+        ScooterCity(id: "fr:Marseille", name: "Marseille", countryCode: "FR", center: GeoPoint(latitude: 43.2965, longitude: 5.3698), bounds: GeoBounds(south: 43.11, west: 5.18, north: 43.49, east: 5.65)),
+        ScooterCity(id: "fr:Angers", name: "Angers", countryCode: "FR", center: GeoPoint(latitude: 47.4784, longitude: -0.5632), bounds: GeoBounds(south: 47.33, west: -0.73, north: 47.62, east: -0.38)),
+        ScooterCity(id: "fr:Beauvais", name: "Beauvais", countryCode: "FR", center: GeoPoint(latitude: 49.4295, longitude: 2.0807), bounds: GeoBounds(south: 49.16, west: 1.67, north: 49.75, east: 2.55)),
+        ScooterCity(id: "fr:Bourges", name: "Bourges", countryCode: "FR", center: GeoPoint(latitude: 47.081, longitude: 2.3988), bounds: GeoBounds(south: 46.96, west: 2.28, north: 47.21, east: 2.53)),
+        ScooterCity(id: "fr:Évry-Courcouronnes", name: "Évry-Courcouronnes", countryCode: "FR", center: GeoPoint(latitude: 48.624, longitude: 2.429), bounds: GeoBounds(south: 48.52, west: 2.31, north: 48.73, east: 2.55)),
+        ScooterCity(id: "fr:Hérouville-Saint-Clair", name: "Hérouville-Saint-Clair", countryCode: "FR", center: GeoPoint(latitude: 49.2032, longitude: -0.3261), bounds: GeoBounds(south: 48.89, west: -0.76, north: 49.49, east: 0.09)),
+        ScooterCity(id: "fr:Lorient", name: "Lorient", countryCode: "FR", center: GeoPoint(latitude: 47.7483, longitude: -3.3702), bounds: GeoBounds(south: 47.59, west: -3.58, north: 47.89, east: -3.21)),
+        ScooterCity(id: "fr:Perpignan", name: "Perpignan", countryCode: "FR", center: GeoPoint(latitude: 42.6887, longitude: 2.8948), bounds: GeoBounds(south: 42.52, west: 2.63, north: 43.03, east: 3.2)),
+        ScooterCity(id: "fr:Poitiers", name: "Poitiers", countryCode: "FR", center: GeoPoint(latitude: 46.5802, longitude: 0.3404), bounds: GeoBounds(south: 46.32, west: -0.09, north: 46.91, east: 0.81)),
+        ScooterCity(id: "fr:Grand Paris Seine et Oise", name: "Grand Paris Seine et Oise", countryCode: "FR", center: GeoPoint(latitude: 48.9975, longitude: 1.9093), bounds: GeoBounds(south: 48.77, west: 1.47, north: 49.16, east: 2.3)),
+        ScooterCity(id: "fr:Grenoble", name: "Grenoble", countryCode: "FR", center: GeoPoint(latitude: 45.1885, longitude: 5.7245), bounds: GeoBounds(south: 45.01, west: 5.47, north: 45.37, east: 5.98)),
+        ScooterCity(id: "fr:Le Havre", name: "Le Havre", countryCode: "FR", center: GeoPoint(latitude: 49.4944, longitude: 0.1079), bounds: GeoBounds(south: 49.35, west: -0.05, north: 49.73, east: 0.38)),
+        ScooterCity(id: "fr:Saint-Quentin-en-Yvelines", name: "Saint-Quentin-en-Yvelines", countryCode: "FR", center: GeoPoint(latitude: 48.787, longitude: 2.0446), bounds: GeoBounds(south: 48.6, west: 1.77, north: 48.95, east: 2.24)),
+        ScooterCity(id: "de:Karlsruhe", name: "Karlsruhe", countryCode: "DE", center: GeoPoint(latitude: 49.0069, longitude: 8.4037), bounds: GeoBounds(south: 48.8623, west: 8.2776, north: 49.5247, east: 8.7576)),
+        ScooterCity(id: "de:Reutlingen", name: "Reutlingen", countryCode: "DE", center: GeoPoint(latitude: 48.4914, longitude: 9.2043), bounds: GeoBounds(south: 48.4312, west: 9.1335, north: 48.5396, east: 9.2596)),
+        ScooterCity(id: "de:Tübingen", name: "Tübingen", countryCode: "DE", center: GeoPoint(latitude: 48.5216, longitude: 9.0576), bounds: GeoBounds(south: 48.4824, west: 9.0088, north: 48.5647, east: 9.1103)),
+        ScooterCity(id: "de:Stuttgart", name: "Stuttgart", countryCode: "DE", center: GeoPoint(latitude: 48.7758, longitude: 9.1829), bounds: GeoBounds(south: 48.6977, west: 9.0659, north: 48.8618, east: 9.2897)),
+        ScooterCity(id: "de:Aachen", name: "Aachen", countryCode: "DE", center: GeoPoint(latitude: 50.7773, longitude: 6.0895), bounds: GeoBounds(south: 50.7249, west: 6.023, north: 50.8211, east: 6.1962)),
+        ScooterCity(id: "de:Berlin", name: "Berlin", countryCode: "DE", center: GeoPoint(latitude: 52.52, longitude: 13.405), bounds: GeoBounds(south: 52.4275, west: 13.1051, north: 52.6548, east: 13.6436)),
+        ScooterCity(id: "de:Bielefeld", name: "Bielefeld", countryCode: "DE", center: GeoPoint(latitude: 52.0224, longitude: 8.535), bounds: GeoBounds(south: 51.9238, west: 8.4615, north: 52.0749, east: 8.6393)),
+        ScooterCity(id: "de:Böblingen", name: "Böblingen", countryCode: "DE", center: GeoPoint(latitude: 48.6907, longitude: 9.0055), bounds: GeoBounds(south: 48.6495, west: 8.959, north: 48.7431, east: 9.0623)),
+        ScooterCity(id: "de:Bochum", name: "Bochum", countryCode: "DE", center: GeoPoint(latitude: 51.4782, longitude: 7.1625), bounds: GeoBounds(south: 51.4257, west: 7.1003, north: 51.5133, east: 7.2923)),
+        ScooterCity(id: "de:Bonn", name: "Bonn", countryCode: "DE", center: GeoPoint(latitude: 50.7221, longitude: 7.1095), bounds: GeoBounds(south: 50.6349, west: 7.0115, north: 50.7878, east: 7.2157)),
+        ScooterCity(id: "de:Bremen", name: "Bremen", countryCode: "DE", center: GeoPoint(latitude: 53.0916, longitude: 8.791), bounds: GeoBounds(south: 53.0332, west: 8.5819, north: 53.2113, east: 8.9083)),
+        ScooterCity(id: "de:Bremerhaven", name: "Bremerhaven", countryCode: "DE", center: GeoPoint(latitude: 53.5711, longitude: 8.6035), bounds: GeoBounds(south: 53.4718, west: 8.544, north: 53.6408, east: 8.6612)),
+        ScooterCity(id: "de:Brühl", name: "Brühl", countryCode: "DE", center: GeoPoint(latitude: 50.8295, longitude: 6.8956), bounds: GeoBounds(south: 50.7834, west: 6.8557, north: 50.8626, east: 6.9434)),
+        ScooterCity(id: "de:Braunschweig", name: "Braunschweig", countryCode: "DE", center: GeoPoint(latitude: 52.262, longitude: 10.5221), bounds: GeoBounds(south: 52.1916, west: 10.4482, north: 52.339, east: 10.6171)),
+        ScooterCity(id: "de:Celle", name: "Celle", countryCode: "DE", center: GeoPoint(latitude: 52.6146, longitude: 10.0586), bounds: GeoBounds(south: 52.5657, west: 9.9847, north: 52.6612, east: 10.1369)),
+        ScooterCity(id: "de:Chemnitz", name: "Chemnitz", countryCode: "DE", center: GeoPoint(latitude: 50.826, longitude: 12.9214), bounds: GeoBounds(south: 50.7751, west: 12.855, north: 50.8757, east: 12.988)),
+        ScooterCity(id: "de:Köln", name: "Köln", countryCode: "DE", center: GeoPoint(latitude: 50.9375, longitude: 6.9603), bounds: GeoBounds(south: 50.8217, west: 6.796, north: 51.0145, east: 7.1351)),
+        ScooterCity(id: "de:Cottbus", name: "Cottbus", countryCode: "DE", center: GeoPoint(latitude: 51.7554, longitude: 14.3333), bounds: GeoBounds(south: 51.7022, west: 14.2745, north: 51.8076, east: 14.4092)),
+        ScooterCity(id: "de:Darmstadt", name: "Darmstadt", countryCode: "DE", center: GeoPoint(latitude: 49.8744, longitude: 8.6472), bounds: GeoBounds(south: 49.8267, west: 8.5998, north: 49.9149, east: 8.7069)),
+        ScooterCity(id: "de:Detmold", name: "Detmold", countryCode: "DE", center: GeoPoint(latitude: 51.9329, longitude: 8.8757), bounds: GeoBounds(south: 51.9022, west: 8.8056, north: 51.9745, east: 8.9365)),
+        ScooterCity(id: "de:Dortmund", name: "Dortmund", countryCode: "DE", center: GeoPoint(latitude: 51.5139, longitude: 7.4637), bounds: GeoBounds(south: 51.4692, west: 7.3943, north: 51.5505, east: 7.5419)),
+        ScooterCity(id: "de:Duisburg", name: "Duisburg", countryCode: "DE", center: GeoPoint(latitude: 51.417, longitude: 6.7118), bounds: GeoBounds(south: 51.3686, west: 6.6664, north: 51.4531, east: 6.8151)),
+        ScooterCity(id: "de:Düsseldorf", name: "Düsseldorf", countryCode: "DE", center: GeoPoint(latitude: 51.2213, longitude: 6.7886), bounds: GeoBounds(south: 51.1371, west: 6.6843, north: 51.294, east: 6.8991)),
+        ScooterCity(id: "de:Erfurt", name: "Erfurt", countryCode: "DE", center: GeoPoint(latitude: 50.9797, longitude: 11.0266), bounds: GeoBounds(south: 50.9424, west: 10.9747, north: 51.0284, east: 11.1023)),
+        ScooterCity(id: "de:Erlangen", name: "Erlangen", countryCode: "DE", center: GeoPoint(latitude: 49.5943, longitude: 11.0074), bounds: GeoBounds(south: 49.525, west: 10.9281, north: 49.6293, east: 11.0697)),
+        ScooterCity(id: "de:Essen", name: "Essen", countryCode: "DE", center: GeoPoint(latitude: 51.4508, longitude: 7.0085), bounds: GeoBounds(south: 51.4073, west: 6.915, north: 51.5455, east: 7.1088)),
+        ScooterCity(id: "de:Flensburg", name: "Flensburg", countryCode: "DE", center: GeoPoint(latitude: 54.7882, longitude: 9.4384), bounds: GeoBounds(south: 54.7392, west: 9.3528, north: 54.8439, east: 9.5133)),
+        ScooterCity(id: "de:Friedrichshafen", name: "Friedrichshafen", countryCode: "DE", center: GeoPoint(latitude: 47.6682, longitude: 9.4607), bounds: GeoBounds(south: 47.6253, west: 9.3768, north: 47.7256, east: 9.539)),
+        ScooterCity(id: "de:Gera", name: "Gera", countryCode: "DE", center: GeoPoint(latitude: 50.8807, longitude: 12.0781), bounds: GeoBounds(south: 50.82, west: 12.0332, north: 50.9204, east: 12.1157)),
+        ScooterCity(id: "de:Gifhorn", name: "Gifhorn", countryCode: "DE", center: GeoPoint(latitude: 52.4842, longitude: 10.5425), bounds: GeoBounds(south: 52.4397, west: 10.4923, north: 52.5252, east: 10.5919)),
+        ScooterCity(id: "de:Gladbeck", name: "Gladbeck", countryCode: "DE", center: GeoPoint(latitude: 51.5677, longitude: 6.9987), bounds: GeoBounds(south: 51.5246, west: 6.9472, north: 51.6108, east: 7.0437)),
+        ScooterCity(id: "de:Hamburg", name: "Hamburg", countryCode: "DE", center: GeoPoint(latitude: 53.5734, longitude: 10.0023), bounds: GeoBounds(south: 53.4145, west: 9.7802, north: 53.6967, east: 10.2789)),
+        ScooterCity(id: "de:Hamm", name: "Hamm", countryCode: "DE", center: GeoPoint(latitude: 51.6886, longitude: 7.8126), bounds: GeoBounds(south: 51.6387, west: 7.7086, north: 51.7344, east: 7.9014)),
+        ScooterCity(id: "de:Hannover", name: "Hannover", countryCode: "DE", center: GeoPoint(latitude: 52.3903, longitude: 9.7399), bounds: GeoBounds(south: 52.26, west: 9.5647, north: 52.5007, east: 9.893)),
+        ScooterCity(id: "de:Heidelberg", name: "Heidelberg", countryCode: "DE", center: GeoPoint(latitude: 49.4037, longitude: 8.6752), bounds: GeoBounds(south: 49.3288, west: 8.6176, north: 49.4539, east: 8.7379)),
+        ScooterCity(id: "de:Heilbronn", name: "Heilbronn", countryCode: "DE", center: GeoPoint(latitude: 49.1426, longitude: 9.2168), bounds: GeoBounds(south: 49.0791, west: 9.0868, north: 49.2308, east: 9.3189)),
+        ScooterCity(id: "de:Hennef", name: "Hennef", countryCode: "DE", center: GeoPoint(latitude: 50.7724, longitude: 7.2718), bounds: GeoBounds(south: 50.7444, west: 7.2321, north: 50.8025, east: 7.3398)),
+        ScooterCity(id: "de:Herford", name: "Herford", countryCode: "DE", center: GeoPoint(latitude: 52.1151, longitude: 8.6628), bounds: GeoBounds(south: 52.0614, west: 8.5998, north: 52.1544, east: 8.7344)),
+        ScooterCity(id: "de:Herne", name: "Herne", countryCode: "DE", center: GeoPoint(latitude: 51.5427, longitude: 7.2156), bounds: GeoBounds(south: 51.4973, west: 7.1339, north: 51.5797, east: 7.2834)),
+        ScooterCity(id: "de:Herten", name: "Herten", countryCode: "DE", center: GeoPoint(latitude: 51.6032, longitude: 7.1386), bounds: GeoBounds(south: 51.5614, west: 7.1018, north: 51.642, east: 7.1775)),
+        ScooterCity(id: "de:Hilden", name: "Hilden", countryCode: "DE", center: GeoPoint(latitude: 51.1691, longitude: 6.9335), bounds: GeoBounds(south: 51.1271, west: 6.8804, north: 51.2036, east: 7.0022)),
+        ScooterCity(id: "de:Hildesheim", name: "Hildesheim", countryCode: "DE", center: GeoPoint(latitude: 52.1482, longitude: 9.9662), bounds: GeoBounds(south: 52.096, west: 9.8853, north: 52.197, east: 10.0174)),
+        ScooterCity(id: "de:Ingolstadt", name: "Ingolstadt", countryCode: "DE", center: GeoPoint(latitude: 48.7701, longitude: 11.4338), bounds: GeoBounds(south: 48.6917, west: 11.3234, north: 48.833, east: 11.5982)),
+        ScooterCity(id: "de:Jena", name: "Jena", countryCode: "DE", center: GeoPoint(latitude: 50.9254, longitude: 11.5837), bounds: GeoBounds(south: 50.8632, west: 11.543, north: 50.9672, east: 11.6482)),
+        ScooterCity(id: "de:Kaiserslautern", name: "Kaiserslautern", countryCode: "DE", center: GeoPoint(latitude: 49.4426, longitude: 7.766), bounds: GeoBounds(south: 49.3892, west: 7.6348, north: 49.4986, east: 7.8377)),
+        ScooterCity(id: "de:Kassel", name: "Kassel", countryCode: "DE", center: GeoPoint(latitude: 51.3149, longitude: 9.4644), bounds: GeoBounds(south: 51.2454, west: 9.336, north: 51.3692, east: 9.5851)),
+        ScooterCity(id: "de:Kiel", name: "Kiel", countryCode: "DE", center: GeoPoint(latitude: 54.3249, longitude: 10.1267), bounds: GeoBounds(south: 54.2734, west: 10.0288, north: 54.383, east: 10.2072)),
+        ScooterCity(id: "de:Langenfeld", name: "Langenfeld", countryCode: "DE", center: GeoPoint(latitude: 51.1188, longitude: 6.9563), bounds: GeoBounds(south: 51.0544, west: 6.8995, north: 51.1576, east: 7.0137)),
+        ScooterCity(id: "de:Leipzig", name: "Leipzig", countryCode: "DE", center: GeoPoint(latitude: 51.3439, longitude: 12.3787), bounds: GeoBounds(south: 51.2569, west: 12.2412, north: 51.4182, east: 12.5247)),
+        ScooterCity(id: "de:Lindau", name: "Lindau", countryCode: "DE", center: GeoPoint(latitude: 47.5568, longitude: 9.6812), bounds: GeoBounds(south: 47.5243, west: 9.6391, north: 47.6092, east: 9.7528)),
+        ScooterCity(id: "de:Lübeck", name: "Lübeck", countryCode: "DE", center: GeoPoint(latitude: 53.879, longitude: 10.7125), bounds: GeoBounds(south: 53.8068, west: 10.5825, north: 53.9928, east: 10.8994)),
+        ScooterCity(id: "de:Ludwigsburg", name: "Ludwigsburg", countryCode: "DE", center: GeoPoint(latitude: 48.8973, longitude: 9.1902), bounds: GeoBounds(south: 48.8617, west: 9.1264, north: 48.9381, east: 9.2885)),
+        ScooterCity(id: "de:Mannheim", name: "Mannheim", countryCode: "DE", center: GeoPoint(latitude: 49.4875, longitude: 8.466), bounds: GeoBounds(south: 49.4082, west: 8.3311, north: 49.569, east: 8.589)),
+        ScooterCity(id: "de:Minden", name: "Minden", countryCode: "DE", center: GeoPoint(latitude: 52.2887, longitude: 8.8972), bounds: GeoBounds(south: 52.2501, west: 8.8456, north: 52.3304, east: 8.9823)),
+        ScooterCity(id: "de:Mönchengladbach", name: "Mönchengladbach", countryCode: "DE", center: GeoPoint(latitude: 51.1936, longitude: 6.4407), bounds: GeoBounds(south: 51.1064, west: 6.3634, north: 51.2439, east: 6.4988)),
+        ScooterCity(id: "de:Monheim am Rhein", name: "Monheim am Rhein", countryCode: "DE", center: GeoPoint(latitude: 51.0933, longitude: 6.8918), bounds: GeoBounds(south: 51.0519, west: 6.8618, north: 51.1432, east: 6.9314)),
+        ScooterCity(id: "de:Mülheim an der Ruhr", name: "Mülheim an der Ruhr", countryCode: "DE", center: GeoPoint(latitude: 51.4576, longitude: 6.8696), bounds: GeoBounds(south: 51.3913, west: 6.7848, north: 51.5768, east: 6.9454)),
+        ScooterCity(id: "de:München", name: "München", countryCode: "DE", center: GeoPoint(latitude: 48.1372, longitude: 11.5756), bounds: GeoBounds(south: 48.0524, west: 11.3135, north: 48.3714, east: 11.7866)),
+        ScooterCity(id: "de:Münster", name: "Münster", countryCode: "DE", center: GeoPoint(latitude: 51.9583, longitude: 7.6259), bounds: GeoBounds(south: 51.8732, west: 7.538, north: 52.023, east: 7.7053)),
+        ScooterCity(id: "de:Neumünster", name: "Neumünster", countryCode: "DE", center: GeoPoint(latitude: 54.0746, longitude: 9.9781), bounds: GeoBounds(south: 54.0269, west: 9.922, north: 54.1564, east: 10.0373)),
+        ScooterCity(id: "de:Neuss", name: "Neuss", countryCode: "DE", center: GeoPoint(latitude: 51.1985, longitude: 6.6831), bounds: GeoBounds(south: 51.1397, west: 6.6118, north: 51.2502, east: 6.7563)),
+        ScooterCity(id: "de:Nürnberg", name: "Nürnberg", countryCode: "DE", center: GeoPoint(latitude: 49.4542, longitude: 11.0746), bounds: GeoBounds(south: 49.3802, west: 10.934, north: 49.5102, east: 11.1618)),
+        ScooterCity(id: "de:Osnabrück", name: "Osnabrück", countryCode: "DE", center: GeoPoint(latitude: 52.275, longitude: 8.0494), bounds: GeoBounds(south: 52.2304, west: 7.9693, north: 52.3258, east: 8.1174)),
+        ScooterCity(id: "de:Paderborn", name: "Paderborn", countryCode: "DE", center: GeoPoint(latitude: 51.7227, longitude: 8.7589), bounds: GeoBounds(south: 51.6802, west: 8.693, north: 51.7754, east: 8.8261)),
+        ScooterCity(id: "de:Peine", name: "Peine", countryCode: "DE", center: GeoPoint(latitude: 52.3291, longitude: 10.2375), bounds: GeoBounds(south: 52.2846, west: 10.1457, north: 52.3715, east: 10.3028)),
+        ScooterCity(id: "de:Potsdam", name: "Potsdam", countryCode: "DE", center: GeoPoint(latitude: 52.395, longitude: 13.0639), bounds: GeoBounds(south: 52.3368, west: 12.9564, north: 52.4514, east: 13.1474)),
+        ScooterCity(id: "de:Recklinghausen", name: "Recklinghausen", countryCode: "DE", center: GeoPoint(latitude: 51.6093, longitude: 7.2052), bounds: GeoBounds(south: 51.544, west: 7.1475, north: 51.6464, east: 7.2986)),
+        ScooterCity(id: "de:Regensburg", name: "Regensburg", countryCode: "DE", center: GeoPoint(latitude: 49.0107, longitude: 12.0977), bounds: GeoBounds(south: 48.9671, west: 12.0227, north: 49.0506, east: 12.1659)),
+        ScooterCity(id: "de:Rheda-Wiedenbrück", name: "Rheda-Wiedenbrück", countryCode: "DE", center: GeoPoint(latitude: 51.845, longitude: 8.3044), bounds: GeoBounds(south: 51.7905, west: 8.2427, north: 51.8802, east: 8.3831)),
+        ScooterCity(id: "de:Rheine", name: "Rheine", countryCode: "DE", center: GeoPoint(latitude: 52.2929, longitude: 7.4462), bounds: GeoBounds(south: 52.238, west: 7.3664, north: 52.3354, east: 7.5334)),
+        ScooterCity(id: "de:Rostock", name: "Rostock", countryCode: "DE", center: GeoPoint(latitude: 54.1363, longitude: 12.0681), bounds: GeoBounds(south: 54.0489, west: 12.0106, north: 54.1971, east: 12.1967)),
+        ScooterCity(id: "de:Rüsselsheim", name: "Rüsselsheim", countryCode: "DE", center: GeoPoint(latitude: 49.9914, longitude: 8.4261), bounds: GeoBounds(south: 49.9421, west: 8.3689, north: 50.0197, east: 8.4781)),
+        ScooterCity(id: "de:Saarbrücken", name: "Saarbrücken", countryCode: "DE", center: GeoPoint(latitude: 49.2383, longitude: 6.9951), bounds: GeoBounds(south: 49.1602, west: 6.871, north: 49.31, east: 7.0888)),
+        ScooterCity(id: "de:Salzgitter", name: "Salzgitter", countryCode: "DE", center: GeoPoint(latitude: 52.1524, longitude: 10.3326), bounds: GeoBounds(south: 52.0187, west: 10.2662, north: 52.1909, east: 10.4147)),
+        ScooterCity(id: "de:Sankt Augustin", name: "Sankt Augustin", countryCode: "DE", center: GeoPoint(latitude: 50.7928, longitude: 7.2048), bounds: GeoBounds(south: 50.7374, west: 7.1182, north: 50.8283, east: 7.2951)),
+        ScooterCity(id: "de:Solingen", name: "Solingen", countryCode: "DE", center: GeoPoint(latitude: 51.1636, longitude: 7.0646), bounds: GeoBounds(south: 51.1193, west: 6.9723, north: 51.2317, east: 7.1405)),
+        ScooterCity(id: "de:Troisdorf", name: "Troisdorf", countryCode: "DE", center: GeoPoint(latitude: 50.8206, longitude: 7.1232), bounds: GeoBounds(south: 50.7571, west: 7.0678, north: 50.8597, east: 7.2034)),
+        ScooterCity(id: "de:Überlingen", name: "Überlingen", countryCode: "DE", center: GeoPoint(latitude: 47.7766, longitude: 9.158), bounds: GeoBounds(south: 47.7349, west: 9.1186, north: 47.7957, east: 9.2181)),
+        ScooterCity(id: "de:Ulm", name: "Ulm", countryCode: "DE", center: GeoPoint(latitude: 48.4003, longitude: 9.9973), bounds: GeoBounds(south: 48.3279, west: 9.9057, north: 48.4615, east: 10.0918)),
+        ScooterCity(id: "de:Wiesbaden", name: "Wiesbaden", countryCode: "DE", center: GeoPoint(latitude: 50.0767, longitude: 8.2377), bounds: GeoBounds(south: 49.9273, west: 8.0728, north: 50.1206, east: 8.3414)),
+        ScooterCity(id: "de:Wolfsburg", name: "Wolfsburg", countryCode: "DE", center: GeoPoint(latitude: 52.423, longitude: 10.7863), bounds: GeoBounds(south: 52.3522, west: 10.6624, north: 52.4808, east: 10.882)),
+        ScooterCity(id: "de:Zwickau", name: "Zwickau", countryCode: "DE", center: GeoPoint(latitude: 50.7283, longitude: 12.4887), bounds: GeoBounds(south: 50.6888, west: 12.4389, north: 50.7562, east: 12.537)),
+        ScooterCity(id: "de:Konstanz", name: "Konstanz", countryCode: "DE", center: GeoPoint(latitude: 47.6603, longitude: 9.1758), bounds: GeoBounds(south: 47.64, west: 9.1, north: 47.74, east: 9.25)),
+        ScooterCity(id: "de:Frankfurt", name: "Frankfurt", countryCode: "DE", center: GeoPoint(latitude: 50.1155, longitude: 8.6683), bounds: GeoBounds(south: 49.9311, west: 8.4319, north: 50.2246, east: 8.7884)),
+        ScooterCity(id: "de:Wuppertal", name: "Wuppertal", countryCode: "DE", center: GeoPoint(latitude: 51.2669, longitude: 7.1769), bounds: GeoBounds(south: 51.2053, west: 7.0316, north: 51.314, east: 7.2833)),
+        ScooterCity(id: "de:Pforzheim", name: "Pforzheim", countryCode: "DE", center: GeoPoint(latitude: 48.8926, longitude: 8.6946), bounds: GeoBounds(south: 48.83, west: 8.59, north: 48.96, east: 8.81)),
+        ScooterCity(id: "it:Roma", name: "Roma", countryCode: "IT", center: GeoPoint(latitude: 41.9028, longitude: 12.4964), bounds: GeoBounds(south: 41.6884, west: 12.2183, north: 42.0928, east: 12.7268)),
+    ]
+
+    /// Cities by distance from the point to their centre, nearest first.
+    static func nearest(to point: GeoPoint, count: Int) -> [ScooterCityDistance] {
+        let distances = cities.map { city in
+            ScooterCityDistance(city: city, distanceMeters: distanceMeters(from: point, to: city.center))
+        }
+        return Array(distances.sorted { $0.distanceMeters < $1.distanceMeters }.prefix(max(0, count)))
+    }
+
+    /// Whether the point is inside an operator's service area, like isPointCovered on the web.
+    static func contains(latitude: Double, longitude: Double) -> Bool {
+        ScooterProviderCoverage.contains(latitude: latitude, longitude: longitude)
+    }
+
+    static func contains(_ point: GeoPoint) -> Bool {
+        contains(latitude: point.latitude, longitude: point.longitude)
+    }
+
+    // haversineM from src/lib/geo.ts, so both apps show the same distances.
+    private static func distanceMeters(from origin: GeoPoint, to destination: GeoPoint) -> Double {
+        let radians = Double.pi / 180
+        let latitudeDelta = (destination.latitude - origin.latitude) * radians
+        let longitudeDelta = (destination.longitude - origin.longitude) * radians
+        let a = pow(sin(latitudeDelta / 2), 2) +
+            cos(origin.latitude * radians) * cos(destination.latitude * radians) * pow(sin(longitudeDelta / 2), 2)
+        return 2 * 6_371_000 * asin(min(1, a.squareRoot()))
     }
 }

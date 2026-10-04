@@ -7,7 +7,15 @@ const typescriptPath = resolve(root, 'src/generated/providers.ts');
 const swiftPath = resolve(root, 'ios/SwissScooters/Models/ProviderCatalog.generated.swift');
 const checkOnly = process.argv.includes('--check');
 
+const readJson = path => JSON.parse(readFileSync(resolve(root, path), 'utf8'));
 const providers = JSON.parse(readFileSync(sourcePath, 'utf8'));
+const swissAreas = readJson('data/swiss-scooter-areas.json');
+// Countries as in src/lib/regionalScooterSystems.ts: the French catalog has no country field.
+const regionalSystems = [
+  ...readJson('data/french-scooter-feeds.json').systems.map(system => ({ ...system, country: 'FR' })),
+  ...readJson('data/german-scooter-feeds.json').systems,
+  ...readJson('data/italian-scooter-feeds.json').systems,
+];
 
 function validateCatalog() {
   if (!Array.isArray(providers) || providers.length === 0) {
@@ -84,6 +92,9 @@ function swiftColor(hex) {
 
 function swiftCatalog() {
   const cases = providers.map(provider => `    case ${provider.key}`).join('\n');
+  const matchers = providers.map(provider => (
+    `        (.${provider.key}, ${JSON.stringify(provider.systemIds?.exact ?? [])}, ${JSON.stringify(provider.systemIds?.prefixes ?? [])}),`
+  )).join('\n');
   const names = providers.map(provider => (
     `        case .${provider.key}: ${JSON.stringify(provider.name)}`
   )).join('\n');
@@ -124,6 +135,18 @@ ${initials}
 ${colors}
         }
     }
+
+    private static let systemIDMatchers: [(provider: ScooterProvider, exact: [String], prefixes: [String])] = [
+${matchers}
+    ]
+
+    /// The provider behind a feed or system ID such as "lime_zurich", like providerKeyForSystemId on the web.
+    static func provider(forSystemID systemID: String) -> ScooterProvider? {
+        let normalized = systemID.lowercased()
+        return systemIDMatchers.first { matcher in
+            matcher.exact.contains(normalized) || matcher.prefixes.contains { normalized.hasPrefix($0) }
+        }?.provider
+    }
 }
 `;
 }
@@ -144,18 +167,16 @@ function writeOrCheck(path, expected) {
   writeFileSync(path, expected);
 }
 
+const swiftBounds = b => `GeoBounds(south: ${b.south}, west: ${b.west}, north: ${b.north}, east: ${b.east})`;
+
 function swiftCoverage() {
-  const swiss = JSON.parse(readFileSync(resolve(root, 'data/swiss-scooter-areas.json'), 'utf8'));
-  const regional = ['french', 'german', 'italian'].flatMap(country =>
-    JSON.parse(readFileSync(resolve(root, `data/${country}-scooter-feeds.json`), 'utf8')).systems);
-  const bounds = b => `GeoBounds(south: ${b.south}, west: ${b.west}, north: ${b.north}, east: ${b.east})`;
   return `
 enum ScooterProviderCoverage {
     private static let swissAreas: [GeoBounds] = [
-${swiss.map(area => `        ${bounds(area.bounds)},`).join('\n')}
+${swissAreas.map(area => `        ${swiftBounds(area.bounds)},`).join('\n')}
     ]
     private static let regionalSystems: [(ScooterProvider, GeoBounds)] = [
-${regional.flatMap(system => (system.areas ?? [system]).map(area => `        (.${system.provider}, ${bounds(area.bounds)}),`)).join('\n')}
+${regionalSystems.flatMap(system => (system.areas ?? [system]).map(area => `        (.${system.provider}, ${swiftBounds(area.bounds)}),`)).join('\n')}
     ]
 
     static func providers(in viewport: GeoBounds) -> [ScooterProvider] {
@@ -168,10 +189,104 @@ ${regional.flatMap(system => (system.areas ?? [system]).map(area => `        (.$
         }
         return ScooterProvider.allCases.filter { available.contains($0) }
     }
+
+    static func contains(latitude: Double, longitude: Double) -> Bool {
+        swissAreas.contains { $0.contains(latitude: latitude, longitude: longitude) } ||
+            regionalSystems.contains { $0.1.contains(latitude: latitude, longitude: longitude) }
+    }
+}
+`;
+}
+
+// The Swiss areas, then REGIONAL_SCOOTER_CITIES as src/lib/regionalScooterSystems.ts
+// merges them: one entry per city, its bounds enclosing every operator's envelope.
+function scooterCities() {
+  const cities = new Map(swissAreas.map(area => [area.id, {
+    id: area.id, name: area.city, country: 'CH', center: area.center, bounds: area.bounds,
+  }]));
+  for (const system of regionalSystems) {
+    for (const area of system.areas ?? [system]) {
+      const id = `${system.country.toLowerCase()}:${area.city}`;
+      const previous = cities.get(id);
+      cities.set(id, {
+        id,
+        name: area.city,
+        country: system.country,
+        center: previous?.center ?? area.center,
+        bounds: previous ? {
+          south: Math.min(previous.bounds.south, area.bounds.south),
+          west: Math.min(previous.bounds.west, area.bounds.west),
+          north: Math.max(previous.bounds.north, area.bounds.north),
+          east: Math.max(previous.bounds.east, area.bounds.east),
+        } : area.bounds,
+      });
+    }
+  }
+  return [...cities.values()];
+}
+
+function swiftCities() {
+  const cities = scooterCities().map(city => {
+    if (!/^(CH|FR|DE|IT)$/.test(city.country) || !city.center.every(Number.isFinite)) {
+      throw new Error(`Invalid covered city: ${city.id}`);
+    }
+    return `        ScooterCity(id: ${JSON.stringify(city.id)}, name: ${JSON.stringify(city.name)}, countryCode: ${JSON.stringify(city.country)}, ` +
+      `center: GeoPoint(latitude: ${city.center[0]}, longitude: ${city.center[1]}), bounds: ${swiftBounds(city.bounds)}),`;
+  }).join('\n');
+
+  return `
+struct ScooterCity: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    /// CH, FR, DE or IT.
+    let countryCode: String
+    let center: GeoPoint
+    let bounds: GeoBounds
+}
+
+struct ScooterCityDistance: Identifiable, Equatable, Sendable {
+    let city: ScooterCity
+    let distanceMeters: Double
+
+    var id: String { city.id }
+}
+
+/// Every city with scooter data, one entry per city, like COVERED_CITIES on the web.
+enum ScooterCityCatalog {
+    static let cities: [ScooterCity] = [
+${cities}
+    ]
+
+    /// Cities by distance from the point to their centre, nearest first.
+    static func nearest(to point: GeoPoint, count: Int) -> [ScooterCityDistance] {
+        let distances = cities.map { city in
+            ScooterCityDistance(city: city, distanceMeters: distanceMeters(from: point, to: city.center))
+        }
+        return Array(distances.sorted { $0.distanceMeters < $1.distanceMeters }.prefix(max(0, count)))
+    }
+
+    /// Whether the point is inside an operator's service area, like isPointCovered on the web.
+    static func contains(latitude: Double, longitude: Double) -> Bool {
+        ScooterProviderCoverage.contains(latitude: latitude, longitude: longitude)
+    }
+
+    static func contains(_ point: GeoPoint) -> Bool {
+        contains(latitude: point.latitude, longitude: point.longitude)
+    }
+
+    // haversineM from src/lib/geo.ts, so both apps show the same distances.
+    private static func distanceMeters(from origin: GeoPoint, to destination: GeoPoint) -> Double {
+        let radians = Double.pi / 180
+        let latitudeDelta = (destination.latitude - origin.latitude) * radians
+        let longitudeDelta = (destination.longitude - origin.longitude) * radians
+        let a = pow(sin(latitudeDelta / 2), 2) +
+            cos(origin.latitude * radians) * cos(destination.latitude * radians) * pow(sin(longitudeDelta / 2), 2)
+        return 2 * 6_371_000 * asin(min(1, a.squareRoot()))
+    }
 }
 `;
 }
 
 validateCatalog();
 writeOrCheck(typescriptPath, typescriptCatalog());
-writeOrCheck(swiftPath, swiftCatalog() + swiftCoverage());
+writeOrCheck(swiftPath, swiftCatalog() + swiftCoverage() + swiftCities());
