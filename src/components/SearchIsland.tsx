@@ -14,7 +14,6 @@ interface SearchIslandProps {
   place: Place | null;
   /** False for a searched place outside every service area: there are no scooters to promise near it. */
   placeHasData: boolean;
-  hasLocation: boolean;
   locating: boolean;
   expanded: boolean;
   hasActiveFilters: boolean;
@@ -41,7 +40,6 @@ const PANEL_MIN_HEIGHT = 180;
 export default function SearchIsland({
   place,
   placeHasData,
-  hasLocation,
   locating,
   expanded,
   hasActiveFilters,
@@ -106,10 +104,8 @@ export default function SearchIsland({
     triggerRef.current?.focus({ preventScroll: true });
   };
 
-  // A place wins over your location until it is cleared.
-  const state = place ? 'place' : locating ? 'locating' : hasLocation ? 'near' : 'empty';
   // "Scooters near this place" would be untrue where there is no data.
-  const placeLine = t(placeHasData ? 'bar.place.sub' : 'bar.near.sub');
+  const placeLine = t(placeHasData ? 'bar.place.sub' : 'bar.place.noData');
 
   return (
     <div
@@ -147,7 +143,7 @@ export default function SearchIsland({
               aria-label={
                 place
                   ? placeHasData ? t('bar.aria.place', { name: place.title }) : `${place.title}. ${placeLine}`
-                  : state === 'near' ? t('bar.aria.near') : undefined
+                  : undefined
               }
               aria-expanded={false}
             >
@@ -159,22 +155,15 @@ export default function SearchIsland({
                     <span>{placeLine}</span>
                   </span>
                 </>
-              ) : state === 'locating' ? (
+              ) : locating ? (
                 <>
                   <span className="bar-lead"><span className="mini-spinner" aria-hidden="true" /></span>
                   <span className="bar-locating">{t('bar.locating')}</span>
                 </>
-              ) : state === 'near' ? (
-                <>
-                  <span className="place-tile"><Icon name="location" size={18} /></span>
-                  <span className="bar-copy">
-                    <strong>{t('bar.near.title')}</strong>
-                    <span>{t('bar.near.sub')}</span>
-                  </span>
-                </>
               ) : (
                 <>
-                  {/* With nothing chosen the bar reads like an empty search field. */}
+                  {/* Without a place the bar reads like an empty search field, also once you are
+                      located: the dot on the map says where you are. */}
                   <span className="bar-lead bar-lead-search"><Icon name="search" /></span>
                   <span className="bar-placeholder">{t('bar.empty')}</span>
                 </>

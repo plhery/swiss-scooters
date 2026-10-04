@@ -1029,7 +1029,7 @@ async function expectTouchTargets(page: Page) {
   }
 }
 
-test('the search bar says what the map is based on: nothing, a location on its way, your location, a place', async ({ page }) => {
+test('the search bar is a search field until a place is chosen, and shows a location on its way', async ({ page }) => {
   await page.addInitScript(() => {
     const position = {
       coords: { latitude: 47.3769, longitude: 8.5417, accuracy: 5,
@@ -1070,15 +1070,15 @@ test('the search bar says what the map is based on: nothing, a location on its w
   expect((await accessibility()).violations).toEqual([]);
 
   await page.evaluate(() => document.dispatchEvent(new Event('fix')));
-  const near = island.getByRole('button', { name: 'Showing scooters near you. Search a city or address.' });
-  await expect(near).toContainText('Near you');
-  await expect(near).toContainText('Tap to search a city or address');
+  // Once located the bar is a search field again: the dot on the map says where you are.
+  await expect(buttons.first()).toHaveText('Search city or address');
+  await expect(page.locator('.user-location-marker')).toBeVisible();
   await expect(island.getByRole('button', { name: 'Clear place' })).toHaveCount(0);
   await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters nearby$/);
   expect((await accessibility()).violations).toEqual([]);
 
   // A searched place wins over your location, and has a button to clear it.
-  await near.click();
+  await buttons.first().click();
   await page.getByRole('combobox').fill('Zürich HB');
   await page.getByRole('option', { name: 'Zürich HB, Train' }).click();
   const place = island.getByRole('button', { name: 'Showing scooters near Zürich HB. Search another place.' });
@@ -1092,7 +1092,7 @@ test('the search bar says what the map is based on: nothing, a location on its w
 
   // Clearing the place falls back to your location.
   await island.getByRole('button', { name: 'Clear place' }).click();
-  await expect(near).toBeFocused();
+  await expect(buttons.first()).toBeFocused();
   await expect(page.locator('.destination-marker')).toHaveCount(0);
   await expect(island.getByRole('button', { name: 'Clear place' })).toHaveCount(0);
   // Nowhere does the bar speak of an origin any more.
@@ -2268,7 +2268,7 @@ test.describe('on a desktop', () => {
 
     await page.keyboard.press('l');
     await expect(map).toHaveAttribute('data-zoom', '17');
-    await expect(page.getByRole('button', { name: 'Showing scooters near you. Search a city or address.' })).toBeVisible();
+    await expect(page.locator('.user-location-marker')).toBeVisible();
 
     // Escape closes a sheet first and leaves the card under it open.
     await page.getByRole('button', { name: 'Lime, 1. Shown.', exact: true }).click();

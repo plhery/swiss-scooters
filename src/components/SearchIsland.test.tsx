@@ -18,7 +18,6 @@ function island(overrides: Partial<Props> = {}) {
       <SearchIsland
         place={null}
         placeHasData
-        hasLocation={false}
         locating={false}
         expanded={false}
         hasActiveFilters={false}
@@ -75,15 +74,6 @@ describe('the collapsed bar', () => {
     expect(buttonNames()).toEqual(['Search city or address', 'Filters', 'Settings']);
   });
 
-  it('says that the scooters are near you once you are located', () => {
-    render(island({ hasLocation: true }));
-
-    expect(screen.getByText('Near you')).toBeVisible();
-    expect(screen.getByText('Tap to search a city or address')).toBeVisible();
-    expect(bar()).toHaveAccessibleName('Showing scooters near you. Search a city or address.');
-    expect(buttonNames()).toEqual([bar().getAttribute('aria-label'), 'Filters', 'Settings']);
-  });
-
   it('names the searched place and offers to clear it', () => {
     const onClear = vi.fn();
     render(island({ place: zurich, onClear }));
@@ -108,32 +98,29 @@ describe('the collapsed bar', () => {
   });
 
   it('shows a location on its way in the bar itself', () => {
-    render(island({ locating: true, hasLocation: true }));
+    render(island({ locating: true }));
 
     expect(bar()).toHaveAccessibleName('Finding your location…');
     expect(bar().querySelector('.mini-spinner')).not.toBeNull();
-    expect(screen.queryByText('Near you')).toBeNull();
     expect(buttonNames()).toEqual(['Finding your location…', 'Filters', 'Settings']);
   });
 
-  it('lets a searched place win over your location, found or on its way', () => {
-    render(island({ place: zurich, hasLocation: true, locating: true }));
+  it('lets a searched place win over a location on its way', () => {
+    render(island({ place: zurich, locating: true }));
 
     expect(screen.getByText('Zürich HB')).toBeVisible();
-    expect(screen.queryByText('Near you')).toBeNull();
     expect(screen.queryByText('Finding your location…')).toBeNull();
   });
 
-  it('keeps its usual lines while no place is chosen, whatever the dock shows', () => {
-    render(island({ placeHasData: false, hasLocation: true }));
+  it('stays a search field while no place is chosen, whatever the dock shows', () => {
+    render(island({ placeHasData: false }));
 
-    expect(screen.getByText('Near you')).toBeVisible();
-    expect(screen.getByText('Tap to search a city or address')).toBeVisible();
+    expect(bar()).toHaveAccessibleName('Search city or address');
+    expect(screen.queryByText('Tap to search a city or address')).toBeNull();
   });
 
   it.each([
     ['nothing chosen', {}],
-    ['your location', { hasLocation: true }],
     ['a place', { place: zurich }],
     ['a place without data', { place: lungern, placeHasData: false }],
     ['locating', { locating: true }],

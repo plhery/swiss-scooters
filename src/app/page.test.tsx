@@ -15,8 +15,9 @@ const track = vi.mocked(sendEvent);
 const viewport = vi.hoisted(() => ({ bounds: { south: 47.36, west: 8.52, north: 47.39, east: 8.57 } }));
 vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
   onViewportChange, onVehicleSelect, onParkingSelect, selectedParkingId, vehicles, parking, focusLocation, focusZoom, destination,
-  hoverTips, popover, zoomStep, selectedVehicleKey, onMapClick, markerLookupRef,
+  hoverTips, popover, zoomStep, selectedVehicleKey, onMapClick, markerLookupRef, userLocation,
 }: {
+  userLocation: [number, number] | null;
   markerLookupRef: { current: ((vehicleKey: string | null, parkingId: string | null) => HTMLElement | null) | null };
   hoverTips: boolean; popover: { label: string; content: React.ReactNode } | null; zoomStep: { direction: number; version: number };
   onViewportChange: (bounds: MapBounds, zoom: number) => void; onVehicleSelect: (vehicle: Vehicle) => void;
@@ -32,6 +33,7 @@ vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
   return <><span data-testid="vehicles">{vehicles.length}</span><span data-testid="parking">{parking.length}</span>
     <span data-testid="focus">{focusLocation ? `${focusLocation.join(',')} zoom ${focusZoom}` : 'none'}</span>
     <span data-testid="pin">{destination ? destination.display_name : 'none'}</span>
+    <span data-testid="dot">{userLocation ? 'shown' : 'none'}</span>
     <span data-testid="tips">{String(hoverTips)}</span><span data-testid="zoom-steps">{zoomStep.version}:{zoomStep.direction}</span>
     <span data-testid="selected">{selectedVehicleKey ?? selectedParkingId ?? 'none'}</span><button onClick={onMapClick}>Tap the map</button>
     {popover && <div role="dialog" aria-label={popover.label}>{popover.content}</div>}
@@ -40,11 +42,11 @@ vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
     {[15, 16].map(zoom => <button key={zoom} onClick={() => onViewportChange(viewport.bounds, zoom)}>Zoom to {zoom}</button>)}</>;
 } }));
 vi.mock('@/components/SearchIsland', () => ({ default: ({
-  place, placeHasData, hasLocation, locating, recentPlaces, nearbyCities, onExpandedChange, onSelect, onClear,
+  place, placeHasData, locating, recentPlaces, nearbyCities, onExpandedChange, onSelect, onClear,
   expanded, onShowFilters,
 }: {
   expanded: boolean; onShowFilters: () => void;
-  place: { title: string } | null; placeHasData: boolean; hasLocation: boolean; locating: boolean;
+  place: { title: string } | null; placeHasData: boolean; locating: boolean;
   recentPlaces: { title: string }[]; nearbyCities: { city: string }[];
   onExpandedChange: (expanded: boolean) => void; onSelect: (place: object) => void; onClear: () => void;
 }) => <><button onClick={() => onSelect({ lat: 47.3779, lng: 8.5403, display_name: 'Zürich HB, Train', title: 'Zürich HB', subtitle: 'Train', covered: true })}>Search Zürich HB</button>
@@ -53,7 +55,7 @@ vi.mock('@/components/SearchIsland', () => ({ default: ({
   <button className="bar-button" onClick={() => onExpandedChange(true)}>Open the search</button><button onClick={() => onExpandedChange(false)}>Close the search</button>
   <button onClick={onClear}>Clear the place</button><span data-testid="place-has-data">{String(placeHasData)}</span>
   <button onClick={onShowFilters}>Open the filters</button><span data-testid="search">{expanded ? 'open' : 'closed'}</span>
-  <span data-testid="bar">{place ? place.title : locating ? 'locating' : hasLocation ? 'near you' : 'nothing chosen'}</span>
+  <span data-testid="bar">{place ? place.title : locating ? 'locating' : 'search field'}</span>
   <span data-testid="recent">{recentPlaces.map(recent => recent.title).join(', ')}</span>
   <span data-testid="cities">{nearbyCities.map(city => city.city).join(', ')}</span></> }));
 vi.mock('@/components/ControlSheet', () => ({ default: ({
@@ -275,18 +277,20 @@ it('measures walking time from a searched place until locating or clearing it', 
   expect(screen.queryByText(/Zürich HB ·/)).toBeNull();
 });
 
-it('tells the search bar what the map is based on: nothing, a location on its way, your location or a place', async () => {
+it('tells the search bar about a location on its way and a place; once located it is a search field again', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
   const fixArrives = stubSlowGeolocation();
   mount();
   await act(async () => vi.advanceTimersByTimeAsync(180));
   const bar = screen.getByTestId('bar');
-  expect(bar).toHaveTextContent('nothing chosen');
+  expect(bar).toHaveTextContent('search field');
 
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
   expect(bar).toHaveTextContent('locating');
   await act(async () => fixArrives());
-  expect(bar).toHaveTextContent('near you');
+  // The dot on the map says where you are; the bar goes back to the search prompt.
+  expect(bar).toHaveTextContent('search field');
+  expect(screen.getByTestId('dot')).toHaveTextContent('shown');
   expect(screen.getByTestId('focus')).toHaveTextContent('47.3769,8.5417 zoom 17');
 
   // A place wins over your location until it is cleared, and has its pin on the map.
@@ -295,7 +299,7 @@ it('tells the search bar what the map is based on: nothing, a location on its wa
   expect(bar).toHaveTextContent('Zürich HB');
   expect(screen.getByTestId('pin')).toHaveTextContent(/^Zürich HB, Train$/);
   fireEvent.click(screen.getByRole('button', { name: 'Clear the place' }));
-  expect(bar).toHaveTextContent('near you');
+  expect(bar).toHaveTextContent('search field');
   expect(screen.getByTestId('pin')).toHaveTextContent('none');
 });
 
@@ -312,7 +316,8 @@ it('clears the place as soon as locating starts, also when the location turns ou
   expect(screen.getByTestId('bar')).toHaveTextContent('locating');
   expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
   await act(async () => fixArrives());
-  expect(screen.getByTestId('bar')).toHaveTextContent('near you');
+  expect(screen.getByTestId('bar')).toHaveTextContent('search field');
+  expect(screen.getByTestId('dot')).toHaveTextContent('shown');
 
   stubGeolocation(null);
   fireEvent.click(screen.getByRole('button', { name: 'Search Zürich HB' }));
@@ -339,7 +344,8 @@ it('keeps the map on a place chosen while the location was on its way', async ()
   expect(localStorage.getItem('scooters-located-once')).toBe('1');
   // Your location is known all the same, and takes over once the place is cleared.
   fireEvent.click(screen.getByRole('button', { name: 'Clear the place' }));
-  expect(screen.getByTestId('bar')).toHaveTextContent('near you');
+  expect(screen.getByTestId('bar')).toHaveTextContent('search field');
+  expect(screen.getByTestId('dot')).toHaveTextContent('shown');
 });
 
 it('remembers the places chosen during the visit, most recent first, and stores none of them', async () => {
