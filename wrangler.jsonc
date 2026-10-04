@@ -37,8 +37,9 @@
     {
       "name": "GEOCODE_API_RATE_LIMITER",
       "namespace_id": "1824002",
+      // The apps search at every pause in typing: one address is several requests.
       "simple": {
-        "limit": 10,
+        "limit": 30,
         "period": 60
       }
     }

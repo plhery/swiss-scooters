@@ -39,6 +39,16 @@ type SearchStatus =
 
 const SEARCH_DEBOUNCE_MS = 350;
 const MIN_QUERY_LENGTH = 2;
+// When the server says "too many searches" without saying for how long.
+const DEFAULT_RETRY_AFTER_MS = 10_000;
+const MAX_RETRY_AFTER_MS = 60_000;
+
+/** How long to wait before searching again, from the Retry-After header of a 429 (in seconds). */
+function retryAfterMs(header: string | null): number {
+  const seconds = header === null || header.trim() === '' ? NaN : Number(header);
+  if (!Number.isFinite(seconds) || seconds < 0) return DEFAULT_RETRY_AFTER_MS;
+  return Math.min(Math.max(seconds * 1000, 1_000), MAX_RETRY_AFTER_MS);
+}
 
 /** A place in the open search: a result, or a place chosen earlier. */
 function PlaceRow({
@@ -82,6 +92,8 @@ export default function AddressSearch({ recentPlaces, nearbyCities, onSelect, on
   const bodyRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<number | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  // The places found last, for a search that is refused because there were too many.
+  const foundRef = useRef<Place[] | null>(null);
   const places = status.kind === 'results' ? status.places : null;
 
   useEffect(() => () => {
@@ -123,11 +135,27 @@ export default function AddressSearch({ recentPlaces, nearbyCities, onSelect, on
         cache: 'no-store',
         signal: deadline.signal,
       });
+      if (response.status === 429) {
+        if (controller.signal.aborted || controllerRef.current !== controller) return;
+        // Too many searches in a minute, which typing with pauses can reach: not
+        // a failure to report. What was found last stays, and the same text is
+        // searched again once the server allows it, unless the text changes first.
+        if (foundRef.current) {
+          setActiveIndex(0);
+          setStatus({ kind: 'results', places: foundRef.current });
+        }
+        timeoutRef.current = window.setTimeout(() => {
+          timeoutRef.current = null;
+          void search(value);
+        }, retryAfterMs(response.headers.get('Retry-After')));
+        return;
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       // An answer from before the two-line labels gets today's label split and the client's own coverage.
       const found = (await response.json() as PlaceResult[]).map(toPlace);
       if (controller.signal.aborted || controllerRef.current !== controller) return;
       track('search_results', { count: found.length });
+      foundRef.current = found.length > 0 ? found : null;
       setActiveIndex(0);
       setStatus(found.length > 0 ? { kind: 'results', places: found } : { kind: 'noResults' });
     } catch {
@@ -146,6 +174,7 @@ export default function AddressSearch({ recentPlaces, nearbyCities, onSelect, on
 
     const normalized = value.trim();
     if (normalized.length < MIN_QUERY_LENGTH) {
+      foundRef.current = null;
       setStatus({ kind: 'idle' });
       return;
     }

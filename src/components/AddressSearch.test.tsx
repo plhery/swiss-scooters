@@ -264,6 +264,65 @@ describe('when there is nothing to list', () => {
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
+  it('keeps the places found before when a search is refused for being one too many, and searches again later', async () => {
+    const refused = (retryAfter?: string) => async () => new Response('{"error":"Too many address searches."}', {
+      status: 429, headers: retryAfter ? { 'Retry-After': retryAfter } : {},
+    });
+    const fetcher = vi.fn()
+      .mockImplementationOnce(async () => Response.json(PARADEPLATZ))
+      .mockImplementationOnce(refused('5'))
+      .mockImplementation(async () => Response.json([PARADEPLATZ[1]]));
+    vi.stubGlobal('fetch', fetcher);
+    const { input, onSelect } = renderSearch();
+    await type(input, 'Parade');
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+
+    // Typing with pauses reaches the limit: nothing says so, and the places stay.
+    await type(input, 'Paradeplatz 2');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(screen.queryByText('Search isn’t available right now.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+    // The same text is searched again when the server said it may be.
+    await act(async () => vi.advanceTimersByTimeAsync(4_999));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenLastCalledWith('/api/geocode', expect.objectContaining({
+      body: JSON.stringify({ q: 'Paradeplatz 2', lang: 'en' }),
+    }));
+    expect(screen.getAllByRole('option').map(option => option.getAttribute('aria-label'))).toEqual(['Paradeplatz 2, 8001 Zürich']);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+
+  it('goes on searching when the first search is refused, and drops the wait when the text changes', async () => {
+    const fetcher = vi.fn()
+      .mockImplementationOnce(async () => new Response('{}', { status: 429 }))
+      .mockImplementationOnce(async () => new Response('{}', { status: 429, headers: { 'Retry-After': '60' } }))
+      .mockImplementation(async () => Response.json(PARADEPLATZ));
+    vi.stubGlobal('fetch', fetcher);
+    const { input } = renderSearch();
+    await type(input, 'Parade');
+    // Nothing was found before: the search is still on its way, not unavailable.
+    expect(screen.getByRole('status')).toHaveTextContent(/^Searching…$/);
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+    // Ten seconds when the server does not say how long.
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('status')).toHaveTextContent(/^Searching…$/);
+
+    // New text is searched after the usual pause; the wait for the old text is over.
+    await type(input, 'Paradeplatz');
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    await act(async () => vi.advanceTimersByTimeAsync(120_000));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
   it('gives up on a search that stalls, and searches again when the text changes', async () => {
     const fetcher = vi.fn().mockImplementationOnce((_url: unknown, init: RequestInit) => new Promise((_resolve, reject) => {
       init.signal!.addEventListener('abort', () => reject(init.signal!.reason));
