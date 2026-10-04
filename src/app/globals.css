@@ -15,7 +15,6 @@
   --grabber-bg: rgba(60, 60, 67, 0.22);
   --raised-bg: #fff;
   --focus-bg: rgba(255, 255, 255, 0.9);
-  --slider-thumb-bg: #fff;
   --map-bg: #dce6e8;
   --attribution-bg: rgba(255, 255, 255, 0.85);
   --attribution-ink: #555c64;
@@ -89,7 +88,6 @@ body {
   --grabber-bg: rgba(235, 235, 245, 0.25);
   --raised-bg: #38383d;
   --focus-bg: rgba(58, 58, 64, 0.94);
-  --slider-thumb-bg: #f2f2f7;
   --map-bg: #1c1c1e;
   --attribution-bg: rgba(28, 28, 30, 0.85);
   --attribution-ink: #c0c0c8;
@@ -1050,7 +1048,7 @@ svg {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 0 20px 8px;
+  padding: 0 20px 4px;
 }
 .control-sheet-heading h2 {
   margin: 0;
@@ -1073,8 +1071,52 @@ svg {
   overscroll-behavior: contain;
   padding: 0 20px 24px;
 }
+/* What a sheet ends with stays in view; content that scrolls on fades out above it. */
+.control-sheet-body:not(:last-child) {
+  padding-bottom: 16px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+}
+.control-sheet-footer {
+  flex-shrink: 0;
+  padding: 0 20px 18px;
+}
+.sheet-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: #0070eb;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.sheet-reset {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--blue-ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+.sheet-reset:disabled {
+  color: var(--ink-3);
+}
 .settings-section {
   margin-top: 18px;
+}
+.settings-section:first-child {
+  margin-top: 14px;
 }
 .settings-section h3,
 .section-title {
@@ -1083,42 +1125,9 @@ svg {
   color: var(--ink-2);
   margin: 0 0 10px;
 }
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 28px;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.section-heading h3 {
-  margin: 0;
-}
 .settings-group {
   border-radius: 18px;
   background: var(--fill-quaternary);
-}
-.battery-filter {
-  padding: 10px 14px;
-}
-.battery-slider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--success-ink);
-}
-.slider-val {
-  color: var(--blue);
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.slider-labels {
-  display: flex;
-  justify-content: space-between;
-  padding-left: 32px;
-  color: var(--ink-2);
-  font-size: 11px;
 }
 .filter-help {
   margin: 8px 2px 0;
@@ -1126,58 +1135,11 @@ svg {
   color: var(--ink-2);
   line-height: 1.4;
 }
-.ios-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  min-width: 0;
-  height: 44px;
-  background: transparent;
-  margin: 0;
-}
-.ios-slider::-webkit-slider-runnable-track {
-  height: 5px;
-  border-radius: 4px;
-  background: linear-gradient(
-    to right,
-    var(--blue) 0%,
-    var(--blue) var(--fill, 0%),
-    var(--fill-tertiary) var(--fill, 0%)
-  );
-}
-.ios-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  background: var(--slider-thumb-bg);
-  box-shadow:
-    0 2px 7px rgba(0, 0, 0, 0.17),
-    0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  margin-top: -11px;
-}
-.ios-slider::-moz-range-track {
-  height: 5px;
-  border-radius: 4px;
-  background: var(--fill-tertiary);
-}
-.ios-slider::-moz-range-progress {
-  height: 5px;
-  border-radius: 4px;
-  background: var(--blue);
-}
-.ios-slider::-moz-range-thumb {
-  width: 27px;
-  height: 27px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--slider-thumb-bg);
-  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.17);
-}
 .provider-options button {
   display: flex;
+  box-sizing: border-box;
   width: 100%;
-  min-height: 58px;
+  min-height: 56px;
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
@@ -1190,9 +1152,22 @@ svg {
 .provider-options button + button {
   border-top: 1px solid var(--hairline);
 }
+.provider-options button:first-child {
+  border-radius: 18px 18px 0 0;
+}
+.provider-options button:last-child {
+  border-radius: 0 0 18px 18px;
+}
+.provider-options button:only-child {
+  border-radius: 18px;
+}
+.provider-options button:focus-visible {
+  outline-offset: -3px;
+}
 .provider-symbol {
   display: grid;
   place-items: center;
+  flex-shrink: 0;
   width: 30px;
   height: 30px;
   border-radius: 10px;
@@ -1201,20 +1176,55 @@ svg {
   font-size: 11px;
   font-weight: 700;
 }
+.provider-copy {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+}
+.provider-note {
+  color: var(--warning-ink);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.provider-count {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .provider-check {
   display: grid;
   place-items: center;
+  flex-shrink: 0;
   width: 21px;
   height: 21px;
   border: 1.5px solid var(--ink-3);
   box-sizing: border-box;
   border-radius: 50%;
-  margin-left: auto;
 }
 .provider-options [aria-pressed='true'] .provider-check {
   background: #0070eb;
   border-color: #0070eb;
   color: #fff;
+}
+/* Not sharing data and nothing in view: no count, and no check to promise scooters. */
+.provider-down {
+  color: var(--ink-2);
+}
+.provider-options .provider-down[aria-pressed='true'] .provider-check {
+  border-style: dashed;
+  border-color: var(--ink-3);
+  background: transparent;
+}
+.provider-none {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  margin: 0;
+  padding: 8px 14px;
+  box-sizing: border-box;
+  color: var(--ink-2);
+  font-size: 14px;
 }
 .map-style-options {
   display: flex;
@@ -1631,6 +1641,8 @@ svg {
   .bar-button,
   .text-button,
   .done-button,
+  .sheet-reset,
+  .sheet-primary,
   .field-btn,
   .fab,
   .near-me,
@@ -1653,6 +1665,8 @@ svg {
     .bar-button,
     .text-button,
     .done-button,
+    .sheet-reset,
+    .sheet-primary,
     .field-btn,
     .fab,
     .near-me,
@@ -1673,6 +1687,7 @@ svg {
     .icon-button,
     .bar-button,
     .text-button,
+    .sheet-reset:not(:disabled),
     .field-btn,
     .search-cancel,
     .search-retry,
@@ -1699,6 +1714,7 @@ svg {
     background: var(--fill-quaternary);
   }
   .card-actions > *:hover,
+  .sheet-primary:hover,
   .near-me:hover:not(:disabled),
   .dock-retry:hover,
   .card-link:hover,

@@ -25,6 +25,7 @@ import {
   type ThemeName,
 } from '@/lib/clientParams';
 import { nearestCoveredCities, type NearbyCoveredCity } from '@/lib/coveredCities';
+import { providerHealth } from '@/lib/dataHealth';
 import { dockIssue, dockModel, originInViewport, type DockInput } from '@/lib/dockModel';
 import { failureSurface } from '@/lib/loadFailure';
 import { unfilteredCountInView } from '@/lib/nothingToShow';
@@ -609,7 +610,11 @@ export default function Home() {
         minBattery={minBattery}
         enabledProviders={enabledProviders}
         availableProviders={availableProviders}
+        providerCounts={viewportData.providerCounts}
+        downProviders={providerHealth(responseMeta, availableProviders).down}
         hasActiveFilters={hasActiveFilters}
+        // While the answer for a new view or minimum is on its way there is no count to promise.
+        showCount={loading === 'load' ? null : viewportData.totalCount}
         tileLayer={tileLayer}
         onMinBatteryChange={value => { track('battery_filter', { value }); setMinBattery(value); }}
         onProviderToggle={handleProviderToggle}

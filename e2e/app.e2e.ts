@@ -338,6 +338,23 @@ test('a provider that is not sharing data gets a dashed chip after All and a cal
   await expect(page.locator('.map-notices')).toBeEmpty();
   const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
+
+  // The filters say the same instead of a count, and keep the provider a choice.
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  const bird = filters.getByRole('button', { name: 'Bird: not sharing data right now' });
+  await expect(bird).toContainText('Not sharing data right now');
+  await expect(bird.locator('.provider-count')).toHaveCount(0);
+  await expect(bird).toHaveAttribute('aria-pressed', 'true');
+  const circle = () => bird.locator('.provider-check').evaluate(element => getComputedStyle(element).borderTopStyle);
+  expect(await circle()).toBe('dashed');
+  await expect(bird.locator('.provider-check svg')).toHaveCount(0);
+  await expect(filters.getByRole('button', { name: 'Bolt, 1. Shown.' }).locator('.provider-check svg')).toHaveCount(1);
+  const sheetAccessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(sheetAccessibility.violations).toEqual([]);
+  await bird.click();
+  await expect(bird).toHaveAttribute('aria-pressed', 'false');
+  expect(await circle()).toBe('solid');
 });
 
 test('an area without scooter data offers the closest cities and flies to the one chosen', async ({ page }) => {
@@ -413,7 +430,8 @@ test('says how many scooters the filters hide, and shows them again or opens the
   await dock.getByRole('button', { name: 'Edit filters' }).click();
   const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
   await expect(filters).toBeVisible();
-  await filters.getByRole('button', { name: 'Done' }).click();
+  // The sheet promises what the map shows: nothing, while only Hopp is switched on.
+  await filters.getByRole('button', { name: 'Show 0 scooters' }).click();
   await expect(filters).not.toBeVisible();
 
   await dock.getByRole('button', { name: 'Show all 3' }).click();
@@ -592,8 +610,102 @@ test('combines provider filters and resets them together', async ({ page }) => {
   await expect(page.locator('.scooter-marker')).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Filters active', exact: true }).click();
-  await page.getByRole('button', { name: 'Reset filters' }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  await expect(filters.getByRole('button', { name: 'Show 2 scooters' })).toBeVisible();
+  await filters.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await filters.getByRole('button', { name: 'Show 3 scooters' }).click();
+  await expect(filters).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeFocused();
+});
+
+test('the filters offer battery presets and providers with their counts, and say what the map will show', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/?origin=47.3769,8.5417');
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  const reset = filters.getByRole('button', { name: 'Reset', exact: true });
+  const show = filters.locator('.sheet-primary');
+  await expect(reset).toBeDisabled();
+  await expect(show).toHaveText('Show 3 scooters');
+  await expect(filters.getByRole('button', { name: 'Done' })).toHaveCount(0);
+
+  // Battery first: one choice of four, and no slider.
+  const battery = filters.getByRole('group', { name: 'Battery' });
+  await expect(battery.getByRole('button')).toHaveText(['Any', '30%+', '60%+', '80%+']);
+  await expect(battery.getByRole('button', { name: 'Any' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(filters.getByRole('slider')).toHaveCount(0);
+  const help = filters.getByText('Scooters without battery info are hidden while a minimum is set.');
+  await expect(help).toHaveCount(0);
+  const sections = await filters.getByRole('heading', { level: 3 }).allTextContents();
+  expect(sections).toEqual(['Battery', 'Providers']);
+
+  await battery.getByRole('button', { name: '60%+' }).click();
+  await expect(battery.getByRole('button', { name: '60%+' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(help).toBeVisible();
+  await expect(reset).toBeEnabled();
+  // Lime has 82% and Bird 64%; Bolt, at 58%, no longer counts.
+  await expect(show).toHaveText('Show 2 scooters');
+  await expect(page.locator('.scooter-marker')).toHaveCount(2);
+  await expect.poll(() => new URL(page.url()).searchParams.get('minBattery')).toBe('60');
+
+  // One list in catalogue order: what each provider has in view, switched on or not.
+  const providers = filters.getByRole('group', { name: 'Providers' }).getByRole('button');
+  await expect(providers.nth(0)).toHaveAccessibleName('Bolt, 0. Shown.');
+  await expect(providers.nth(1)).toHaveAccessibleName('Bird, 1. Shown.');
+  const lime = filters.getByRole('button', { name: /^Lime, 1\./ });
+  await expect(lime.locator('.provider-count')).toHaveText('1');
+  await lime.click();
+  await expect(lime).toHaveAccessibleName('Lime, 1. Hidden.');
+  await expect(lime).toHaveAttribute('aria-pressed', 'false');
+  await expect(show).toHaveText('Show 1 scooter');
+  await expect(page.locator('.scooter-marker')).toHaveCount(1);
+
+  // Everything in the sheet can be tapped, and nothing reaches past its edge.
+  await filters.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  const sheet = (await filters.boundingBox())!;
+  for (const button of await filters.getByRole('button').all()) {
+    const target = (await button.boundingBox())!;
+    expect(target.height).toBeGreaterThanOrEqual(44);
+    expect(target.width).toBeGreaterThanOrEqual(44);
+    expect(target.x).toBeGreaterThanOrEqual(sheet.x);
+    expect(target.x + target.width).toBeLessThanOrEqual(sheet.x + sheet.width);
+  }
+  const accessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await reset.click();
+  await expect(battery.getByRole('button', { name: 'Any' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(lime).toHaveAttribute('aria-pressed', 'true');
+  await expect(help).toHaveCount(0);
+  await expect(reset).toBeDisabled();
+  await expect(show).toHaveText('Show 3 scooters');
+  await expect.poll(() => new URL(page.url()).searchParams.has('minBattery')).toBe(false);
+
+  await show.click();
+  await expect(filters).not.toBeVisible();
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+});
+
+test('a battery minimum from an old link snaps down to a preset, and the server applies it to clusters', async ({ page }) => {
+  const requested: string[] = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/scooters') requested.push(`${url.searchParams.get('zoom')}:${url.searchParams.get('minBattery')}`);
+  });
+  await page.goto('/?minBattery=45');
+  await expect.poll(() => new URL(page.url()).searchParams.get('minBattery')).toBe('30');
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  await expect.poll(() => requested.at(-1)).toBe('8:30');
+  await page.getByRole('button', { name: 'Filters active', exact: true }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  await expect(filters.getByRole('button', { name: '30%+' })).toHaveAttribute('aria-pressed', 'true');
+  // The clusters stand for three scooters.
+  await expect(filters.locator('.sheet-primary')).toHaveText('Show 3 scooters');
+  await filters.getByRole('button', { name: '80%+' }).click();
+  await expect(filters.locator('.sheet-primary')).toHaveText('Show 3 scooters');
+  await expect.poll(() => requested.at(-1)).toBe('8:80');
 });
 
 const paradeplatz = [
@@ -951,7 +1063,12 @@ test('reduced motion and narrow screens retain accessible controls', async ({ pa
   const box = await dialog.boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(320);
-  await dialog.getByRole('button', { name: 'Done' }).click();
+  // The button at the bottom stays in view however short the screen is.
+  const show = dialog.getByRole('button', { name: 'Show 3 scooters' });
+  await expect(show).toBeInViewport({ ratio: 1 });
+  const showBox = (await show.boundingBox())!;
+  expect(showBox.y + showBox.height).toBeLessThanOrEqual(box!.y + box!.height);
+  await show.click();
   await expect(dialog).not.toBeVisible();
 });
 
@@ -1304,7 +1421,7 @@ test('parking bays appear at street zoom, open in the dock one selection at a ti
   await filters.getByRole('button', { name: /Dott/ }).click();
   await expect(marker).toHaveCount(0);
   await filters.getByRole('button', { name: /Dott/ }).click();
-  await filters.getByRole('button', { name: 'Done' }).click();
+  await filters.getByRole('button', { name: 'Show 1 scooter' }).click();
   await expect(filters).not.toBeVisible();
   await expect(marker).toBeVisible();
   await zoomTo(page, 15);

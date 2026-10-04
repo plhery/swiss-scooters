@@ -39,8 +39,14 @@ vi.mock('@/components/SearchIsland', () => ({ default: ({
   <span data-testid="bar">{place ? place.title : locating ? 'locating' : hasLocation ? 'near you' : 'nothing chosen'}</span>
   <span data-testid="recent">{recentPlaces.map(recent => recent.title).join(', ')}</span>
   <span data-testid="cities">{nearbyCities.map(city => city.city).join(', ')}</span></> }));
-vi.mock('@/components/ControlSheet', () => ({ default: ({ onProviderToggle }: { onProviderToggle: (provider: string) => void }) =>
-  <button onClick={() => onProviderToggle('lime')}>Lime in the filters</button> }));
+vi.mock('@/components/ControlSheet', () => ({ default: ({
+  showCount, providerCounts, downProviders, hasActiveFilters, onProviderToggle, onMinBatteryChange,
+}: {
+  showCount: number | null; providerCounts: Record<string, number>; downProviders: string[]; hasActiveFilters: boolean;
+  onProviderToggle: (provider: string) => void; onMinBatteryChange: (value: number) => void;
+}) => <><button onClick={() => onProviderToggle('lime')}>Lime in the filters</button>
+  <button onClick={() => onMinBatteryChange(60)}>At least 60% in the filters</button>
+  <span data-testid="filters">{JSON.stringify({ show: showCount, counts: providerCounts, down: downProviders, active: hasActiveFilters })}</span></> }));
 vi.mock('@/components/MapCredits', () => ({ default: () => null }));
 
 const response = (): ScooterResponse => ({ vehicles: [{ provider: 'lime', vehicle_id: 'one', lat: 47.377, lng: 8.542,
@@ -452,6 +458,42 @@ it('says how many scooters the filters hide and brings them back', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
   expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
   expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+});
+
+it('tells the filters what the map will show, what each provider has in view and who is not sharing data', async () => {
+  const body = response();
+  body.vehicles.push({ ...body.vehicles[0], provider: 'voi', vehicle_id: 'two', battery: 40 });
+  body.meta.failedSources = ['national:bird_zurich', 'city-overview'];
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(body)));
+  mount();
+  const filters = () => JSON.parse(screen.getByTestId('filters').textContent!);
+  // Nothing has answered yet: there is no count to promise.
+  expect(filters()).toEqual({ show: null, counts: {}, down: [], active: false });
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(filters()).toEqual({ show: 2, counts: { lime: 1, voi: 1 }, down: ['bird'], active: false });
+
+  // Counts follow the battery choice and ignore the provider choice, so each row says what it would add.
+  fireEvent.click(screen.getByRole('button', { name: 'At least 60% in the filters' }));
+  expect(filters()).toEqual({ show: 1, counts: { lime: 1 }, down: ['bird'], active: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Lime in the filters' }));
+  expect(filters()).toEqual({ show: 0, counts: { lime: 1 }, down: ['bird'], active: true });
+});
+
+it('promises no count in the filters while the answer for a new minimum is on its way', async () => {
+  const fetcher = vi.fn<(input: string) => Promise<Response>>(async () => Response.json(response()));
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  const show = () => JSON.parse(screen.getByTestId('filters').textContent!).show;
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  // Zoomed out, the server applies the minimum.
+  fireEvent.click(screen.getByRole('button', { name: 'Zoom to 15' }));
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(show()).toBe(1);
+  fireEvent.click(screen.getByRole('button', { name: 'At least 60% in the filters' }));
+  expect(show()).toBeNull();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(fetcher.mock.calls.at(-1)![0]).toContain('minBattery=60');
+  expect(show()).toBe(1);
 });
 
 it('times out a stalled request, says so, and recovers with the next automatic refresh', async () => {
