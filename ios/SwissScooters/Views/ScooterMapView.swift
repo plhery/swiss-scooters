@@ -1118,6 +1118,10 @@ final class ScooterClusterAnnotationView: MKAnnotationView {
         countLabel.textColor = .label
         countLabel.textAlignment = .center
         countLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        // Four digits fit; a larger city total shrinks instead of being cut off.
+        countLabel.adjustsFontSizeToFitWidth = true
+        countLabel.minimumScaleFactor = 0.6
+        countLabel.baselineAdjustment = .alignCenters
         addSubview(countLabel)
 
         isAccessibilityElement = true
