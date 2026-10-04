@@ -301,6 +301,7 @@ svg {
 .bar-copy strong {
   overflow: hidden;
   font-size: 14px;
+  line-height: 1.2;
   font-weight: 650;
   letter-spacing: -0.015em;
   text-overflow: ellipsis;
