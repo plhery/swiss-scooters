@@ -1,4 +1,4 @@
-import { isPointCovered, type CoveredCity } from '@/lib/coveredCities';
+import { COVERED_CITIES, isPointCovered, type CoveredCity } from '@/lib/coveredCities';
 import type { AppLocale } from '@/lib/i18n';
 
 /** A row of GET/POST /api/geocode. Servers before the two-line labels send display_name only. */
@@ -31,21 +31,36 @@ export function splitDisplayName(displayName: string): { title: string; subtitle
   return { title: title || displayName.trim(), subtitle: rest.join(', ') };
 }
 
+// Far less than the distance between two places the address search tells apart.
+const SAME_POINT_DEGREES = 1e-6;
+
+/**
+ * The address search answers a typed city with scooter data from the catalogue,
+ * at the catalogue's centre of that city. Such a row stands for the city as a
+ * whole, like a "Cities with scooters" chip; the response itself does not say so.
+ */
+function isCityCentre(lat: number, lng: number): boolean {
+  return COVERED_CITIES.some(city =>
+    Math.abs(city.center[0] - lat) < SAME_POINT_DEGREES && Math.abs(city.center[1] - lng) < SAME_POINT_DEGREES);
+}
+
 export function toPlace(result: PlaceResult): Place {
   const title = typeof result.title === 'string' ? result.title.trim() : '';
   const lines = title
     ? { title, subtitle: typeof result.subtitle === 'string' ? result.subtitle.trim() : '' }
     : splitDisplayName(result.display_name);
+  const covered = typeof result.covered === 'boolean' ? result.covered : isPointCovered(result.lat, result.lng);
   return {
     lat: result.lat,
     lng: result.lng,
     display_name: result.display_name,
     ...lines,
-    covered: typeof result.covered === 'boolean' ? result.covered : isPointCovered(result.lat, result.lng),
+    covered,
+    ...(covered && isCityCentre(result.lat, result.lng) ? { city: true as const } : {}),
   };
 }
 
-/** A "Cities with scooters" chip chosen as a place; the map flies to the city centre. */
+/** A "Cities with scooters" chip chosen as a place; the map shows the whole city. */
 export function placeForCity(city: CoveredCity, locale: AppLocale): Place {
   const country = new Intl.DisplayNames(`${locale}-CH`, { type: 'region' }).of(city.country) ?? city.country;
   return {

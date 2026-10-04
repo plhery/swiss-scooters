@@ -1199,6 +1199,8 @@ test('the address search itself finds a typed city with scooter data first, with
   await expect(island.getByRole('combobox')).toHaveCount(0);
   await expect(island).toContainText('Biel/Bienne');
   await expect(page.getByTitle('Gesuchte Adresse: Biel/Bienne, Schweiz')).toBeVisible();
+  // A typed city is shown as a whole, like a "Cities with scooters" chip, not one street in its middle.
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
 });
 
 test('the search says that it is searching, that nothing was found, and that it is not available', async ({ page }) => {

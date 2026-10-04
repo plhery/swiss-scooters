@@ -48,10 +48,38 @@ describe('toPlace', () => {
   });
 
   it('falls back to the legacy label and works out the coverage for an older API', () => {
-    expect(toPlace({ lat: 48.1372, lng: 11.5755, display_name: 'München, Germany' }))
-      .toEqual({ lat: 48.1372, lng: 11.5755, display_name: 'München, Germany', title: 'München', subtitle: 'Germany', covered: true });
+    expect(toPlace({ lat: 48.14, lng: 11.58, display_name: 'München, Germany' }))
+      .toEqual({ lat: 48.14, lng: 11.58, display_name: 'München, Germany', title: 'München', subtitle: 'Germany', covered: true });
     expect(toPlace({ lat: 46.7741, lng: 8.1558, display_name: 'Paradeplatz (OW) - Lungern' }))
       .toMatchObject({ title: 'Paradeplatz (OW) - Lungern', subtitle: '', covered: false });
+  });
+
+  it('takes a row at the catalogue\'s centre of a covered city for the city as a whole', () => {
+    const zurich = COVERED_CITIES.find(city => city.id === 'ch:zurich')!;
+    const lyon = COVERED_CITIES.find(city => city.id === 'fr:Lyon')!;
+    // What /api/geocode answers for "Zürich" and "Lyon": the catalogue's own rows.
+    expect(toPlace({
+      lat: zurich.center[0], lng: zurich.center[1], display_name: 'Zürich, Switzerland',
+      title: 'Zürich', subtitle: 'Schweiz', covered: true,
+    })).toEqual({
+      lat: 47.3769, lng: 8.5417, display_name: 'Zürich, Switzerland', title: 'Zürich', subtitle: 'Schweiz', covered: true,
+      city: true,
+    });
+    expect(toPlace({ lat: lyon.center[0], lng: lyon.center[1], display_name: 'Lyon, France', covered: true }).city).toBe(true);
+    // An older server sends no coverage; the city is still recognised.
+    expect(toPlace({ lat: lyon.center[0], lng: lyon.center[1], display_name: 'Lyon, France' }).city).toBe(true);
+  });
+
+  it('keeps an address, a station or a place a place, however close to the centre of a city', () => {
+    const zurich = COVERED_CITIES.find(city => city.id === 'ch:zurich')!;
+    const station = toPlace({ lat: 47.3782, lng: 8.5402, display_name: 'Zürich HB', title: 'Zürich HB', subtitle: 'Train', covered: true });
+    expect(station).not.toHaveProperty('city');
+    // Ten metres from the centre is another point.
+    expect(toPlace({ lat: zurich.center[0] + 0.0001, lng: zurich.center[1], display_name: 'Bahnhofquai 3', covered: true }))
+      .not.toHaveProperty('city');
+    // swisstopo's own "Genf", without scooter data.
+    expect(toPlace({ lat: 46.2046, lng: 6.1425, display_name: 'Genf (GE)', title: 'Genf', subtitle: 'GE', covered: false }))
+      .not.toHaveProperty('city');
   });
 
   it('does not accept an empty title', () => {

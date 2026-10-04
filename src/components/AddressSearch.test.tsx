@@ -143,6 +143,22 @@ describe('typing', () => {
     }));
   });
 
+  it('chooses a typed city with scooter data as the whole city, and an address as the address', async () => {
+    const zurich = COVERED_CITIES.find(city => city.id === 'ch:zurich')!;
+    // What /api/geocode answers for "Zürich", and for a street: the response does not tell them apart.
+    vi.stubGlobal('fetch', answer([
+      { lat: zurich.center[0], lng: zurich.center[1], display_name: 'Zürich, Switzerland', title: 'Zürich', subtitle: 'Switzerland', covered: true },
+      PARADEPLATZ[1],
+    ]));
+    const { input, onSelect } = renderSearch();
+    await type(input, 'Zürich');
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Zürich', city: true }));
+    fireEvent.click(screen.getByRole('option', { name: 'Paradeplatz 2, 8001 Zürich' }));
+    expect(onSelect.mock.calls[1][0]).not.toHaveProperty('city');
+  });
+
   it('shows each place with a title and a second line, and tags the ones without scooter data', async () => {
     vi.stubGlobal('fetch', answer(PARADEPLATZ));
     const { input } = renderSearch();
