@@ -822,6 +822,18 @@ it('says that location is off, and keeps the card dismissed until the next attem
   expect(screen.getByRole('button', { name: 'Open the search' })).toHaveFocus();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
   expect(screen.getByText('Location is off')).toBeVisible();
+
+  // "Search a place" is the answer to the card: it opens the search, and the card
+  // is not there any more once a place is chosen or the search is closed.
+  fireEvent.click(screen.getByRole('button', { name: 'Search a place' }));
+  expect(screen.getByTestId('search')).toHaveTextContent('open');
+  fireEvent.click(screen.getByRole('button', { name: 'Search Zürich HB' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close the search' }));
+  expect(screen.getByTestId('bar')).toHaveTextContent('Zürich HB');
+  expect(screen.queryByText('Location is off')).toBeNull();
+  // The next attempt to locate says it again.
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
+  expect(screen.getByText('Location is off')).toBeVisible();
 });
 
 it('shows how to turn location back on from the card, and keeps the card for when you come back', async () => {

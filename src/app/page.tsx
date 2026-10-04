@@ -709,7 +709,8 @@ export default function Home() {
         onRetryLoad={retryLoad}
         onRetryLocate={handleLocateMe}
         onSeeHow={() => setLocationHelpOpen(true)}
-        onSearchPlace={openSearch}
+        // Searching is the answer to the card, as in the iOS app: it does not come back with the place.
+        onSearchPlace={() => { setLocationNoticeDismissed(true); openSearch(); }}
         onDismissLocation={() => { setLocationNoticeDismissed(true); focusSearchBar(); }}
       />
 

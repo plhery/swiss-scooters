@@ -670,6 +670,12 @@ test('says that location is off under the search bar, stays dismissed and leads 
   await card.getByRole('button', { name: 'Search a place' }).click();
   await expect(page.getByRole('combobox', { name: 'City or address' })).toBeFocused();
   await expect(card).toBeHidden();
+  // Searching was the answer to the card: it is not back when the search closes.
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('.sheet')).not.toHaveAttribute('inert');
+  await expect(card).toHaveCount(0);
+  await nearMe.click();
+  await expect(card).toBeVisible();
 });
 
 test('See how explains how to turn location back on in this browser and on this device', async ({ page, browserName }) => {
