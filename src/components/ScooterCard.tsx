@@ -96,15 +96,18 @@ export default function ScooterCard({ selection, onClose, onLocate, locating = f
       </div>
 
       <div className="card-pills">
+        {/* The icons say what the two numbers are; for a screen reader a word does. */}
         {vehicle.battery !== null && (
           <span className={`pill pill-${batteryLevel(vehicle.battery)}`}>
             <Icon name="battery" size={15} />
+            <span className="sr-only">{t('card.battery')} </span>
             {formatNumber(vehicle.battery)}%
           </span>
         )}
         {vehicle.range_m !== null && (
           <span className="pill">
             <Icon name="range" size={14} />
+            <span className="sr-only">{t('card.range')} </span>
             {formatDistance(vehicle.range_m, i18n)}
           </span>
         )}

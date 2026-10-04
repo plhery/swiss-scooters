@@ -75,6 +75,28 @@ describe('ScooterCard', () => {
     expect(screen.queryByText('Finding your location…')).not.toBeInTheDocument();
   });
 
+  it('names the battery and the range for a screen reader, which the icons do not', () => {
+    renderCard();
+
+    // Read as "Battery 82%" and "Range 24 km": without the words, "24 km" follows the walking distance unexplained.
+    expect(screen.getByText('82%')).toHaveTextContent(/^Battery 82%$/);
+    expect(screen.getByText('24 km')).toHaveTextContent(/^Range 24 km$/);
+    expect(screen.getByText('Battery')).toHaveClass('sr-only');
+    expect(screen.getByText('Range')).toHaveClass('sr-only');
+  });
+
+  it.each([['de', 'Akku 82%', 'Reichweite 24 km'], ['fr', 'Batterie 82%', 'Autonomie 24 km'], ['it', 'Batteria 82%', 'Autonomia 24 km']])(
+    'names them in %s',
+    async (locale, battery, range) => {
+      localStorage.setItem('scooters-locale', locale);
+      renderCard();
+
+      expect(await screen.findByText(battery.split(' ')[0])).toHaveClass('sr-only');
+      expect(screen.getByText('82%')).toHaveTextContent(battery);
+      expect(screen.getByText('24 km')).toHaveTextContent(range);
+    }
+  );
+
   it.each([
     [82, 'pill-good'],
     [50, 'pill-good'],
