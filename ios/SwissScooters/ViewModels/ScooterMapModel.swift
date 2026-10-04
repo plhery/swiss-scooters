@@ -454,6 +454,30 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return .delayed(showing: lastUpdated)
     }
 
+    /// What VoiceOver is told when the dock turns into a card, which happens far
+    /// from the marker that was activated: the card's own first lines. Nil for
+    /// the count and its chips.
+    var dockAnnouncement: String? {
+        switch dock {
+        case let .scooter(scooter):
+            let name = String(
+                format: String(localized: "%@ scooter"),
+                scooter.providerInfo?.name ?? scooter.provider.capitalized
+            )
+            return [name, walkingSummary(for: scooter)].compactMap { $0 }.joined(separator: ", ")
+        case let .parking(parking):
+            let heading = [parking.bayTitle, parkingSubtitle(for: parking)]
+                .filter { !$0.isEmpty }
+                .joined(separator: ", ")
+            return "\(heading). \(parking.notice)"
+        case let .outOfDate(failure, lastUpdate):
+            let title = String(localized: "These positions are out of date")
+            return "\(title). \(ScooterDockStatus.outOfDateBody(failure, lastUpdate: lastUpdate))"
+        case .finding, .waiting, .outsideCoverage, .filtersHideEverything, .summary:
+            return nil
+        }
+    }
+
     /// Whether the data on the map was loaded for the area on screen. Only then
     /// is an empty map a fact about the area rather than a load in progress.
     private var viewportIsLoaded: Bool {

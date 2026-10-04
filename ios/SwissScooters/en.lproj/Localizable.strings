@@ -164,6 +164,7 @@
 "You must park in a bay in this zone." = "You must park in a bay in this zone.";
 "Check the %@ app before you end your ride." = "Check the %@ app before you end your ride.";
 "Close parking details" = "Close parking details";
+"Shows parking details" = "Shows parking details";
 
 /* UX alignment: location */
 "Near me" = "Near me";

@@ -164,6 +164,7 @@
 "You must park in a bay in this zone." = "In dieser Zone musst du auf einem ausgewiesenen Parkplatz parken.";
 "Check the %@ app before you end your ride." = "Prüfe die %@-App, bevor du die Fahrt beendest.";
 "Close parking details" = "Parkplatz-Details schliessen";
+"Shows parking details" = "Zeigt Parkplatz-Details";
 
 /* UX alignment: location */
 "Near me" = "In meiner Nähe";

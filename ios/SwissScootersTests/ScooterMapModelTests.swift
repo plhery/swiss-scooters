@@ -1778,6 +1778,60 @@ extension ScooterMapModelTests {
         XCTAssertEqual(model.cardStatus, .delayed(showing: delayedAt))
     }
 
+    func testACardThatOpensInTheDockIsAnnouncedAndTheCountIsNot() async throws {
+        let clock = TestClock()
+        let formatter = ISO8601DateFormatter()
+        let bay = ScooterParking(id: "dott:bay", provider: "dott", name: "Rue Faidherbe",
+            latitude: 47.3769, longitude: 8.5417, mandatory: true)
+        let parked = scooter(id: "one", provider: "lime")
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [parked],
+            meta: ScooterResponseMetadata(
+                partial: false,
+                failedSources: [],
+                generatedAt: formatter.string(from: clock.now),
+                expiresAt: formatter.string(from: clock.now.addingTimeInterval(300))
+            ),
+            parking: [bay]
+        ))
+        let model = makeModel(api: api, clock: clock)
+        XCTAssertNil(model.dockAnnouncement, "Finding scooters")
+
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        XCTAssertNil(model.dockAnnouncement, "The count and its chips")
+
+        // A scooter: whose it is, and the walk once there is an origin.
+        let title = String(format: String(localized: "%@ scooter"), "Lime")
+        model.selectScooter(parked.id)
+        XCTAssertEqual(model.dockAnnouncement, title)
+        model.userLocation = GeoPoint(latitude: 47.3779, longitude: 8.5417)
+        let walk = try XCTUnwrap(model.walkingSummary(for: parked))
+        XCTAssertEqual(model.dockAnnouncement, "\(title), \(walk)")
+
+        // A bay: its name and the rule, which the callout no longer says.
+        model.selectParking(bay.id)
+        XCTAssertEqual(
+            model.dockAnnouncement,
+            "\(bay.bayTitle), \(model.parkingSubtitle(for: bay)). \(bay.notice)"
+        )
+
+        // The out-of-date card replaces the count unasked.
+        model.clearSelection()
+        await api.setFailure(.httpStatus(503))
+        clock.advance(400)
+        model.retryLoad()
+        let expired = await waitUntil {
+            if case .outOfDate = model.loadIssue { return !model.isLoading }
+            return false
+        }
+        XCTAssertTrue(expired)
+        let outOfDate = try XCTUnwrap(model.dockAnnouncement)
+        XCTAssertTrue(outOfDate.hasPrefix(String(localized: "These positions are out of date")))
+        XCTAssertTrue(outOfDate.hasSuffix(ScooterLoadFailure.unavailable.message))
+    }
+
     func testLocatingFromACardKeepsTheMapAndTheCard() async throws {
         let manager = StubLocationManager(status: .authorizedWhenInUse)
         let parked = scooter(id: "one", provider: "lime")

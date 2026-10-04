@@ -478,6 +478,9 @@ struct ScooterMapView: UIViewRepresentable {
                 view.accessibilityLabel = [parking.parking.bayTitle, parking.parking.name]
                     .filter { !$0.isEmpty }
                     .joined(separator: ", ")
+                // Whether parking here is mandatory is heard at the marker already.
+                view.accessibilityValue = parking.parking.notice
+                view.accessibilityHint = String(localized: "Shows parking details")
                 view.accessibilityTraits = .button
                 return view
             }

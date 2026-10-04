@@ -114,6 +114,12 @@ struct ScooterControlDock: View {
             reduceMotion ? nil : .snappy(duration: 0.28, extraBounce: 0.06),
             value: content.kind
         )
+        .onChange(of: content.kind) {
+            // A card opens down here while VoiceOver is still on the marker,
+            // and the out-of-date card replaces the count unasked.
+            guard UIAccessibility.isVoiceOverRunning, let announcement = model.dockAnnouncement else { return }
+            UIAccessibility.post(notification: .announcement, argument: announcement)
+        }
         .sensoryFeedback(.selection, trigger: model.enabledProviders)
     }
 

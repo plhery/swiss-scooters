@@ -524,6 +524,10 @@ final class ScooterFilteringTests: XCTestCase {
         XCTAssertFalse(view.canShowCallout)
         XCTAssertEqual(view.accessibilityLabel, "\(bay.bayTitle), Rue Faidherbe")
         XCTAssertEqual(annotation.title, bay.bayTitle)
+        // Without the callout, the marker itself says what it does and what the rule is.
+        XCTAssertEqual(view.accessibilityHint, String(localized: "Shows parking details"))
+        XCTAssertEqual(view.accessibilityValue, String(localized: "You must park in a bay in this zone."))
+        XCTAssertTrue(view.accessibilityTraits.contains(.button))
     }
 
     @MainActor
