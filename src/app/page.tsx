@@ -33,7 +33,7 @@ import { dockIssue, dockModel, originInViewport, type DockInput } from '@/lib/do
 import { useI18n } from '@/lib/i18n';
 import { failureSurface } from '@/lib/loadFailure';
 import { unfilteredCountInView } from '@/lib/nothingToShow';
-import { recentPlaces, type Place } from '@/lib/places';
+import { placeForCity, recentPlaces, type Place } from '@/lib/places';
 import { shortcutFor } from '@/lib/shortcuts';
 import { useDesktopLayout } from '@/lib/useDesktopLayout';
 import { useRecentPlaces } from '@/lib/useRecentPlaces';
@@ -143,7 +143,7 @@ function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
 }
 
 export default function Home() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // A wide window with a mouse: the dock is a legend, cards open beside their marker, keys work.
   const desktop = useDesktopLayout();
   const [initialCenter, setInitialCenter] = useState<[number, number]>(SWITZERLAND_CENTER);
@@ -312,14 +312,18 @@ export default function Home() {
 
   // A search result, a recent place or a city with scooters: it becomes the origin
   // for walking times, is remembered until the page is closed, and the map moves there.
-  const handlePlaceSelect = (place: Place) => {
-    track('search_select');
+  const choosePlace = (place: Place) => {
     const location: [number, number] = [place.lat, place.lng];
     clearSelection();
     placeChoicesRef.current += 1;
     setSearchedPlace(place);
     recentPlaces.add(place);
     setFocusRequest(current => ({ location, zoom: place.city ? CITY_ZOOM : null, version: current.version + 1 }));
+  };
+
+  const handlePlaceSelect = (place: Place) => {
+    track('search_select');
+    choosePlace(place);
   };
 
   const handleViewportChange = useCallback((bounds: MapBounds, zoom: number) => {
@@ -533,9 +537,9 @@ export default function Home() {
     flushSync(() => setSearchExpanded(true));
   };
 
-  const handleCitySelect = (city: NearbyCoveredCity) => {
-    setFocusRequest(current => ({ location: city.center, zoom: CITY_ZOOM, version: current.version + 1 }));
-  };
+  // A "Closest cities" chip chooses the city as the place, like its chip in the
+  // search: walking times then start there, not at the place without scooter data.
+  const handleCitySelect = (city: NearbyCoveredCity) => choosePlace(placeForCity(city, locale));
 
   const closeCard = () => {
     if (selectedVehicle) track('vehicle_dismiss');

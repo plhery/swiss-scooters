@@ -462,7 +462,7 @@ test('one failed feed does not make a provider look down beside its scooters, an
   await expect(filters.locator('.provider-down')).toHaveCount(1);
 });
 
-test('an area without scooter data offers the closest cities and flies to the one chosen', async ({ page }) => {
+test('an area without scooter data offers the closest cities and makes the one chosen the place', async ({ page }) => {
   await page.route('**/api/scooters?**', async route => {
     const url = new URL(route.request().url());
     // Nothing around Lungern; the fixtures everywhere else.
@@ -487,7 +487,9 @@ test('an area without scooter data offers the closest cities and flies to the on
   await cities.first().click();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
   await expect(dock.getByRole('heading', { name: 'No scooter data here yet' })).toHaveCount(0);
-  await expect(page.locator('.sheet-count')).toHaveText(/scooters on this map$/);
+  // The city is now the place: the bar names it, and walking times start there.
+  await expect(page.getByRole('button', { name: 'Showing scooters near Zug. Search another place.' })).toBeVisible();
+  await expect(page.locator('.sheet-count')).toHaveText(/scooters nearby$/);
 });
 
 test('the search bar does not promise scooters near a searched place without scooter data', async ({ page }) => {

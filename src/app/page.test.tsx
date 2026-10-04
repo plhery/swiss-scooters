@@ -574,7 +574,7 @@ it('closes the card of a scooter or a bay with a tap on the map', async () => {
   expect(track).not.toHaveBeenCalled();
 });
 
-it('explains an area without scooter data and flies to the closest city', async () => {
+it('explains an area without scooter data and makes the closest city the place', async () => {
   // Lungern: no operator serves it.
   viewport.bounds = { south: 46.76, west: 8.13, north: 46.79, east: 8.18 };
   const body = response();
@@ -599,6 +599,10 @@ it('explains an area without scooter data and flies to the closest city', async 
   cities[0].focus();
   fireEvent.click(cities[0]);
   expect(screen.getByTestId('focus')).toHaveTextContent(/^47\.\d+,8\.\d+ zoom 13$/);
+  // The city replaces the place without scooter data, so walking times start in the city.
+  expect(screen.getByTestId('bar')).toHaveTextContent('Zug');
+  expect(screen.getByTestId('place-has-data')).toHaveTextContent('true');
+  expect(screen.getByTestId('recent')).toHaveTextContent(/^Zug/);
   // The chip leaves with its card once the map has arrived: the focus is handed on before it does.
   expect(screen.getByRole('button', { name: 'Open the search' })).toHaveFocus();
 });
