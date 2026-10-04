@@ -236,6 +236,27 @@ final class AddressSearchAPITests: XCTestCase {
         XCTAssertEqual(json, ["q": "Ankerstrasse 114", "lang": "de"])
     }
 
+    func testTooManySearchesAreToldApartFromOtherFailures() async {
+        let expectations: [(Int, [String: String], AddressSearchAPIError)] = [
+            (429, ["Retry-After": "60"], .rateLimited(retryAfter: .seconds(60))),
+            (429, [:], .rateLimited(retryAfter: nil)),
+            (429, ["Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"], .rateLimited(retryAfter: nil)),
+            (503, ["Retry-After": "30"], .invalidResponse)
+        ]
+        for (statusCode, headers, expected) in expectations {
+            let api = AddressSearchAPI(
+                baseURL: URL(string: "https://example.com")!,
+                session: StubAddressSearchSession(data: Data(), statusCode: statusCode, headers: headers)
+            )
+            do {
+                _ = try await api.search(query: "Bahnhofstrasse", language: "de")
+                XCTFail("Expected an error for \(statusCode)")
+            } catch {
+                XCTAssertEqual(error as? AddressSearchAPIError, expected, "\(statusCode) \(headers)")
+            }
+        }
+    }
+
     func testTitleSubtitleAndCoverageAreDecodedWhenTheAPISendsThem() throws {
         let data = Data(#"""
         [
@@ -366,6 +387,51 @@ final class AddressSearchModelTests: XCTestCase {
         XCTAssertEqual(queries, ["Xyzzy", "Zürich", "Zürich"])
     }
 
+    func testASearchRefusedAsOneTooManyIsRepeatedOnceInsteadOfFailing() async {
+        let api = StubAddressSearchClient(answers: [.tooMany, .places([zurich])])
+        let model = SwissAddressSearchModel(api: api, debounce: .zero, rateLimitPause: .milliseconds(40))
+        var seen: [SwissAddressSearchStatus] = []
+
+        model.query = "Paradeplatz"
+        for _ in 0 ..< 400 where model.status == .searching || seen.isEmpty {
+            seen.append(model.status)
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+
+        // "Searching…" stayed up until the repeat answered; "Try again" never showed.
+        XCTAssertFalse(seen.isEmpty)
+        XCTAssertTrue(seen.allSatisfy { $0 == .searching }, "\(seen)")
+        XCTAssertEqual(model.status, .results([zurich]))
+        var queries = await api.queries
+        XCTAssertEqual(queries, ["Paradeplatz", "Paradeplatz"])
+
+        // Refused again, the search fails like any other, and Try again asks anew.
+        let busy = StubAddressSearchClient(answers: [.tooMany, .tooMany, .places([lungern])])
+        let refused = SwissAddressSearchModel(api: busy, debounce: .zero, rateLimitPause: .milliseconds(10))
+        refused.query = "Lungern"
+        var settled = await waitUntil { refused.status != .searching }
+        XCTAssertTrue(settled)
+        XCTAssertEqual(refused.status, .failed)
+        refused.retry()
+        settled = await waitUntil { refused.status != .searching }
+        XCTAssertTrue(settled)
+        XCTAssertEqual(refused.status, .results([lungern]))
+
+        // The next keystroke ends the wait: only the new text is asked for again.
+        let typing = StubAddressSearchClient(answers: [.tooMany, .places([zurich])])
+        let typed = SwissAddressSearchModel(api: typing, debounce: .zero, rateLimitPause: .seconds(30))
+        typed.query = "Par"
+        settled = await waitUntil { await typing.queries == ["Par"] }
+        XCTAssertTrue(settled)
+        try? await Task.sleep(for: .milliseconds(30))
+        typed.query = "Parade"
+        settled = await waitUntil { typed.status != .searching }
+        XCTAssertTrue(settled)
+        XCTAssertEqual(typed.status, .results([zurich]))
+        queries = await typing.queries
+        XCTAssertEqual(queries, ["Par", "Parade"])
+    }
+
     func testClearingTheFieldBringsTheSuggestionsBackAndDropsALateAnswer() async {
         let api = StubAddressSearchClient(answers: [.places([zurich])], delay: .milliseconds(60))
         let model = SwissAddressSearchModel(api: api, debounce: .zero)
@@ -422,12 +488,12 @@ final class AddressSearchModelTests: XCTestCase {
         XCTAssertEqual(languages, [shownIn])
     }
 
-    private func waitUntil(_ condition: () -> Bool) async -> Bool {
+    private func waitUntil(_ condition: () async -> Bool) async -> Bool {
         for _ in 0 ..< 200 {
-            if condition() { return true }
+            if await condition() { return true }
             try? await Task.sleep(for: .milliseconds(10))
         }
-        return condition()
+        return await condition()
     }
 }
 
@@ -435,6 +501,8 @@ private actor StubAddressSearchClient: AddressSearchAPIClient {
     enum Answer: Sendable {
         case places([AddressSearchResult])
         case failure
+        /// HTTP 429 with the server's "Retry-After: 60".
+        case tooMany
     }
 
     private var answers: [Answer]
@@ -455,6 +523,7 @@ private actor StubAddressSearchClient: AddressSearchAPIClient {
         switch answer {
         case let .places(places): return places
         case .failure: throw URLError(.notConnectedToInternet)
+        case .tooMany: throw AddressSearchAPIError.rateLimited(retryAfter: .seconds(60))
         }
     }
 }
@@ -491,10 +560,14 @@ private actor StubNetworkSession: ScooterNetworkSession {
 
 private actor StubAddressSearchSession: AddressSearchNetworkSession {
     let data: Data
+    let statusCode: Int
+    let headers: [String: String]
     private(set) var lastRequest: URLRequest?
 
-    init(data: Data) {
+    init(data: Data, statusCode: Int = 200, headers: [String: String] = [:]) {
         self.data = data
+        self.statusCode = statusCode
+        self.headers = headers
     }
 
     func addressData(for request: URLRequest) async throws -> (Data, URLResponse) {
@@ -503,9 +576,9 @@ private actor StubAddressSearchSession: AddressSearchNetworkSession {
             data,
             HTTPURLResponse(
                 url: request.url!,
-                statusCode: 200,
+                statusCode: statusCode,
                 httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"]
+                headerFields: headers.merging(["Content-Type": "application/json"]) { given, _ in given }
             )!
         )
     }

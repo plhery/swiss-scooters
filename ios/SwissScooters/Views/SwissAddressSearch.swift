@@ -647,6 +647,8 @@ final class SwissAddressSearchModel {
 
     @ObservationIgnored private let api: any AddressSearchAPIClient
     @ObservationIgnored private let debounce: Duration
+    /// The longest wait before the one repeat of a search the server refused as one too many.
+    @ObservationIgnored private let rateLimitPause: Duration
     /// Sent with every search, so country names come back in the language on screen.
     @ObservationIgnored private let language: String
     @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -654,10 +656,12 @@ final class SwissAddressSearchModel {
     init(
         api: any AddressSearchAPIClient = AddressSearchAPI(),
         debounce: Duration = .milliseconds(350),
+        rateLimitPause: Duration = .seconds(3),
         language: String = SwissAddressSearchModel.searchLanguage()
     ) {
         self.api = api
         self.debounce = debounce
+        self.rateLimitPause = rateLimitPause
         self.language = language
     }
 
@@ -702,15 +706,7 @@ final class SwissAddressSearchModel {
         searchTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: delay)
-                guard let self else { return }
-                let results = try await api.search(query: trimmedQuery, language: language)
-                try Task.checkCancellation()
-                guard query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery else {
-                    return
-                }
-                ScooterAnalytics.shared.track("search_results", value: results.count)
-                status = results.isEmpty ? .noResults : .results(results)
-                searchTask = nil
+                try await self?.search(trimmedQuery, waitsOutTheLimit: true)
             } catch is CancellationError {
                 return
             } catch {
@@ -720,6 +716,25 @@ final class SwissAddressSearchModel {
                 searchTask = nil
             }
         }
+    }
+
+    /// Asks the server and shows its answer. Typing sends a request at every
+    /// pause, which can use up the searches allowed in a minute: a refusal for
+    /// that reason is waited out once, with "Searching…" still up, instead of
+    /// offering a "Try again" that would be refused as well.
+    private func search(_ text: String, waitsOutTheLimit: Bool) async throws {
+        let results: [AddressSearchResult]
+        do {
+            results = try await api.search(query: text, language: language)
+        } catch let AddressSearchAPIError.rateLimited(retryAfter) where waitsOutTheLimit {
+            try await Task.sleep(for: min(retryAfter ?? rateLimitPause, rateLimitPause))
+            return try await search(text, waitsOutTheLimit: false)
+        }
+        try Task.checkCancellation()
+        guard query.trimmingCharacters(in: .whitespacesAndNewlines) == text else { return }
+        ScooterAnalytics.shared.track("search_results", value: results.count)
+        status = results.isEmpty ? .noResults : .results(results)
+        searchTask = nil
     }
 
     /// The language the app is shown in, as the address search takes it: "en",

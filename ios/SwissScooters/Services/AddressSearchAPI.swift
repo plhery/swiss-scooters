@@ -138,8 +138,16 @@ actor AddressSearchAPI: AddressSearchAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let (data, response) = try await session.addressData(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200 ... 299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AddressSearchAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 429 {
+            let seconds = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
+            throw AddressSearchAPIError.rateLimited(
+                retryAfter: seconds.flatMap { $0 >= 0 ? Duration.seconds($0) : nil }
+            )
+        }
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
             throw AddressSearchAPIError.invalidResponse
         }
 
@@ -151,6 +159,9 @@ actor AddressSearchAPI: AddressSearchAPIClient {
     }
 }
 
-private enum AddressSearchAPIError: Error {
+enum AddressSearchAPIError: Error, Equatable {
     case invalidResponse
+    /// HTTP 429: too many searches in a minute, which typing alone can reach.
+    /// `retryAfter` is the server's Retry-After, when it names seconds.
+    case rateLimited(retryAfter: Duration?)
 }
