@@ -17,12 +17,23 @@ extension URLSession: ScooterNetworkSession {
 actor ScooterAPI: ScooterAPIClient {
     static let productionBaseURL = URL(string: "https://scooters.plhery.com")!
 
+    /// The session for the app's own server. A request for scooters carries the
+    /// bounds of the map, which give away the rider's position or the place
+    /// searched, and the answers may be cached: this session keeps nothing on
+    /// disk, as the privacy notice promises.
+    static let privateSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }()
+
     private let baseURL: URL
-    private let session: any ScooterNetworkSession
+    let session: any ScooterNetworkSession
 
     init(
         baseURL: URL = productionBaseURL,
-        session: any ScooterNetworkSession = URLSession.shared
+        session: any ScooterNetworkSession = privateSession
     ) {
         self.baseURL = baseURL
         self.session = session
@@ -48,7 +59,6 @@ actor ScooterAPI: ScooterAPIClient {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
-        request.cachePolicy = .reloadRevalidatingCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let data: Data

@@ -47,6 +47,19 @@ final class ScooterAPITests: XCTestCase {
         XCTAssertEqual(values["minBattery"], "55")
     }
 
+    func testRequestsToTheServerLeaveNothingOnDisk() async throws {
+        // Left to themselves, both clients use a session without a URL cache:
+        // the bounds in a request are the rider's position after Near me.
+        let scooterSession = await ScooterAPI().session as? URLSession
+        let addressSession = await AddressSearchAPI().session as? URLSession
+        for session in [scooterSession, addressSession] {
+            let session = try XCTUnwrap(session)
+            XCTAssertFalse(session === URLSession.shared)
+            XCTAssertNil(session.configuration.urlCache)
+            XCTAssertEqual(session.configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+        }
+    }
+
     func testResponseHealthMetadataIsDecoded() async throws {
         let data = Data(#"{"vehicles":[],"clusters":[],"providers":{},"meta":{"partial":true,"stale":true,"failedSources":["national"],"sources":{"national":"failed","hopp":"fresh"},"generatedAt":"2026-08-05T12:00:00.000Z","truncated":true,"totalVehicles":6200,"mode":"vehicles","zoom":null}}"#.utf8)
         let api = makeAPI(responseStatus: 200, data: data)

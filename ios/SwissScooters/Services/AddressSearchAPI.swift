@@ -118,11 +118,11 @@ actor AddressSearchAPI: AddressSearchAPIClient {
     }
 
     private let baseURL: URL
-    private let session: any AddressSearchNetworkSession
+    let session: any AddressSearchNetworkSession
 
     init(
         baseURL: URL = ScooterAPI.productionBaseURL,
-        session: any AddressSearchNetworkSession = URLSession.shared
+        session: any AddressSearchNetworkSession = ScooterAPI.privateSession
     ) {
         self.baseURL = baseURL
         self.session = session
