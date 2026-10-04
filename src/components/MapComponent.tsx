@@ -689,7 +689,9 @@ export default function MapComponent({
       // While the search is open the dock is not shown.
       if (!marker || document.querySelector('.app-shell[data-searching="true"]')) return;
       const area = map.getContainer().getBoundingClientRect();
-      const above = [boxOf('.search-island'), ...[...document.querySelectorAll('.map-notices > *')].map(notice => notice.getBoundingClientRect())];
+      // The notices that are shown; the place kept for the location card is there when it is empty too.
+      const notices = document.querySelectorAll('.map-notices .load-banner, .map-notices .location-card');
+      const above = [boxOf('.search-island'), ...[...notices].map(notice => notice.getBoundingClientRect())];
       const shift = revealShift({
         marker: marker.getBoundingClientRect(),
         obstacles: [boxOf('.sheet'), boxOf('.fab-stack'), boxOf('.map-attribution')]

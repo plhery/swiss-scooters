@@ -652,7 +652,7 @@ test('says that location is off under the search bar, stays dismissed and leads 
   // Locating has not worked yet, so the button keeps its label.
   await expect(nearMe).toBeEnabled();
   // Full width under the search bar, once it has settled in.
-  await card.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+  await card.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
   const island = await page.locator('.search-island').boundingBox();
   const box = await card.boundingBox();
   expect(box!.width).toBeCloseTo(island!.width, 0);
@@ -747,6 +747,11 @@ test('a load that fails says why under the search bar and recovers with Try agai
   // Nothing has loaded: the dock has no count and no chips to offer.
   await expect(page.locator('.sheet-count')).toHaveText('Waiting for scooter data');
   await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toHaveCount(0);
+  // That line is all the dock shows: the places kept for notices and a hint are empty and take no room.
+  expect(await page.locator('.sheet-title-row').evaluate(element => getComputedStyle(element).paddingBottom)).toBe('2px');
+  for (const place of ['.dock-notes', '.dock-hint-status', '.map-status']) {
+    expect(await page.locator(place).evaluate(element => element.getBoundingClientRect().height), place).toBe(0);
+  }
   const accessibility = await new AxeBuilder({ page }).include('.map-notices').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
   if (await desktopLayout(page)) {
@@ -1059,7 +1064,7 @@ test('the search bar says what the map is based on: nothing, a location on its w
   await page.getByRole('button', { name: 'Near me', exact: true }).click();
   await expect(buttons.first()).toHaveText('Finding your location…');
   await expect(buttons.first().locator('.mini-spinner')).toBeVisible();
-  await expect(page.locator('.map-notices > *')).toHaveCount(0);
+  await expect(page.locator('.map-notices :is(.load-banner, .location-card)')).toHaveCount(0);
   expect((await accessibility()).violations).toEqual([]);
 
   await page.evaluate(() => document.dispatchEvent(new Event('fix')));
@@ -2039,6 +2044,9 @@ test.describe('on a desktop', () => {
     }
     expect(await legend.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await expect(rows.last()).toBeInViewport({ ratio: 1 });
+    // The legend ends the dock: the place kept after it for a hint is empty and takes no room.
+    expect(await legend.evaluate(element => getComputedStyle(element).marginBottom)).toBe('-8px');
+    expect((await page.locator('.dock-hint-status').boundingBox())!.height).toBe(0);
     // Under the search bar, in the same corner.
     const bar = (await page.locator('.search-island').boundingBox())!;
     const dock = (await page.locator('.sheet').boundingBox())!;

@@ -68,52 +68,56 @@ export default function MapNotices({
           </button>
         </div>
       )}
-      {locationError && (
-        <div className="location-card glass" role="status">
-          <span className="location-card-symbol">
-            <Icon name="locationOff" size={19} />
-          </span>
-          <div className="location-card-copy">
-            {locationError === 'denied' ? (
-              <>
-                <strong>{t('loc.off.title')}</strong>
-                <p>{t('loc.off.body')}</p>
-              </>
-            ) : (
-              <strong>{t('loc.notFound')}</strong>
-            )}
-            <div className="location-card-actions">
+      {/* Always there: a screen reader says what comes to stand in an announcing
+          element that is already on the page, not one that arrives with its text. */}
+      <div className="map-status" role="status">
+        {locationError && (
+          <div className="location-card glass">
+            <span className="location-card-symbol">
+              <Icon name="locationOff" size={19} />
+            </span>
+            <div className="location-card-copy">
               {locationError === 'denied' ? (
                 <>
-                  <button
-                    type="button"
-                    aria-haspopup="dialog"
-                    onClick={(event) => {
-                      // Safari does not focus a button that is tapped: the sheet returns the focus here when it closes.
-                      event.currentTarget.focus({ preventScroll: true });
-                      selectionFeedback();
-                      onSeeHow();
-                    }}
-                  >
-                    {t('loc.seeHow')}
-                  </button>
-                  <button type="button" onClick={tap(onSearchPlace)}>{t('loc.searchPlace')}</button>
+                  <strong>{t('loc.off.title')}</strong>
+                  <p>{t('loc.off.body')}</p>
                 </>
               ) : (
-                <button type="button" onClick={tap(onRetryLocate)}>{t('loc.tryAgain')}</button>
+                <strong>{t('loc.notFound')}</strong>
               )}
+              <div className="location-card-actions">
+                {locationError === 'denied' ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      onClick={(event) => {
+                        // Safari does not focus a button that is tapped: the sheet returns the focus here when it closes.
+                        event.currentTarget.focus({ preventScroll: true });
+                        selectionFeedback();
+                        onSeeHow();
+                      }}
+                    >
+                      {t('loc.seeHow')}
+                    </button>
+                    <button type="button" onClick={tap(onSearchPlace)}>{t('loc.searchPlace')}</button>
+                  </>
+                ) : (
+                  <button type="button" onClick={tap(onRetryLocate)}>{t('loc.tryAgain')}</button>
+                )}
+              </div>
             </div>
+            <button
+              type="button"
+              className="location-card-close"
+              onClick={tap(onDismissLocation)}
+              aria-label={t('loc.dismiss')}
+            >
+              <Icon name="close" size={17} />
+            </button>
           </div>
-          <button
-            type="button"
-            className="location-card-close"
-            onClick={tap(onDismissLocation)}
-            aria-label={t('loc.dismiss')}
-          >
-            <Icon name="close" size={17} />
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

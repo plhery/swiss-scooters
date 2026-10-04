@@ -266,9 +266,42 @@ describe('BottomSheet', () => {
     renderSheet({ dock: dock({ count: 0, providerCounts: {}, unfilteredCount: 0 }) });
 
     expect(count()).toHaveTextContent(/^0\s*scooters on this map$/);
-    expect(screen.getByText('No scooters here right now. Zoom out or move the map.').closest('[role="status"]'))
-      .toHaveClass('dock-hint');
+    const hint = screen.getByText('No scooters here right now. Zoom out or move the map.');
+    expect(hint.closest('.dock-hint')).toBeInTheDocument();
+    expect(hint.closest('[role="status"]')).toHaveClass('dock-hint-status');
     expect(screen.getByRole('group', { name: 'Filter scooters by provider' })).toBeVisible();
+  });
+
+  it('has the places of what it announces in the page before there is anything to say', () => {
+    // A screen reader says what comes to stand in an announcing element that is already there.
+    const sheet = renderSheet();
+    const [status, notes, hint] = screen.getAllByRole('status');
+    expect(status).toBeEmptyDOMElement();
+    expect(notes).toHaveClass('dock-notes');
+    expect(notes).toBeEmptyDOMElement();
+    expect(hint).toHaveClass('dock-hint-status');
+    expect(hint).toBeEmptyDOMElement();
+
+    // A refresh fails, Bird stops sharing data: each line appears inside the place that was waiting.
+    sheet.update({ dock: dock({ failure: 'timeout', meta: meta({ failedSources: ['national:bird_zurich'] }) }) });
+    expect(screen.getAllByRole('status')).toEqual([status, notes, hint]);
+    expect(status).toHaveTextContent(`Couldn’t refresh · showing ${SHOWING}`);
+    expect(notes).toHaveTextContent('Bird isn’t sharing data right now.');
+    expect(hint).toBeEmptyDOMElement();
+
+    // The area turns out to be empty.
+    sheet.update({ dock: dock({ count: 0, providerCounts: {}, unfilteredCount: 0 }) });
+    expect(screen.getAllByRole('status')).toEqual([status, notes, hint]);
+    expect(hint).toHaveTextContent('No scooters here right now. Zoom out or move the map.');
+    expect(notes).toBeEmptyDOMElement();
+  });
+
+  it('does not announce the invitation to tap a city', () => {
+    renderSheet({ dock: dock({ meta: meta({ overview: true, mode: 'clusters', zoom: 8 }), providerCounts: { lime: 5 } }) });
+
+    const hint = screen.getByText('Tap a city to see its scooters.');
+    expect(hint.closest('.dock-hint')).toBeInTheDocument();
+    expect(hint.closest('[role="status"]')).toBeNull();
   });
 
   it('replaces count and chips with the out-of-date card, whose button tries again', () => {
@@ -347,9 +380,10 @@ describe('BottomSheet', () => {
       selectedVehicle: { vehicle: lime, walk: { distanceM: 126, place: null } },
     });
 
-    const issue = screen.getByRole('status');
-    expect(issue).toHaveClass('dock-issue');
-    expect(issue).toHaveTextContent(`Couldn’t refresh · showing ${SHOWING}`);
+    // The line is announced; the button beside it is not part of what is read out.
+    expect(screen.getByRole('status')).toHaveTextContent(new RegExp(`^Couldn’t refresh · showing ${SHOWING}$`));
+    const issue = document.querySelector('.dock-issue') as HTMLElement;
+    expect(issue).toContainElement(screen.getByRole('status'));
     const retry = within(issue).getByRole('button', { name: 'Try again' });
     // The same pill as in the dock header.
     expect(retry).toHaveClass('dock-retry');
@@ -364,9 +398,20 @@ describe('BottomSheet', () => {
       selectedVehicle: { vehicle: lime, walk: null },
     });
 
-    const issue = screen.getByRole('status');
-    expect(issue).toHaveTextContent(`Data delayed · showing ${SHOWING}`);
-    expect(within(issue).queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(`Data delayed · showing ${SHOWING}`);
+    expect(within(document.querySelector('.dock-issue') as HTMLElement).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('has the place of the line above a card in the page while all is well, and says there what goes wrong', () => {
+    const sheet = renderSheet({ selectedVehicle: { vehicle: lime, walk: null } });
+    const place = screen.getByRole('status');
+    expect(place).toBeEmptyDOMElement();
+    expect(document.querySelector('.dock-issue')).not.toBeInTheDocument();
+
+    sheet.update({ ...data({ failure: 'offline' }), selectedVehicle: { vehicle: lime, walk: null } });
+    expect(screen.getByRole('status')).toBe(place);
+    expect(place).toHaveTextContent(`You’re offline · showing ${SHOWING}`);
+    expect(place.parentElement).toHaveClass('dock-issue');
   });
 
   it('shows only the card while a parking bay is selected', () => {
@@ -397,9 +442,8 @@ describe('BottomSheet', () => {
       selectedParking: { parking: bay, walk: null },
     });
 
-    const issue = screen.getByRole('status');
-    expect(issue).toHaveClass('dock-issue');
-    expect(issue).toHaveTextContent(`You’re offline · showing ${SHOWING}`);
+    expect(screen.getByRole('status')).toHaveTextContent(`You’re offline · showing ${SHOWING}`);
+    const issue = document.querySelector('.dock-issue') as HTMLElement;
     fireEvent.click(within(issue).getByRole('button', { name: 'Try again' }));
     expect(props.onRetry).toHaveBeenCalledOnce();
     expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();

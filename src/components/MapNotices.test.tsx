@@ -42,8 +42,28 @@ describe('MapNotices', () => {
   it('shows nothing while all is well', () => {
     const { container } = renderNotices();
 
-    expect(container.querySelector('.map-notices')).toBeEmptyDOMElement();
+    expect(container.querySelector('.map-notices')).toHaveTextContent(/^$/);
+    expect(container.querySelector('.load-banner, .location-card')).toBeNull();
     expect(document.documentElement.style.getPropertyValue('--notices-h')).toBe('0px');
+  });
+
+  it('has the place of the location card in the page before there is a card, and puts the card inside it', () => {
+    // A screen reader says what comes to stand in an announcing element that is already there:
+    // "Finding your location…" is heard, and "Location is off" must be heard after it.
+    const props = { loadFailure: null, loading: false, hidden: false, onRetryLoad: vi.fn(), onRetryLocate: vi.fn(),
+      onSeeHow: vi.fn(), onSearchPlace: vi.fn(), onDismissLocation: vi.fn() };
+    const view = render(<I18nProvider><MapNotices {...props} locationError={null} /></I18nProvider>);
+    const place = screen.getByRole('status');
+    expect(place).toBeEmptyDOMElement();
+
+    view.rerender(<I18nProvider><MapNotices {...props} locationError="denied" /></I18nProvider>);
+    expect(screen.getByRole('status')).toBe(place);
+    expect(place).toHaveTextContent('Location is off');
+    expect(place.querySelector('.location-card')).toBeInTheDocument();
+
+    view.rerender(<I18nProvider><MapNotices {...props} locationError="unavailable" /></I18nProvider>);
+    expect(screen.getByRole('status')).toBe(place);
+    expect(place).toHaveTextContent('Couldn’t find your location.');
   });
 
   it.each([

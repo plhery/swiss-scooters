@@ -475,6 +475,11 @@ svg {
 .sheet-title-row:last-child {
   padding-bottom: 2px;
 }
+/* The places of the notices and of the hint come after it and are always in
+   the page; while they are empty the row is the last thing shown. */
+.sheet-title-row:not(:has(~ :not(:empty))) {
+  padding-bottom: 2px;
+}
 .dock-summary {
   min-width: 0;
 }
@@ -565,6 +570,11 @@ svg {
   gap: 4px;
   margin-top: -5px;
   padding: 0 2px 10px;
+}
+/* Kept in the page while there is nothing to say: no room is taken. */
+.dock-notes:empty {
+  margin: 0;
+  padding: 0;
 }
 .dock-note {
   display: flex;
@@ -1723,13 +1733,21 @@ svg {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
   pointer-events: none;
   transition: opacity 180ms ease;
 }
-.map-notices > * {
+.load-banner,
+.map-status > * {
   pointer-events: auto;
   animation: content-in 260ms var(--spring);
+}
+/* The place of the location card is always in the page, for screen readers.
+   Empty, it takes no room; under the banner, the card keeps its distance. */
+.map-status {
+  align-self: stretch;
+}
+.load-banner + .map-status:not(:empty) {
+  margin-top: 8px;
 }
 .app-shell[data-searching='true'] .map-notices {
   opacity: 0;
@@ -2061,6 +2079,10 @@ svg {
 .legend:last-child {
   margin-bottom: -8px;
 }
+/* Last of what is shown: only the empty place of the hint follows. */
+.legend:not(:has(~ :not(:empty))) {
+  margin-bottom: -8px;
+}
 .legend button {
   display: flex;
   align-items: center;
@@ -2117,7 +2139,8 @@ svg {
   border: 1.5px dashed var(--ink-3);
   border-radius: 50%;
 }
-.legend + .dock-hint {
+.legend ~ .dock-hint,
+.legend ~ .dock-hint-status > .dock-hint {
   margin: 0 -14px;
   padding: 10px 14px 4px;
   border-top: 1px solid var(--hairline);

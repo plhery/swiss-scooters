@@ -173,13 +173,18 @@ function ProviderLegend({ chips, onToggle }: { chips: DockChips; onToggle: (prov
   );
 }
 
-/** A card hides the count and the status line, so trouble with the data moves to one line above it. */
-function CardIssue({ issue, onRetry }: { issue: DockIssue; onRetry: () => void }) {
+/**
+ * A card hides the count and the status line, so trouble with the data moves to
+ * one line above it. The place of that line is there while all is well, empty:
+ * a screen reader says what comes to stand in an announcing element that is
+ * already on the page, not one that arrives with its text.
+ */
+function CardIssue({ issue, onRetry }: { issue: DockIssue | null; onRetry: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="dock-issue" role="status">
-      <StatusText status={issue.status} />
-      {issue.retry && (
+    <div className={issue ? 'dock-issue' : undefined}>
+      <div role="status">{issue && <StatusText status={issue.status} />}</div>
+      {issue?.retry && (
         <RetryButton className="dock-retry" busy={issue.busy} onRetry={onRetry}>
           {t('dock.tryAgain')}
         </RetryButton>
@@ -216,6 +221,16 @@ function DockSelection({ label, selectionKey, anchor, children }: {
     <div ref={cardRef} className="dock-selection" role="group" aria-label={label} tabIndex={-1}>
       {children}
     </div>
+  );
+}
+
+/** The row under the providers: what to do in an empty area, or an invitation to tap a city. */
+function HintLine({ children }: { children: ReactNode }) {
+  return (
+    <p className="dock-note dock-hint">
+      <Icon name="pin" size={15} />
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -294,7 +309,7 @@ export default function BottomSheet({
         selectionKey={key}
         anchor={selectionAnchor}
       >
-        {issue && <CardIssue issue={issue} onRetry={onRetry} />}
+        <CardIssue issue={issue} onRetry={onRetry} />
         <ScooterCard
           key={key}
           selection={selectedVehicle}
@@ -312,7 +327,7 @@ export default function BottomSheet({
         selectionKey={parking.id}
         anchor={selectionAnchor}
       >
-        {issue && <CardIssue issue={issue} onRetry={onRetry} />}
+        <CardIssue issue={issue} onRetry={onRetry} />
         <ParkingCard key={parking.id} selection={selectedParking} onClose={onClearSelection} />
       </DockSelection>
     );
@@ -410,28 +425,27 @@ export default function BottomSheet({
           )}
         </div>
 
-        {dock.notices.length > 0 && (
-          <div className="dock-notes" role="status">
-            {dock.notices.map((notice) => (
-              <p key={notice.kind} className="dock-note">
-                <Icon name="warning" size={13} strokeWidth={2.2} />
-                <span>{text(notice.text)}</span>
-              </p>
-            ))}
-          </div>
-        )}
+        {/* The places of the notices, and of the line for an empty area under the
+            providers, stay mounted for the same reason; empty, they take no room. */}
+        <div className="dock-notes" role="status">
+          {dock.notices.map((notice) => (
+            <p key={notice.kind} className="dock-note">
+              <Icon name="warning" size={13} strokeWidth={2.2} />
+              <span>{text(notice.text)}</span>
+            </p>
+          ))}
+        </div>
 
         {dock.chips && (desktop
           ? <ProviderLegend chips={dock.chips} onToggle={onProviderToggle} />
           : <ProviderChips chips={dock.chips} onShowAll={onShowAllProviders} onToggle={onProviderToggle} />
         )}
 
-        {dock.hint && (
-          <p className="dock-note dock-hint" role={dock.hint.kind === 'empty' ? 'status' : undefined}>
-            <Icon name="pin" size={15} />
-            <span>{text(dock.hint.text)}</span>
-          </p>
-        )}
+        <div className="dock-hint-status" role="status">
+          {dock.hint?.kind === 'empty' && <HintLine>{text(dock.hint.text)}</HintLine>}
+        </div>
+        {/* The invitation under city totals is not something to announce. */}
+        {dock.hint?.kind === 'cityHint' && <HintLine>{text(dock.hint.text)}</HintLine>}
       </>
     );
   }
