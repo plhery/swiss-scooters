@@ -205,8 +205,10 @@ struct SwissAddressSuggestionRow: View {
     }
 }
 
-struct OriginSearchIsland: View {
-    let title: String
+/// The search bar at the top of the map. Collapsed, it says what the map is
+/// based on: nothing yet, your location, a searched place, or a location on its way.
+struct ScooterSearchIsland: View {
+    let state: ScooterSearchBarState
     @Binding var isSearching: Bool
     let hasActiveFilters: Bool
     let onSelect: (MapDestination) -> Void
@@ -273,86 +275,7 @@ struct OriginSearchIsland: View {
                 .font(.subheadline.weight(.semibold))
                 .controlSize(.large)
             } else {
-                HStack(spacing: 2) {
-                    Button {
-                        setSearching(true)
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "location.circle.fill")
-                                .font(.system(size: 25, weight: .semibold))
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(.blue)
-                                .accessibilityHidden(true)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(usesAccessibilityLayout ? 2 : 1)
-                                    .fixedSize(
-                                        horizontal: false,
-                                        vertical: usesAccessibilityLayout
-                                    )
-                                if !usesAccessibilityLayout {
-                                    Text("Search or change origin")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .layoutPriority(1)
-
-                            Spacer(minLength: 4)
-
-                            if !usesAccessibilityLayout {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityHidden(true)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: usesAccessibilityLayout ? 60 : 50
-                    )
-                    .accessibilityLabel(
-                        String(
-                            format: String(localized: "Origin: %@. Search or change origin."),
-                            title
-                        )
-                    )
-
-                    Button(action: onShowFilters) {
-                        Image(systemName: hasActiveFilters
-                            ? "line.3.horizontal.decrease.circle.fill"
-                            : "line.3.horizontal.decrease.circle")
-                            .font(.system(size: 20, weight: .semibold))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(hasActiveFilters ? .blue : .primary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        hasActiveFilters
-                            ? String(localized: "Filters, active")
-                            : String(localized: "Filters")
-                    )
-
-                    Button(action: onShowSettings) {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "More options"))
-                }
+                collapsedBar
             }
         }
         .padding(.horizontal, 10)
@@ -374,6 +297,114 @@ struct OriginSearchIsland: View {
             reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.88),
             value: isSearching
         )
+    }
+
+    private var collapsedBar: some View {
+        HStack(spacing: 2) {
+            Button {
+                setSearching(true)
+            } label: {
+                HStack(spacing: 10) {
+                    barIndicator
+                        .accessibilityHidden(true)
+                    barText
+                    Spacer(minLength: 4)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: usesAccessibilityLayout ? 60 : 50
+            )
+            .accessibilityLabel(state.accessibilityLabel)
+
+            if case .place = state {
+                Button {
+                    ScooterAnalytics.shared.track("search_clear")
+                    onClear()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Clear place"))
+            }
+
+            Button(action: onShowFilters) {
+                Image(systemName: hasActiveFilters
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(hasActiveFilters ? ScooterPalette.actionText : Color.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                hasActiveFilters
+                    ? String(localized: "Filters, active")
+                    : String(localized: "Filters")
+            )
+
+            Button(action: onShowSettings) {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Settings"))
+        }
+    }
+
+    /// What leads the bar: a search icon, a tile for your location or the
+    /// place, or a spinner while locating.
+    @ViewBuilder
+    private var barIndicator: some View {
+        switch state {
+        case .empty:
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 34, height: 34)
+        case .nearYou:
+            SearchSymbolTile(systemImage: "location.fill")
+        case .place:
+            SearchSymbolTile(systemImage: "mappin.and.ellipse")
+        case .locating:
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 34, height: 34)
+        }
+    }
+
+    private var barText: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(state.title)
+                // With nothing chosen the bar reads like an empty search field.
+                .font(.subheadline.weight(state == .empty ? .medium : .semibold))
+                .foregroundStyle(state == .empty ? Color.secondary : Color.primary)
+                .lineLimit(usesAccessibilityLayout ? 2 : 1)
+                .fixedSize(horizontal: false, vertical: usesAccessibilityLayout)
+            if let subtitle = state.subtitle, !usesAccessibilityLayout {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    // Beside the clear button the line is a few points short.
+                    .minimumScaleFactor(0.85)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .layoutPriority(1)
     }
 
     @ViewBuilder
@@ -404,6 +435,24 @@ struct OriginSearchIsland: View {
         withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.88)) {
             isSearching = searching
         }
+    }
+}
+
+/// The small rounded tile in front of the search bar's text and of a place row.
+struct SearchSymbolTile: View {
+    let systemImage: String
+    /// Blue for your location and places with scooter data; grey otherwise.
+    var isAccented = true
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(isAccented ? ScooterPalette.actionText : Color.secondary)
+            .frame(width: 34, height: 34)
+            .background(
+                isAccented ? ScooterPalette.actionText.opacity(0.12) : Color.primary.opacity(0.06),
+                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+            )
     }
 }
 

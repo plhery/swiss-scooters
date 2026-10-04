@@ -41,8 +41,8 @@ struct ScooterMapScreen: View {
                     // The search bar and what sits under it shield the map
                     // from taps, and the compass stays clear of them.
                     VStack(spacing: 8) {
-                        OriginSearchIsland(
-                            title: model.searchBarState.title,
+                        ScooterSearchIsland(
+                            state: model.searchBarState,
                             isSearching: $searchIsExpanded,
                             hasActiveFilters: model.hasActiveFilters,
                             onSelect: model.focusOnAddress,

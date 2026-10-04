@@ -244,6 +244,8 @@ final class AddressSearchAPITests: XCTestCase {
             subtitle: "Lungern OW",
             point: GeoPoint(latitude: 46.7741, longitude: 8.1558)
         ))
+        // A chosen place keeps the search's answer about scooter data.
+        XCTAssertEqual(results.map(\.destination.isCovered), [true, false, true])
         XCTAssertEqual(Set(results.map(\.id)).count, 3)
     }
 

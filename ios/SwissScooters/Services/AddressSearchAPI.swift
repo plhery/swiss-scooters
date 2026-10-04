@@ -16,7 +16,8 @@ struct AddressSearchResult: Decodable, Equatable, Identifiable, Sendable {
         MapDestination(
             title: title,
             subtitle: subtitle,
-            point: GeoPoint(latitude: latitude, longitude: longitude)
+            point: GeoPoint(latitude: latitude, longitude: longitude),
+            isCovered: isCovered
         )
     }
 

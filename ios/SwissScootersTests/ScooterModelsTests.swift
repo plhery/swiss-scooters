@@ -702,4 +702,33 @@ extension ScooterModelsTests {
         XCTAssertEqual(place.subtitle, "")
         XCTAssertEqual(place.kind, .address)
     }
+
+    func testSearchBarPromisesScootersOnlyWhereThereIsScooterData() throws {
+        let zurich = MapDestination(title: "Zürich HB", point: GeoPoint(latitude: 47.3782, longitude: 8.5402))
+        let lungern = MapDestination(title: "Paradeplatz", point: GeoPoint(latitude: 46.7741, longitude: 8.1558))
+        let neutral = try XCTUnwrap(ScooterSearchBarState.nearYou.subtitle)
+
+        // The service areas bundled with the app decide when the search did not say.
+        XCTAssertTrue(zurich.isCovered)
+        XCTAssertFalse(lungern.isCovered)
+
+        let served = ScooterSearchBarState.place(zurich)
+        XCTAssertEqual(served.subtitle, String(localized: "Scooters near this place"))
+        XCTAssertNotEqual(served.subtitle, neutral)
+
+        // Where no operator shares data the bar keeps to the neutral line, also for VoiceOver.
+        let unserved = ScooterSearchBarState.place(lungern)
+        XCTAssertEqual(unserved.subtitle, neutral)
+        XCTAssertEqual(unserved.accessibilityLabel, "Paradeplatz. \(neutral)")
+        XCTAssertEqual(
+            served.accessibilityLabel,
+            String(format: String(localized: "Showing scooters near %@. Search another place."), "Zürich HB")
+        )
+
+        // The search's own answer wins over the bundled areas, and a covered city is always served.
+        let reportedUnserved = MapDestination(title: "Zürich HB", point: zurich.point, isCovered: false)
+        XCTAssertEqual(ScooterSearchBarState.place(reportedUnserved).subtitle, neutral)
+        let city = try XCTUnwrap(ScooterCityCatalog.cities.first)
+        XCTAssertTrue(city.destination.isCovered)
+    }
 }
