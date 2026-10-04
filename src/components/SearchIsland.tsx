@@ -2,32 +2,51 @@
 
 import { useLayoutEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import AddressSearch, { type AddressResult } from './AddressSearch';
+import AddressSearch from './AddressSearch';
 import Icon from './Icon';
+import type { CoveredCity } from '@/lib/coveredCities';
 import { useI18n } from '@/lib/i18n';
 import { selectionFeedback } from '@/lib/feedback';
+import type { Place } from '@/lib/places';
 
 interface SearchIslandProps {
-  address: AddressResult | null;
+  /** The searched place: the origin for walking times until it is cleared. */
+  place: Place | null;
   /** False while the dock says there is no scooter data around the searched place. */
   placeHasData: boolean;
   hasLocation: boolean;
+  locating: boolean;
   expanded: boolean;
   hasActiveFilters: boolean;
+  /** Places chosen since the page was opened, most recent first. */
+  recentPlaces: readonly Place[];
+  /** The covered cities nearest to the map centre. */
+  nearbyCities: readonly CoveredCity[];
   onExpandedChange: (expanded: boolean) => void;
-  onSelect: (result: AddressResult) => void;
+  onSelect: (place: Place) => void;
   onClear: () => void;
   onLocate: () => void;
   onShowFilters: () => void;
   onShowSettings: () => void;
 }
 
+// What stays free between the open search and the keyboard or the bottom of the window.
+const PANEL_BOTTOM_GAP = 12;
+// The field and a first row remain reachable however little room is left.
+const PANEL_MIN_HEIGHT = 180;
+
+/** The search bar at the top of the map. Collapsed, it says what the map is
+    based on: nothing yet, your location, a searched place, or a location on
+    its way. Tapped, it opens into the search. */
 export default function SearchIsland({
-  address,
+  place,
   placeHasData,
   hasLocation,
+  locating,
   expanded,
   hasActiveFilters,
+  recentPlaces,
+  nearbyCities,
   onExpandedChange,
   onSelect,
   onClear,
@@ -39,9 +58,26 @@ export default function SearchIsland({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const islandRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const title =
-    address?.display_name.split(',')[0] ??
-    t(hasLocation ? 'search.currentLocation' : 'search.chooseOrigin');
+
+  // The open search ends above the on-screen keyboard; what does not fit scrolls.
+  useLayoutEffect(() => {
+    const island = islandRef.current;
+    const viewport = window.visualViewport;
+    if (!expanded || !island || !viewport) return;
+    const update = () => {
+      const top = island.getBoundingClientRect().top - viewport.offsetTop;
+      const room = Math.floor(viewport.height - top - PANEL_BOTTOM_GAP);
+      island.style.setProperty('--search-max-h', `${Math.max(PANEL_MIN_HEIGHT, room)}px`);
+    };
+    update();
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    return () => {
+      viewport.removeEventListener('resize', update);
+      viewport.removeEventListener('scroll', update);
+      island.style.removeProperty('--search-max-h');
+    };
+  }, [expanded]);
 
   useLayoutEffect(() => {
     const content = contentRef.current;
@@ -63,77 +99,92 @@ export default function SearchIsland({
     if (!next) triggerRef.current?.focus({ preventScroll: true });
   };
 
+  const clearPlace = () => {
+    selectionFeedback();
+    // The button leaves with the place; the keyboard focus stays in the bar.
+    flushSync(() => onClear());
+    triggerRef.current?.focus({ preventScroll: true });
+  };
+
+  // A place wins over your location until it is cleared.
+  const state = place ? 'place' : locating ? 'locating' : hasLocation ? 'near' : 'empty';
+  // "Scooters near this place" would be untrue where there is no data.
+  const placeLine = t(placeHasData ? 'bar.place.sub' : 'bar.near.sub');
+
   return (
     <div
       ref={islandRef}
       className={`search-island glass ${expanded ? 'search-island-expanded' : ''}`}
       onKeyDown={(event) => {
-        if (event.key === 'Escape' && !event.defaultPrevented) setExpanded(false);
+        if (event.key !== 'Escape' || event.defaultPrevented || !expanded) return;
+        // Closes the search instead of emptying the field, as browsers do in a search field.
+        event.preventDefault();
+        setExpanded(false);
       }}
     >
       <div ref={contentRef} className="search-island-inner">
         {expanded ? (
-          <div className="search-island-content">
-            <div className="island-heading">
-              <Icon name="origin" />
-              <h1>{t('search.nearby')}</h1>
-              <button type="button" className="text-button" onClick={() => setExpanded(false)}>
-                {t('common.done')}
-              </button>
-            </div>
-            <AddressSearch
-              compact
-              autoFocus
-              initialQuery={address?.display_name}
-              onClear={onClear}
-              onSelect={(result) => {
-                onSelect(result);
-                setExpanded(false);
-              }}
-            />
-            <div className="search-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  onLocate();
-                  setExpanded(false);
-                }}
-              >
-                <Icon name="location" size={17} />
-                {t('intro.useLocation')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setExpanded(false);
-                  onShowFilters();
-                }}
-              >
-                <Icon name="filters" size={18} />
-                {t('filters.title')}
-              </button>
-            </div>
-          </div>
+          <AddressSearch
+            recentPlaces={recentPlaces}
+            nearbyCities={nearbyCities}
+            onSelect={(chosen) => {
+              onSelect(chosen);
+              setExpanded(false);
+            }}
+            onLocate={() => {
+              onLocate();
+              setExpanded(false);
+            }}
+            onCancel={() => setExpanded(false)}
+          />
         ) : (
           <div className="island-toolbar">
             <button
               ref={triggerRef}
               type="button"
-              className="origin-button"
+              className="bar-button"
               onClick={() => setExpanded(true)}
-              aria-label={t('search.changeOrigin', { name: title })}
+              aria-label={
+                place
+                  ? placeHasData ? t('bar.aria.place', { name: place.title }) : `${place.title}. ${placeLine}`
+                  : state === 'near' ? t('bar.aria.near') : undefined
+              }
               aria-expanded={false}
             >
-              <span className="origin-symbol">
-                <Icon name="origin" size={27} />
-              </span>
-              <span className="origin-copy">
-                <strong>{title}</strong>
-                {/* "Scooters near this place" would be untrue where there is no data. */}
-                <span>{t(address ? (placeHasData ? 'bar.place.sub' : 'bar.near.sub') : 'search.change')}</span>
-              </span>
-              <Icon name="search" size={17} />
+              {place ? (
+                <>
+                  <span className="place-tile"><Icon name="pin" size={18} /></span>
+                  <span className="bar-copy">
+                    <strong>{place.title}</strong>
+                    <span>{placeLine}</span>
+                  </span>
+                </>
+              ) : state === 'locating' ? (
+                <>
+                  <span className="bar-lead"><span className="mini-spinner" aria-hidden="true" /></span>
+                  <span className="bar-locating">{t('bar.locating')}</span>
+                </>
+              ) : state === 'near' ? (
+                <>
+                  <span className="place-tile"><Icon name="location" size={18} /></span>
+                  <span className="bar-copy">
+                    <strong>{t('bar.near.title')}</strong>
+                    <span>{t('bar.near.sub')}</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  {/* With nothing chosen the bar reads like an empty search field. */}
+                  <span className="bar-lead bar-lead-search"><Icon name="search" /></span>
+                  <span className="bar-placeholder">{t('bar.empty')}</span>
+                </>
+              )}
             </button>
+            {place && (
+              <button type="button" className="icon-button bar-clear" onClick={clearPlace} aria-label={t('bar.clearPlace')}>
+                <Icon name="close" size={17} />
+              </button>
+            )}
             <span className="toolbar-divider" />
             <button
               type="button"
@@ -155,7 +206,7 @@ export default function SearchIsland({
                 event.currentTarget.focus({ preventScroll: true });
                 onShowSettings();
               }}
-              aria-label={t('settings.more')}
+              aria-label={t('bar.settings')}
               aria-haspopup="dialog"
             >
               <Icon name="more" size={22} />

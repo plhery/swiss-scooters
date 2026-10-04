@@ -67,6 +67,7 @@ describe('placeForCity', () => {
   it('turns a city chip into a covered place at the city centre', () => {
     expect(placeForCity(zurich, 'en')).toEqual({
       lat: 47.3769, lng: 8.5417, display_name: 'Zürich, Switzerland', title: 'Zürich', subtitle: 'Switzerland', covered: true,
+      city: true,
     });
   });
 

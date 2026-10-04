@@ -186,7 +186,7 @@ svg {
   align-items: center;
   gap: 1px;
 }
-.origin-button {
+.bar-button {
   display: flex;
   flex: 1;
   min-width: 0;
@@ -195,38 +195,85 @@ svg {
   min-height: 50px;
   border: none;
   border-radius: 18px;
-  padding: 4px 6px;
+  padding: 2px 6px;
   background: transparent;
   text-align: left;
 }
-.origin-symbol {
+/* What leads the bar and a place: a tile for your location or a place. */
+.place-tile {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--blue) 11%, transparent);
   color: var(--blue);
-  display: flex;
 }
-.origin-copy {
+.place-tile-muted {
+  background: var(--fill-quaternary);
+  color: var(--ink-2);
+}
+.bar-lead {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  color: var(--ink-2);
+}
+.bar-lead-search {
+  width: auto;
+  margin-left: 4px;
+}
+.bar-lead .mini-spinner {
+  width: 14px;
+  height: 14px;
+}
+.bar-copy {
   flex: 1;
   min-width: 0;
   display: grid;
   gap: 2px;
 }
-.origin-copy strong {
+.bar-copy strong {
+  overflow: hidden;
   font-size: 14px;
   font-weight: 650;
   letter-spacing: -0.015em;
-}
-.origin-copy span {
-  color: var(--ink-2);
-  font-size: 11px;
-}
-.origin-copy strong,
-.origin-copy span {
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.origin-button > svg {
+.bar-copy span {
   color: var(--ink-2);
-  margin-right: 4px;
+  font-size: 11px;
+}
+.bar-placeholder {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 500;
+}
+.bar-locating {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+/* A sentence is one line where it fits and two beside the clear button or on a
+   narrow screen, rather than cut off; the bar keeps its height. */
+.bar-copy span,
+.bar-placeholder,
+.bar-locating {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.bar-clear {
+  color: var(--ink-2);
 }
 .toolbar-divider {
   height: 24px;
@@ -260,26 +307,65 @@ svg {
   background: var(--blue);
 }
 .search-island-expanded .search-island-inner {
-  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  /* The room above the on-screen keyboard, measured while the search is open. */
+  max-height: var(--search-max-h, calc(100dvh - var(--sat) - 48px));
+  padding: 12px;
 }
-.search-island-content {
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   animation: content-in 240ms var(--spring);
 }
-.island-heading {
+.search-head {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 9px;
-  margin-bottom: 8px;
+  gap: 6px;
 }
-.island-heading > svg {
-  color: var(--blue);
-}
-.island-heading h1 {
+.search-head .field {
   flex: 1;
-  font-size: 17px;
+  min-width: 0;
+}
+.search-cancel,
+.search-retry {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--blue-ink);
+  font-size: 14px;
   font-weight: 650;
+}
+/* In line with the sentence it follows. */
+.search-retry {
+  padding: 0 6px;
+}
+/* Scrolls when the keyboard leaves too little room; the field stays in place. */
+.search-body {
+  min-height: 0;
+  margin: 6px -6px -6px;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.search-label {
   margin: 0;
-  letter-spacing: -0.025em;
+  padding: 14px 6px 6px;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.search-body .city-chips {
+  padding: 0 2px 2px;
 }
 .text-button {
   border: 0;
@@ -289,26 +375,6 @@ svg {
   background: transparent;
   color: var(--blue);
   font-size: 14px;
-  font-weight: 600;
-}
-.search-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.search-actions button {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 44px;
-  border: 0;
-  border-radius: 14px;
-  padding: 8px;
-  background: var(--fill-quaternary);
-  color: var(--blue);
-  font-size: 12px;
   font-weight: 600;
 }
 
@@ -858,62 +924,86 @@ svg {
   color: var(--ink-2);
   flex-shrink: 0;
 }
-.results {
-  background: var(--fill-quaternary);
-  border-radius: 16px;
-  margin-top: 10px;
-  max-height: min(240px, 32dvh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.results button {
+/* A place in the open search: a result, or a place chosen earlier. */
+.place-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 11px;
+  box-sizing: border-box;
   width: 100%;
-  text-align: left;
-  padding: 10px;
-  font-size: 14px;
-  color: var(--ink);
-  background: transparent;
+  min-height: 56px;
+  padding: 8px 6px;
   border: 0;
-  min-height: 64px;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
 }
-.results button + button {
-  border-top: 1px solid var(--hairline);
+.place-row:focus-visible {
+  outline-offset: -3px;
 }
-.results button[aria-selected='true'] {
+.place-row[role='option'] {
+  min-height: 60px;
+}
+.place-row + .place-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 6px auto;
+  height: 1px;
+  background: var(--hairline);
+}
+/* Enter chooses the highlighted place: the first one, until the arrow keys move on. */
+.place-row[aria-selected='true'] {
   background: color-mix(in srgb, var(--blue) 7%, transparent);
 }
-.result-symbol {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--blue) 9%, transparent);
-  color: var(--blue);
+.place-row[aria-selected='true']::before,
+.place-row[aria-selected='true'] + .place-row::before {
+  content: none;
 }
-.result-copy {
-  display: grid;
-  gap: 3px;
+.place-copy {
+  flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 2px;
 }
-.result-title {
+.place-title {
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
-.result-subtitle {
+.place-subtitle {
   color: var(--ink-2);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.place-row-location .place-title {
+  color: var(--blue-ink);
+}
+/* Neutral: no operator shares scooter data at this place. */
+.place-tag {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--fill-quaternary);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 650;
 }
 .search-status {
-  padding: 9px 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 6px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.4;
 }
-.search-status-error {
+.search-status > svg {
   color: var(--warning-ink);
 }
 
@@ -1538,7 +1628,7 @@ svg {
 
 :where(
   .icon-button,
-  .origin-button,
+  .bar-button,
   .text-button,
   .done-button,
   .field-btn,
@@ -1546,7 +1636,8 @@ svg {
   .near-me,
   .card-close,
   .dock-retry,
-  .search-actions button,
+  .search-cancel,
+  .search-retry,
   .load-banner button,
   .location-card button,
   .card-actions > *,
@@ -1559,7 +1650,7 @@ svg {
 }
 :where(
     .icon-button,
-    .origin-button,
+    .bar-button,
     .text-button,
     .done-button,
     .field-btn,
@@ -1567,7 +1658,8 @@ svg {
     .near-me,
     .card-close,
     .dock-retry,
-    .search-actions button,
+    .search-cancel,
+    .search-retry,
     .load-banner button,
     .location-card button,
     .card-actions > *,
@@ -1579,13 +1671,17 @@ svg {
 @media (hover: hover) and (pointer: fine) {
   :where(
     .icon-button,
-    .origin-button,
+    .bar-button,
     .text-button,
     .field-btn,
-    .search-actions button,
+    .search-cancel,
+    .search-retry,
     .provider-options button
   ):hover {
     background: var(--fill-tertiary);
+  }
+  .place-row:not([role='option']):hover {
+    background: var(--fill-quaternary);
   }
   .chip:hover,
   .fab:hover:not(:disabled) {
@@ -1656,17 +1752,29 @@ svg {
   }
 }
 @media (max-width: 360px) {
-  .origin-button {
+  .bar-button {
     gap: 6px;
   }
-  .origin-button > svg {
-    display: none;
-  }
-  .origin-copy strong {
+  .bar-copy strong,
+  .bar-locating {
     font-size: 13px;
   }
-  .origin-copy span {
+  .bar-copy span {
     font-size: 10px;
+  }
+  .bar-placeholder {
+    font-size: 14px;
+  }
+  /* Room for "Stadt oder Adresse" beside "Abbrechen". */
+  .search-head {
+    gap: 2px;
+  }
+  .search-head .field {
+    gap: 6px;
+    padding-left: 10px;
+  }
+  .search-cancel {
+    padding: 0 6px;
   }
   .card-symbol,
   .bay-symbol {
@@ -1679,9 +1787,6 @@ svg {
   }
   .card-head {
     gap: 10px;
-  }
-  .search-actions {
-    flex-wrap: wrap;
   }
   .map-style-options {
     gap: 6px;

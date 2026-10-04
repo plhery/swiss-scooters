@@ -14,7 +14,6 @@ import MapNotices from '@/components/MapNotices';
 import SearchIsland from '@/components/SearchIsland';
 import ControlSheet from '@/components/ControlSheet';
 import { selectionFeedback } from '@/lib/feedback';
-import type { AddressResult } from '@/components/AddressSearch';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
@@ -25,11 +24,12 @@ import {
   type MapStyleName,
   type ThemeName,
 } from '@/lib/clientParams';
-import type { NearbyCoveredCity } from '@/lib/coveredCities';
+import { nearestCoveredCities, type NearbyCoveredCity } from '@/lib/coveredCities';
 import { dockIssue, dockModel, originInViewport, type DockInput } from '@/lib/dockModel';
 import { failureSurface } from '@/lib/loadFailure';
 import { unfilteredCountInView } from '@/lib/nothingToShow';
-import { toPlace } from '@/lib/places';
+import { recentPlaces, type Place } from '@/lib/places';
+import { useRecentPlaces } from '@/lib/useRecentPlaces';
 import { useScooterData, type ScooterDataQuery } from '@/lib/useScooterData';
 import { mapRepresentationsMatch, providersForViewport } from '@/lib/mapCoverage';
 import {
@@ -49,6 +49,8 @@ const LOCATE_ZOOM = 17;
 const CITY_ZOOM = 13;
 // Parking bays show from street level, where the server starts to send them.
 const PARKING_MIN_ZOOM = 16;
+// "Cities with scooters" in the open search: the covered cities nearest to the map centre.
+const SEARCH_CITY_COUNT = 6;
 // How often the age of the data in the dock is worked out again.
 const CLOCK_TICK_MS = 30_000;
 const VIEWPORT_FETCH_PADDING = 0.25;
@@ -149,7 +151,10 @@ export default function Home() {
     zoom: number | null;
     version: number;
   }>({ location: null, zoom: null, version: 0 });
-  const [searchedAddress, setSearchedAddress] = useState<AddressResult | null>(null);
+  // The origin for walking times until it is cleared; it wins over your location.
+  const [searchedPlace, setSearchedPlace] = useState<Place | null>(null);
+  const placeChoicesRef = useRef(0);
+  const recent = useRecentPlaces();
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'filters' | 'settings'>('filters');
@@ -168,12 +173,14 @@ export default function Home() {
     // Asked within the tap, before waiting for GPS. Without a tap the browser
     // cannot prompt, and the direction is then simply not drawn.
     void requestHeadingPermission().then(setHeadingPermission);
+    // Locating clears the place: walking times are from your location again.
+    setSearchedPlace(null);
+    const placeChoices = placeChoicesRef.current;
     locate((coords) => {
       try { localStorage.setItem(LOCATED_ONCE_STORAGE_KEY, '1'); } catch {}
       setLocatedOnce(true);
-      // Walking times are from your location again, not from a searched place.
-      setSearchedAddress(null);
-      if (moveMap) {
+      // A place chosen while the fix was on its way is the later wish: the map stays there.
+      if (moveMap && placeChoicesRef.current === placeChoices) {
         setFocusRequest(current => ({ location: coords, zoom: LOCATE_ZOOM, version: current.version + 1 }));
       }
     });
@@ -293,12 +300,16 @@ export default function Home() {
     setEnabledProviders(new Set(Object.keys(PROVIDERS)));
   };
 
-  const handleAddressSelect = (result: AddressResult) => {
+  // A search result, a recent place or a city with scooters: it becomes the origin
+  // for walking times, is remembered until the page is closed, and the map moves there.
+  const handlePlaceSelect = (place: Place) => {
     track('search_select');
-    const location: [number, number] = [result.lat, result.lng];
+    const location: [number, number] = [place.lat, place.lng];
     clearSelection();
-    setSearchedAddress(result);
-    setFocusRequest(current => ({ location, zoom: null, version: current.version + 1 }));
+    placeChoicesRef.current += 1;
+    setSearchedPlace(place);
+    recentPlaces.add(place);
+    setFocusRequest(current => ({ location, zoom: place.city ? CITY_ZOOM : null, version: current.version + 1 }));
   };
 
   const handleViewportChange = useCallback((bounds: MapBounds, zoom: number) => {
@@ -391,8 +402,12 @@ export default function Home() {
     0
   );
 
-  // With the title and the coverage the search answered, or the client's own for an older answer.
-  const searchedPlace = useMemo(() => searchedAddress && toPlace(searchedAddress), [searchedAddress]);
+  // Its pin on the map is named as the search bar names the place.
+  const destination = useMemo(() => searchedPlace && {
+    lat: searchedPlace.lat,
+    lng: searchedPlace.lng,
+    display_name: [searchedPlace.title, searchedPlace.subtitle].filter(Boolean).join(', '),
+  }, [searchedPlace]);
 
   // A searched place wins over your location until it is cleared.
   const walkOrigin = useMemo<WalkOrigin | null>(() => {
@@ -429,6 +444,15 @@ export default function Home() {
     : Object.keys(PROVIDERS);
   const hasActiveFilters = minBattery > 0 || availableProviders.some(provider => !enabledProviders.has(provider));
 
+  const viewportCenter = useMemo<[number, number] | null>(() => viewportBounds && [
+    (viewportBounds.south + viewportBounds.north) / 2,
+    (viewportBounds.west + viewportBounds.east) / 2,
+  ], [viewportBounds]);
+  const nearbyCities = useMemo(
+    () => searchExpanded && viewportCenter ? nearestCoveredCities(viewportCenter, SEARCH_CITY_COUNT) : [],
+    [searchExpanded, viewportCenter]
+  );
+
   const dockInput: DockInput = {
     count: viewportData.totalCount,
     originInViewport: originInViewport(walkOrigin?.point ?? null, viewportBounds),
@@ -441,10 +465,7 @@ export default function Home() {
     now,
     representedCount: representedVehicleCount,
     viewportProviders: availableProviders,
-    viewportCenter: viewportBounds && [
-      (viewportBounds.south + viewportBounds.north) / 2,
-      (viewportBounds.west + viewportBounds.east) / 2,
-    ],
+    viewportCenter,
     providerCounts: viewportData.providerCounts,
     enabledProviders,
     minBattery,
@@ -504,7 +525,7 @@ export default function Home() {
         focusLocation={focusRequest.location}
         focusZoom={focusRequest.zoom}
         focusVersion={focusRequest.version}
-        destination={searchedAddress}
+        destination={destination}
         onViewportChange={handleViewportChange}
         selectedVehicleKey={selectedVehicleKey}
         onVehicleSelect={vehicle => {
@@ -526,14 +547,17 @@ export default function Home() {
       />
 
       <SearchIsland
-        address={searchedAddress}
+        place={searchedPlace}
         placeHasData={searchedPlace?.covered !== false && dock.kind !== 'outsideCoverage'}
         hasLocation={Boolean(userLocation)}
+        locating={locating}
         expanded={searchExpanded}
         hasActiveFilters={hasActiveFilters}
+        recentPlaces={recent}
+        nearbyCities={nearbyCities}
         onExpandedChange={expanded => { track(expanded ? 'search_open' : 'search_close'); setSearchExpanded(expanded); }}
-        onSelect={handleAddressSelect}
-        onClear={() => setSearchedAddress(null)}
+        onSelect={handlePlaceSelect}
+        onClear={() => { track('search_clear'); setSearchedPlace(null); }}
         onLocate={handleLocateMe}
         onShowFilters={() => openPanel('filters')}
         onShowSettings={() => openPanel('settings')}

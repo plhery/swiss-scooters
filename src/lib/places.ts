@@ -21,6 +21,8 @@ export interface Place {
   subtitle: string;
   /** False gets the "No data" tag. */
   covered: boolean;
+  /** A covered city chosen as a whole: the map shows the city rather than one street. */
+  city?: true;
 }
 
 /** The label splitting from before the API sent a title and a subtitle: at the first comma. */
@@ -53,6 +55,7 @@ export function placeForCity(city: CoveredCity, locale: AppLocale): Place {
     title: city.city,
     subtitle: country,
     covered: true,
+    city: true,
   };
 }
 

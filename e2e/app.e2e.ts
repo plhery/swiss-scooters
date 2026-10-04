@@ -382,16 +382,18 @@ test('the search bar does not promise scooters near a searched place without sco
     }) });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: /^Origin:/ }).click();
+  await page.getByRole('button', { name: 'Search city or address' }).click();
   const input = page.getByRole('combobox');
   await input.fill('Lungern');
-  await expect(page.getByRole('option', { name: 'Lungern, OW' })).toBeVisible();
+  // The search itself already says that there is no scooter data there.
+  await expect(page.getByRole('option', { name: 'Lungern, OW, No data' })).toBeVisible();
   await input.press('Enter');
 
   await expect(page.locator('.sheet').getByRole('heading', { name: 'No scooter data here yet' })).toBeVisible();
-  const bar = page.getByRole('button', { name: /^Origin: Lungern/ });
+  const bar = page.getByRole('button', { name: 'Lungern. Tap to search a city or address' });
   await expect(bar).toContainText('Tap to search a city or address');
   await expect(bar).not.toContainText('Scooters near this place');
+  await expect(page.getByRole('button', { name: 'Clear place' })).toBeVisible();
 });
 
 test('says how many scooters the filters hide, and shows them again or opens the filters', async ({ page }) => {
@@ -594,29 +596,294 @@ test('combines provider filters and resets them together', async ({ page }) => {
   await expect(page.locator('.scooter-marker')).toHaveCount(3);
 });
 
-test('search island manages keyboard focus and keeps the dock out of interaction', async ({ page }) => {
-  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([
-    { lat: 47.378, lng: 8.54, display_name: 'Zürich HB, Switzerland' },
-  ]) }));
+const paradeplatz = [
+  { lat: 47.3779, lng: 8.5403, display_name: 'Zürich HB', title: 'Zürich HB', subtitle: 'Train', covered: true },
+  { lat: 47.3695, lng: 8.5389, display_name: 'Paradeplatz 2 8001 Zürich', title: 'Paradeplatz 2', subtitle: '8001 Zürich', covered: true },
+  { lat: 46.7741, lng: 8.1558, display_name: 'Paradeplatz (OW) - Lungern', title: 'Paradeplatz', subtitle: 'Lungern OW', covered: false },
+];
+
+/** Every button of the open search or the bar is at least 44 px in both directions. */
+async function expectTouchTargets(page: Page) {
+  const island = page.locator('.search-island');
+  // Measured once the content has settled in: it arrives slightly scaled down.
+  await island.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  for (const button of await island.getByRole('button').or(island.getByRole('option')).all()) {
+    const target = await button.boundingBox();
+    expect(target!.height).toBeGreaterThanOrEqual(44);
+    expect(target!.width).toBeGreaterThanOrEqual(44);
+  }
+}
+
+test('the search bar says what the map is based on: nothing, a location on its way, your location, a place', async ({ page }) => {
+  await page.addInitScript(() => {
+    const position = {
+      coords: { latitude: 47.3769, longitude: 8.5417, accuracy: 5,
+        altitude: null, altitudeAccuracy: null, heading: null, speed: 0, toJSON: () => ({}) },
+      timestamp: Date.now(), toJSON: () => ({}),
+    };
+    // The fix arrives when the test asks for it.
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) => {
+          document.addEventListener('fix', () => success(position), { once: true });
+        },
+        watchPosition: () => 1,
+        clearWatch: () => {},
+      },
+    });
+  });
+  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(paradeplatz) }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await page.getByRole('button', { name: /^Origin:/ }).click();
-  await expect(page.locator('.sheet')).toHaveAttribute('inert', '');
-  const input = page.getByRole('combobox');
+  const island = page.locator('.search-island');
+  const buttons = island.getByRole('button');
+
+  // Nothing chosen: the bar reads like an empty search field.
+  await expect(buttons).toHaveText(['Search city or address', '', '']);
+  await expect(buttons.nth(1)).toHaveAccessibleName('Filters');
+  await expect(buttons.nth(2)).toHaveAccessibleName('Settings');
+  const height = (await island.boundingBox())!.height;
+  const accessibility = () => new AxeBuilder({ page }).include('.search-island').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect((await accessibility()).violations).toEqual([]);
+
+  // A location on its way shows in the bar itself, not in a banner.
+  await page.getByRole('button', { name: 'Near me', exact: true }).click();
+  await expect(buttons.first()).toHaveText('Finding your location…');
+  await expect(buttons.first().locator('.mini-spinner')).toBeVisible();
+  await expect(page.locator('.map-notices > *')).toHaveCount(0);
+  expect((await accessibility()).violations).toEqual([]);
+
+  await page.evaluate(() => document.dispatchEvent(new Event('fix')));
+  const near = island.getByRole('button', { name: 'Showing scooters near you. Search a city or address.' });
+  await expect(near).toContainText('Near you');
+  await expect(near).toContainText('Tap to search a city or address');
+  await expect(island.getByRole('button', { name: 'Clear place' })).toHaveCount(0);
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters nearby$/);
+  expect((await accessibility()).violations).toEqual([]);
+
+  // A searched place wins over your location, and has a button to clear it.
+  await near.click();
+  await page.getByRole('combobox').fill('Zürich HB');
+  await page.getByRole('option', { name: 'Zürich HB, Train' }).click();
+  const place = island.getByRole('button', { name: 'Showing scooters near Zürich HB. Search another place.' });
+  await expect(place).toContainText('Scooters near this place');
+  await expect(page.locator('.destination-marker')).toBeVisible();
+  await expect(buttons).toHaveCount(4);
+  await expectTouchTargets(page);
+  expect((await accessibility()).violations).toEqual([]);
+  // The bar keeps its height in every state.
+  await expect.poll(async () => (await island.boundingBox())!.height).toBe(height);
+
+  // Clearing the place falls back to your location.
+  await island.getByRole('button', { name: 'Clear place' }).click();
+  await expect(near).toBeFocused();
+  await expect(page.locator('.destination-marker')).toHaveCount(0);
+  await expect(island.getByRole('button', { name: 'Clear place' })).toHaveCount(0);
+  // Nowhere does the bar speak of an origin any more.
+  await expect(island).not.toContainText(/origin/i);
+});
+
+test('the open search starts on the field and offers your location, recent places and cities with scooters', async ({ page }) => {
+  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: '[]' }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const island = page.locator('.search-island');
+  const map = page.locator('.leaflet-container');
+  await page.getByRole('button', { name: 'Search city or address' }).click();
+
+  const input = page.getByRole('combobox', { name: 'City or address' });
   await expect(input).toBeFocused();
-  await expect(page.getByText('Find a scooter nearby')).toHaveCount(0);
+  await expect(input).toHaveValue('');
+  await expect(page.locator('.sheet')).toHaveAttribute('inert', '');
+  // The field comes first: no title, and no shortcut to the filters.
+  await expect(island.getByRole('heading')).toHaveCount(0);
+  await expect(island.getByRole('button', { name: 'Filters' })).toHaveCount(0);
+  expect((await input.boundingBox())!.y).toBeLessThan((await island.getByRole('button', { name: 'Use my location' }).boundingBox())!.y);
+  // Nothing has been chosen during this visit yet.
+  await expect(island.getByText('Recent')).toHaveCount(0);
+  // The six covered cities nearest to the middle of the map, which shows Switzerland.
+  const cities = island.getByRole('group', { name: 'Cities with scooters' }).getByRole('button');
+  await expect(cities).toHaveCount(6);
+  await expect(cities.first()).toHaveText('Zug');
+  await expectTouchTargets(page);
+  const accessibility = () => new AxeBuilder({ page }).include('.search-island').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect((await accessibility()).violations).toEqual([]);
+
+  // A chip is like choosing the city as a place: the map shows the whole city.
+  await cities.first().click();
+  await expect(page.locator('.sheet')).not.toHaveAttribute('inert');
+  const bar = island.getByRole('button', { name: 'Showing scooters near Zug. Search another place.' });
+  await expect(bar).toBeFocused();
+  await expect(map).toHaveAttribute('data-zoom', '13');
+  await expect(page.locator('.destination-marker')).toBeVisible();
+
+  // The city is now a recent place, with the cities nearest to it underneath.
+  await bar.click();
+  const recent = island.getByRole('group', { name: 'Recent' }).getByRole('button');
+  await expect(recent).toHaveText(['ZugSwitzerland']);
+  await expect(recent.first()).toHaveAccessibleName('Zug, Switzerland');
+  await expect(cities.first()).toHaveText('Zug');
+  await expectTouchTargets(page);
+  expect((await accessibility()).violations).toEqual([]);
+  // Recent places are kept for this visit only: nothing about them is stored.
+  expect(await page.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }, document.cookie]))).not.toMatch(/Zug|47\.1/);
+  expect(page.url()).not.toMatch(/Zug|47\.1/);
+
+  // Cancel closes the search and leaves the place as it was.
+  await island.getByRole('button', { name: 'Cancel' }).click();
+  await expect(bar).toBeFocused();
+  await expect(input).toHaveCount(0);
+  // Escape does the same from the field.
+  await bar.click();
+  await input.fill('Be');
+  await input.press('Escape');
+  await expect(bar).toBeFocused();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Search city or address' }).click();
+  await expect(cities).toHaveCount(6);
+  await expect(island.getByText('Recent')).toHaveCount(0);
+});
+
+test('typing lists places with a second line, tags those without scooter data, and walking times start from the chosen place', async ({ page }) => {
+  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(paradeplatz) }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const island = page.locator('.search-island');
+  await page.getByRole('button', { name: 'Search city or address' }).click();
+  const input = page.getByRole('combobox');
+  await input.fill('Paradeplatz');
+
+  const options = page.getByRole('listbox', { name: 'Suggestions' }).getByRole('option');
+  await expect(options).toHaveText(['Zürich HBTrain', 'Paradeplatz 28001 Zürich', 'ParadeplatzLungern OWNo data']);
+  await expect(options.nth(2)).toHaveAccessibleName('Paradeplatz, Lungern OW, No data');
+  // The suggestions make way for the places.
+  await expect(island.getByRole('button', { name: 'Use my location' })).toHaveCount(0);
+  // The first place is the one Enter chooses, and it is shown as such.
+  await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+  await expect(input).toHaveAttribute('aria-activedescendant', (await options.first().getAttribute('id'))!);
+  await expectTouchTargets(page);
+  const accessibility = await new AxeBuilder({ page }).include('.search-island').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  // The clear button empties the field only, and the keyboard stays with it.
+  await island.getByRole('button', { name: 'Clear search' }).click();
+  await expect(input).toHaveValue('');
+  await expect(input).toBeFocused();
+  await expect(island.getByRole('button', { name: 'Use my location' })).toBeVisible();
+
   await input.fill('Zürich HB');
-  await expect(page.getByRole('option', { name: 'Zürich HB, Switzerland' })).toBeVisible();
+  await expect(options).toHaveCount(3);
+  await input.press('ArrowDown');
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await input.press('ArrowUp');
   await input.press('Enter');
   await expect(page.locator('.sheet')).not.toHaveAttribute('inert');
-  await expect(page.getByRole('button', { name: /^Origin: Zürich HB/ })).toBeFocused();
-  await expect(page.getByRole('button', { name: /^Origin: Zürich HB/ })).toContainText('Scooters near this place');
+  const bar = island.getByRole('button', { name: 'Showing scooters near Zürich HB. Search another place.' });
+  await expect(bar).toBeFocused();
+  await expect(bar).toContainText('Scooters near this place');
+  // Its pin on the map carries the name the bar shows.
   await expect(page.locator('.destination-marker')).toBeVisible();
+  await expect(page.getByTitle('Searched address: Zürich HB, Train')).toBeVisible();
+
+  // Walking times are measured from the place, some 160 m from the scooters.
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters nearby$/);
+  await page.getByRole('button', { name: 'Lime, 1. Shown.', exact: true }).click();
+  await page.getByRole('button', { name: /^Lime scooter/ }).click();
+  const card = page.locator('.dock-card');
+  await expect(card.getByText(/^≈\d min walk from Zürich HB · 1\d\d m$/)).toBeVisible();
+
+  // Without the place and without a location there is no walk to measure.
+  await island.getByRole('button', { name: 'Clear place' }).click();
+  await expect(card.getByRole('button', { name: 'Turn on location to see walking time' })).toBeVisible();
+  await expect(island.getByRole('button', { name: 'Search city or address' })).toBeFocused();
+  // The search text and the place stay out of the address and of what is stored.
+  expect(page.url()).not.toMatch(/HB|47\.37/);
+  expect(await page.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }]))).not.toMatch(/HB|47\.37/);
+});
+
+test('the search says that it is searching, that nothing was found, and that it is not available', async ({ page }) => {
+  let answer: 'wait' | 'nothing' | 'broken' | 'places' = 'wait';
+  let release = () => {};
+  await page.route('**/api/geocode', async route => {
+    if (answer === 'wait') await new Promise<void>(resolve => { release = resolve; });
+    if (answer === 'broken') return route.fulfill({ status: 502, contentType: 'application/json', body: '{}' });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(answer === 'places' ? paradeplatz : []) });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const island = page.locator('.search-island');
+  await page.getByRole('button', { name: 'Search city or address' }).click();
+  const input = page.getByRole('combobox');
+  const status = island.getByRole('status');
+
+  await input.fill('Xyzzy');
+  await expect(status).toHaveText('Searching…');
+  await expect(island.getByRole('button', { name: 'Use my location' })).toHaveCount(0);
+  answer = 'nothing';
+  release();
+  await expect(status).toHaveText('No places found. Outside Switzerland, search by city.');
+  await expect(island.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+
+  answer = 'broken';
+  await input.fill('Paradeplatz');
+  await expect(status).toHaveText('Search isn’t available right now.');
+  const retry = island.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeVisible();
+  await expectTouchTargets(page);
+  const accessibility = await new AxeBuilder({ page }).include('.search-island').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  // The same text is searched again, and typing can go on.
+  answer = 'places';
+  await retry.click();
+  await expect(page.getByRole('option')).toHaveCount(3);
+  await expect(status).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Paradeplatz');
+});
+
+test('the open search ends above the bottom of a short window and scrolls to what does not fit', async ({ page }) => {
+  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(paradeplatz) }));
+  // As little room as a phone on its side leaves above the keyboard.
+  await page.setViewportSize({ width: 320, height: 240 });
+  await page.goto('/');
+  const island = page.locator('.search-island');
+  await page.getByRole('button', { name: 'Search city or address' }).click();
+  const cities = island.getByRole('group', { name: 'Cities with scooters' }).getByRole('button');
+  await expect(cities).toHaveCount(6);
+  // The island grows to the room there is and no further.
+  await expect.poll(async () => {
+    const box = (await island.boundingBox())!;
+    return Math.round(box.y + box.height);
+  }).toBe(240 - 12);
+
+  // The field stays in place; the last city is below the fold and can be reached.
+  const field = (await page.getByRole('combobox').boundingBox())!;
+  expect(field.y).toBeGreaterThan(0);
+  await expect(cities.last()).not.toBeInViewport({ ratio: 0.5 });
+  await cities.last().click();
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
+  await expect(page.getByRole('combobox')).toHaveCount(0);
+
+  // The arrow keys bring a place that is out of view back into it, and the field stays where it is.
+  await island.locator('.bar-button').click();
+  const input = page.getByRole('combobox');
+  await input.fill('Paradeplatz');
+  const options = page.getByRole('option');
+  await expect(options).toHaveCount(3);
+  await expect(options.last()).not.toBeInViewport({ ratio: 1 });
+  await input.press('ArrowUp');
+  await expect(options.last()).toHaveAttribute('aria-selected', 'true');
+  await expect(options.last()).toBeInViewport({ ratio: 1 });
+  expect((await input.boundingBox())!.y).toBeCloseTo(field.y, 0);
+  expect(await island.evaluate(element => element.scrollTop)).toBe(0);
 });
 
 test('settings sheet traps focus, changes the map and restores its trigger', async ({ page }) => {
   await page.goto('/');
-  const trigger = page.getByRole('button', { name: 'More options' });
+  const trigger = page.getByRole('button', { name: 'Settings', exact: true });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Settings & map' });
   await expect(dialog).toBeVisible();
@@ -848,7 +1115,8 @@ test('compass rotates the map, preserves marker interaction and resets north', a
   if (touch) await expect(compass).toBeHidden();
   else await expect(compass).toBeVisible();
 
-  await page.getByRole('button', { name: 'Choose an origin' }).click();
+  // The open search has the map to itself.
+  await page.getByRole('button', { name: 'Search city or address' }).click();
   await expect(page.getByRole('combobox', { name: 'City or address' })).toBeVisible();
   await expect(compass).toBeHidden();
 });
