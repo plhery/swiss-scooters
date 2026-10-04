@@ -633,7 +633,15 @@ export default function Home() {
   return (
     // The stylesheet reads the appearance and the map style from here. Automatic
     // is left to it, so the system's appearance applies before any script runs.
-    <div className="app-shell" data-theme={theme} data-map={mapStyle} data-searching={searchExpanded}>
+    // A chosen Light or Dark is put here by a script of the layout before the
+    // first paint, ahead of what this page knows when it starts: not a mismatch.
+    <div
+      className="app-shell"
+      data-theme={theme}
+      data-map={mapStyle}
+      data-searching={searchExpanded}
+      suppressHydrationWarning
+    >
       {/* One colour per system appearance; a chosen appearance holds in both. */}
       <meta
         name="theme-color"

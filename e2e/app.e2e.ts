@@ -1465,6 +1465,45 @@ test.describe('before any script runs', () => {
   });
 });
 
+test('a chosen appearance is on the page before the app starts, under the content security policy', async ({ page }) => {
+  // The app's own scripts never arrive here: what shows is what the first paint shows.
+  await page.route('**/_next/static/**', route => route.request().resourceType() === 'script' ? route.abort() : route.fallback());
+  const firstPaint = () => page.evaluate(() => {
+    const value = (element: Element, property: string) => getComputedStyle(element).getPropertyValue(property).trim();
+    const shell = document.querySelector('.app-shell')!;
+    return {
+      theme: shell.getAttribute('data-theme'),
+      ink: value(shell, '--ink'),
+      controls: value(document.documentElement, 'color-scheme'),
+      page: value(document.body, 'background-color'),
+    };
+  });
+  const { bars: lightBars, ...light } = LIGHT;
+  const { bars: darkBars, ...dark } = DARK;
+  expect([lightBars, darkBars]).toEqual(['#e0ddd8', '#1c1c1e']);
+
+  // Nothing chosen: the system's appearance, left to the stylesheet.
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/');
+  await expect(page.locator('.sheet')).toBeVisible();
+  expect(await firstPaint()).toEqual({ theme: 'auto', ...light });
+
+  // Dark chosen on this device, on a light system.
+  await page.evaluate(() => localStorage.setItem('scooters-params', JSON.stringify({ theme: 'dark' })));
+  await page.reload();
+  await expect(page.locator('.sheet')).toBeVisible();
+  expect(await firstPaint()).toEqual({ theme: 'dark', ...dark });
+
+  // A link that says Light wins over what is saved, on a dark system too.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/?theme=light');
+  await expect(page.locator('.sheet')).toBeVisible();
+  // That it applies at all shows that the policy let the script through: it carries
+  // the nonce of its response, like the app's own scripts.
+  expect(await firstPaint()).toEqual({ theme: 'light', ...light });
+  expect((await page.request.get('/')).headers()['content-security-policy']).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic';/);
+});
+
 test('the tiles are not loaded again when the appearance or the map style changes', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.cluster-marker')).toHaveCount(1);

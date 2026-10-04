@@ -2,6 +2,7 @@ import Analytics from "@/components/Analytics";
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import { FIRST_PAINT_THEME_SCRIPT } from "@/lib/firstPaintTheme";
 import { I18nProvider } from "@/lib/i18n";
 import "./globals.css";
 
@@ -63,6 +64,10 @@ export default async function RootLayout({
       </head>
       <body className={geistSans.variable}>
         <I18nProvider>{children}</I18nProvider>
+        {/* Right after the page it applies to, and before anything is painted: a
+            chosen Light or Dark. The same text in every response, so the service
+            worker sees the same page; the Worker adds the nonce of the response. */}
+        <script dangerouslySetInnerHTML={{ __html: FIRST_PAINT_THEME_SCRIPT }} />
         <ServiceWorkerRegistration />
         <Analytics />
       </body>
