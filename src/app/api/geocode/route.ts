@@ -5,8 +5,10 @@ import { isPointCovered } from '@/lib/coveredCities';
 import { GEOCODE_LANGUAGES, searchCoveredCities } from './cities';
 
 const MAX_QUERY_LENGTH = 160;
-// Twice what is returned, so places with scooter data can be ranked first.
-const UPSTREAM_RESULT_LIMIT = 10;
+// Far more than is returned, so that places with scooter data can be ranked
+// first and a station is found among its own tracks and depots: "Basel SBB" is
+// the twentieth row swisstopo returns for that text.
+const UPSTREAM_RESULT_LIMIT = 30;
 const MAX_RESULTS = 5;
 const GEOCODE_TIMEOUT_MS = 10_000;
 const GEOADMIN_SEARCH_URL = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
@@ -14,6 +16,10 @@ const GEOADMIN_SEARCH_URL = 'https://api3.geo.admin.ch/rest/services/api/SearchS
 const SKIPPED_ORIGINS = new Set(['kantone', 'district', 'parcel']);
 // Motorway exits and interchanges, which read like quarters ("Zürich-West") once their class is dropped.
 const MOTORWAY_CLASS = 'TLM_AUS_EINFAHRT';
+// Public transport stops. A stop a rider can use comes with its transport mode
+// ("train", "bus / tram"); one without is an operating point of the railway: a
+// depot, a junction, a group of tracks ("Basel SBB RB Gr E", "(Spw)", "Cargo GV").
+const STOP_ORIGIN = 'haltestellen';
 
 interface GeoAdminResult {
   attrs?: {
@@ -85,7 +91,10 @@ function tidyRemainder(text: string): string {
     .replace(/^[\s,;:·–—-]+|[\s,;:·–—-]+$/g, '');
 }
 
-/** Splits a swisstopo label, e.g. `Paradeplatz 2 <b>8001 Zürich</b>`, into two display lines. */
+/**
+ * Splits a swisstopo label, e.g. `Paradeplatz 2 <b>8001 Zürich</b>`, into two display lines.
+ * `category` is what the label had in <i>: a feature class, or the transport mode of a stop.
+ */
 function placeLines(label: string, origin: string | undefined, displayName: string) {
   let category = '';
   let bold = '';
@@ -96,12 +105,12 @@ function placeLines(label: string, origin: string | undefined, displayName: stri
   // Bilingual towns are named twice: "Fribourg|Freiburg".
   bold = plainText(origin === 'gazetteer' ? bold.split('|')[0] : bold);
 
-  if (!bold) return { title: outside || category || displayName.replace(/\s+/g, ' '), subtitle: '' };
+  if (!bold) return { title: outside || category || displayName.replace(/\s+/g, ' '), subtitle: '', category };
 
   if (origin === 'address') {
     // The street is outside the bold locality; "#" stands in for a missing house number.
     const street = outside.replace(/\s*#$/, '');
-    return street ? { title: street, subtitle: bold } : { title: bold, subtitle: '' };
+    return street ? { title: street, subtitle: bold, category } : { title: bold, subtitle: '', category };
   }
 
   let title = origin === 'zipcode' ? bold.replace(/^(\d{4})\s*-\s*(?=\S)/, '$1 ') : bold;
@@ -118,7 +127,7 @@ function placeLines(label: string, origin: string | undefined, displayName: stri
     subtitle = municipality[2];
   }
   // "<b>Gossau ZH</b> (ZH) - Gossau (ZH)" would say the same thing twice.
-  return { title, subtitle: subtitle === title ? '' : subtitle };
+  return { title, subtitle: subtitle === title ? '' : subtitle, category };
 }
 
 /** The words of a text in one spelling: "Zuerich" and "Zürich" are both "zurich". */
@@ -127,11 +136,17 @@ function searchWords(text: string): string[] {
     .replace(/([aou])e/g, '$1').split(/[^a-z0-9]+/).filter(Boolean);
 }
 
-// From this rank on, a place has what was typed only somewhere inside its words.
-const INSIDE_WORDS_RANK = 5;
+// From this rank on a place is a last resort, shown only when nothing better was found.
+const LAST_RESORT_RANK = 5;
 
 /** How a place ranks for what was typed; lower comes first. */
-function placeRank(typed: string[], place: { title: string; subtitle: string; covered: boolean }, origin: string | undefined): number {
+function placeRank(
+  typed: string[],
+  place: { title: string; subtitle: string; covered: boolean },
+  origin: string | undefined,
+  /** A stop without a transport mode. */
+  operatingPoint: boolean
+): number {
   const title = searchWords(place.title);
   // In any order: "Flughafen Zürich" names "Zürich Flughafen".
   const named = title.length === typed.length && [...title].sort().join(' ') === [...typed].sort().join(' ');
@@ -140,7 +155,9 @@ function placeRank(typed: string[], place: { title: string; subtitle: string; co
   // swisstopo also matches inside words: "Genf" finds "Uettligenfeld".
   const words = [...title, ...searchWords(place.subtitle)];
   const atWordStart = typed.every(word => words.some(candidate => candidate.startsWith(word)));
-  return (atWordStart ? 1 : INSIDE_WORDS_RANK) + (place.covered ? 0 : 2) + (named ? 0 : 1);
+  // The last resorts: the railway's operating points, then what has the text only inside its words.
+  const resort = !atWordStart ? 2 : operatingPoint ? 1 : 0;
+  return 1 + resort * (LAST_RESORT_RANK - 1) + (place.covered ? 0 : 2) + (named ? 0 : 1);
 }
 
 function errorResponse(message: string, status: number, retryAfter?: string) {
@@ -218,7 +235,7 @@ async function geocode(input: GeocodeInput) {
       const label = typeof result.attrs?.label === 'string' ? result.attrs.label : '';
       const displayName = plainTextLabel(label);
       if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180 || !displayName) return [];
-      const { title, subtitle } = placeLines(label, origin, displayName);
+      const { title, subtitle, category } = placeLines(label, origin, displayName);
       // swisstopo lists some places more than once (a town as municipality and as
       // place name, for instance); rows that read the same would look like a bug.
       const key = JSON.stringify([title, subtitle]);
@@ -228,12 +245,13 @@ async function geocode(input: GeocodeInput) {
       // "Baden / Baden AG" (its airfield, its treatment plant) reads like the town again.
       if (origin === 'gg25' && subtitle) seen.add(JSON.stringify([title, `${title} ${subtitle}`]));
       const place = { lat, lng, display_name: displayName, title, subtitle, covered: isPointCovered(lat, lng) };
-      return [{ place, rank: placeRank(typed, place, origin) }];
+      return [{ place, rank: placeRank(typed, place, origin, origin === STOP_ORIGIN && !category) }];
     });
     // Places with scooter data first. Stable: swisstopo's ranking is kept among the places of one rank.
     places.sort((a, b) => a.rank - b.rank);
-    // Matches inside words are a last resort, for a typing mistake that found nothing better.
-    const better = places.filter(({ rank }) => rank < INSIDE_WORDS_RANK);
+    // Operating points are for someone who typed one by its name, matches inside
+    // words for a typing mistake: both only when nothing better was found.
+    const better = places.filter(({ rank }) => rank < LAST_RESORT_RANK);
     const shown = better.length > 0 ? better : places;
 
     return NextResponse.json(shown.slice(0, MAX_RESULTS).map(({ place }) => place), {

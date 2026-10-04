@@ -251,7 +251,7 @@ describe('address search results', () => {
     ]);
   });
 
-  it('asks swisstopo for ten places and keeps its ranking within the five returned', async () => {
+  it('asks swisstopo for thirty places and keeps its ranking within the five returned', async () => {
     const fetchMock = stubGeoAdmin([
       ['address', 'Rue A 1 <b>1003 Lausanne</b>', 46.5231, 6.6292],
       ['address', 'Rue B 1 <b>8001 Zürich</b>', 47.3701, 8.5381],
@@ -267,7 +267,7 @@ describe('address search results', () => {
 
     const results = await (await GET(request('rue'))).json() as { title: string; covered: boolean }[];
 
-    expect((fetchMock.mock.calls[0][0] as URL).searchParams.get('limit')).toBe('10');
+    expect((fetchMock.mock.calls[0][0] as URL).searchParams.get('limit')).toBe('30');
     expect(results.map(result => result.title)).toEqual(['Rue B 1', 'Rue D 1', 'Rue F 1', 'Rue H 1', 'Rue A 1']);
     expect(results.map(result => result.covered)).toEqual([true, true, true, true, false]);
   });
@@ -393,6 +393,33 @@ describe('address search results', () => {
     expect(results.map(result => result.title)).toEqual(['Zürich Flughafen', 'Zürich Flughafen, OPC', 'Zürich Flughafen, Werft']);
   });
 
+  it('puts stops with a transport mode before the operating points of the railway, and leaves those out', async () => {
+    const rows: GeoAdminRow[] = [
+      ['haltestellen', '<i><i>haltestellen_</i></i> <b>Basel SBB Tiefbahnhof</b>', 47.5471, 7.5888],
+      ['haltestellen', '<i><i>haltestellen_</i></i> <b>Basel SBB GB West (Spw)</b>', 47.543, 7.605],
+      ['haltestellen', '<i><i>haltestellen_</i></i> <b>Basel SBB</b>', 47.5474, 7.5896],
+      ['haltestellen', '<i><i>haltestellen_bus / tram</i></i> <b>Basel, Bahnhof SBB</b>', 47.5483, 7.5903],
+      ['haltestellen', '<i>train</i> <b>Basel SBB</b>', 47.5474, 7.5896],
+    ];
+    stubGeoAdmin(rows);
+    const lines = async (query: string) =>
+      (await (await GET(request(query))).json() as { title: string; subtitle: string }[]).map(result => [result.title, result.subtitle]);
+
+    // The station first, although an operating point carries the very same name.
+    expect(await lines('Basel SBB')).toEqual([['Basel SBB', 'Train'], ['Basel, Bahnhof SBB', 'Bus / tram']]);
+    // Typed by its own name, an operating point is still found, and first: there is nothing better.
+    expect((await lines('Basel SBB Tiefbahnhof'))[0]).toEqual(['Basel SBB Tiefbahnhof', '']);
+    // And it comes before what has the text only inside its words.
+    stubGeoAdmin([
+      ['gazetteer', '<i>Populated Place</i> <b>Tiefbahnhofen</b> (BS) - Basel', 47.5471, 7.5888],
+      ['gazetteer', '<i>Populated Place</i> <b>Untiefbahnhof</b> (BS) - Basel', 47.5471, 7.5888],
+      rows[0],
+    ]);
+    expect(await lines('Tiefbahnhof')).toEqual([['Tiefbahnhofen', 'Basel BS']]);
+    stubGeoAdmin([['gazetteer', '<i>Populated Place</i> <b>Untiefbahnhof</b> (BS) - Basel', 47.5471, 7.5888], rows[0]]);
+    expect(await lines('Tiefbahnhof')).toEqual([['Basel SBB Tiefbahnhof', ''], ['Untiefbahnhof', 'Basel BS']]);
+  });
+
   it('shows matches inside words only when nothing starts with what was typed', async () => {
     const rows: GeoAdminRow[] = [
       ['gazetteer', '<i>Populated Place</i> <b>Uettligenfeld</b> (BE) - Wohlen bei Bern', ...ZURICH],
@@ -429,11 +456,17 @@ describe('recorded swisstopo answers', () => {
       ['Lausanne', 'VD', NO_DATA],
       ['Lausanne-La Blécherette', 'Lausanne VD', NO_DATA],
       ['Lausanne Vernand 300/50m', 'Romanel-sur-Lausanne VD', NO_DATA],
+      ['Lausanne Vernand 25m', 'Romanel-sur-Lausanne VD', NO_DATA],
+      ['Lausanne, Stade de Coubertin', 'Bus', NO_DATA],
     ]],
-    // Without the canton and its two districts, which had no second line.
+    // Without the canton and its two districts, which had no second line. The town
+    // first, then its stops that lie inside a service area.
     ['Luzern', [
       ['Luzern', 'LU', NO_DATA],
-      ['Luzern-Horw', 'Horw LU', NO_DATA],
+      ['Luzern, Giseli', 'Bus', DATA],
+      ['Luzern, Schönbühl', 'Bus', DATA],
+      ['Luzern, Eggen', 'Bus', DATA],
+      ['Luzern, Hermitage', 'Bus', DATA],
     ]],
     ['Baden', [
       ['Baden', 'AG', NO_DATA],
@@ -443,27 +476,53 @@ describe('recorded swisstopo answers', () => {
       ['Baden, Historisches Museum', 'Bus', NO_DATA],
     ]],
     // The canton, "Fribourg|Freiburg", five exits and a treatment plant called Fribourg are gone.
-    ['Fribourg', [['Fribourg', 'FR', NO_DATA]]],
+    ['Fribourg', [
+      ['Fribourg', 'FR', NO_DATA],
+      ['Fribourg, Jardin botanique', 'Bus', NO_DATA],
+      ['Fribourg, Miséricorde', 'Bus', NO_DATA],
+      ['Fribourg, Vuille', 'Bus', NO_DATA],
+      ['Fribourg, Musy 4', 'Bus', NO_DATA],
+    ]],
     ['Chur', [
       ['Chur', 'GR', NO_DATA],
       ['Chur', 'Triesenberg', NO_DATA],
       ['Chur (Brambrüeschbahn)', 'Chur GR', NO_DATA],
       ['Chur Rossboden 100/50m', 'Chur GR', NO_DATA],
+      ['Chur Rossboden 400/300/200/100m', 'Chur GR', NO_DATA],
     ]],
-    // The station itself is seventh in swisstopo's answer.
+    // The station itself is seventh in swisstopo's answer. Without "Museumstrasse",
+    // "Nord", "SZU Süd (Spw)", "Cargo GV": operating points, not stops.
     ['Zürich HB', [
       ['Zürich HB', 'Train', DATA],
       ['Zürich HB SZU', 'Train', DATA],
-      ['Zürich HB Museumstrasse', '', DATA],
-      ['Zürich HB Nord', '', DATA],
-      ['Zürich HB SZU Süd (Spw)', '', DATA],
+    ]],
+    // The station itself is twentieth, after nineteen depots, junctions and track groups.
+    ['Basel SBB', [
+      ['Basel SBB', 'Train', DATA],
+      ['Basel, Bahnhof SBB', 'Bus / tram', DATA],
+    ]],
+    // The stop in front of the station, without "Bern, Bahnhof (Vzw)" beside it.
+    ['Bern Bahnhof', [
+      ['Bern, Bahnhof', 'Bus / tram', DATA],
+      ['Bahnhofplatz 1', '3011 Bern', DATA],
+      ['Bahnhofplatz 2', '3011 Bern', DATA],
+      ['Bahnhofplatz 3', '3011 Bern', DATA],
+      ['Bahnhofplatz 4', '3011 Bern', DATA],
+    ]],
+    // The railway station is eighth, after two motorway exits and five bus stops.
+    ['Genève Aéroport', [
+      ['Genève-Aéroport', 'Train', NO_DATA],
+      ['Genève-Aéroport, WTC', 'Bus', NO_DATA],
+      ['Genève-Aéroport, gare-Arena', 'Bus', NO_DATA],
+      ['Genève-Aéroport, ICC', 'Bus', NO_DATA],
+      ['Genève-Aéroport, Tour-de-Contrôle', 'Bus', NO_DATA],
     ]],
     ['Flughafen Zürich', [
       ['Zürich Flughafen', 'Train', DATA],
       ['Zürich Flughafen, OPC', 'Bus', DATA],
       ['Zürich Flughafen, Fracht', 'Bus / tram', DATA],
       ['Zürich Flughafen, Werft', 'Bus', DATA],
-      ['Zürich Flughafen, Fracht (Wds)', '', DATA],
+      ['Zürich Flughafen, Bahnhof', 'Bus / tram', DATA],
     ]],
     ['Bahnhofstrasse 1 Zürich', [
       ['Bahnhofstrasse 1', '8001 Zürich', DATA],
@@ -472,8 +531,15 @@ describe('recorded swisstopo answers', () => {
       ['Bahnhofstrasse 12', '8001 Zürich', DATA],
       ['Bahnhofstrasse 13', '8001 Zürich', DATA],
     ]],
-    // Milan has no scooter data and swisstopo knows Switzerland only: one street, listed once.
-    ['Milano', [['Via Milano', '6830 Chiasso', NO_DATA]]],
+    // Milan has no scooter data and swisstopo knows Switzerland only: one street, once
+    // without a house number, then its houses.
+    ['Milano', [
+      ['Via Milano', '6830 Chiasso', NO_DATA],
+      ['Via Milano 1', '6830 Chiasso', NO_DATA],
+      ['Via Milano 5', '6830 Chiasso', NO_DATA],
+      ['Via Milano 7', '6830 Chiasso', NO_DATA],
+      ['Via Milano 9', '6830 Chiasso', NO_DATA],
+    ]],
     // Without nine land parcels numbered 8001.
     ['8001', [['8001 Zürich', '', DATA]]],
     // Without Röthenbach, Rüthi and St. Margrethen, which have "eth" inside.
