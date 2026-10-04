@@ -1991,6 +1991,10 @@ svg {
     gap: 6px;
     padding-inline: 10px;
   }
+  /* "In meiner Nähe" is as wide as the room beside the credits: they move above the button. */
+  .app-shell:not([data-searching='true']):has(.near-me) .map-attribution {
+    --credits-bottom: calc(var(--sheet-peek-h) + var(--dock-bottom) + 74px);
+  }
   .map-style-options {
     gap: 6px;
   }
@@ -2004,6 +2008,10 @@ svg {
 @media (max-height: 500px) {
   .sheet-content {
     max-height: calc(100dvh - var(--sat) - var(--dock-bottom) - 82px - var(--notices-h, 0px));
+  }
+  /* The open search reaches down to the corner of the credits: they wait until it closes. */
+  .app-shell[data-searching='true'] .map-attribution {
+    visibility: hidden;
   }
 }
 /* The desktop layout: a wide window with a mouse or trackpad. The dock is a
