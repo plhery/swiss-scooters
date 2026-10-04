@@ -10,6 +10,7 @@ struct ScooterMapScreen: View {
     @State private var searchBarHeight: CGFloat = 62
     @State private var locateButtonHeight: CGFloat = 52
     @State private var topChromeFrame = CGRect.null
+    @State private var bottomChromeTop: CGFloat?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -34,6 +35,7 @@ struct ScooterMapScreen: View {
                     destination: model.searchedDestination,
                     selectedScooterID: model.selectedScooterID,
                     interactionExclusionFrame: topChromeFrame,
+                    bottomChromeTop: bottomChromeTop,
                     onRegionChange: model.updateViewport,
                     onSelectionChange: model.selectScooter,
                     userHeading: model.userHeading,
@@ -109,10 +111,12 @@ struct ScooterMapScreen: View {
                     HStack {
                         Spacer()
                         FloatingMapControls(model: model)
-                            .onGeometryChange(for: CGFloat.self) { geometry in
-                                geometry.size.height
-                            } action: { height in
-                                locateButtonHeight = height
+                            .onGeometryChange(for: CGRect.self) { geometry in
+                                geometry.frame(in: .global)
+                            } action: { frame in
+                                locateButtonHeight = frame.height
+                                // The map centres a scooter in what this button and the dock leave visible.
+                                bottomChromeTop = frame.minY
                             }
                     }
                     .padding(.trailing, 12)

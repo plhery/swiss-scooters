@@ -118,6 +118,32 @@ final class ScooterFilteringTests: XCTestCase {
     }
 
     @MainActor
+    func testCentringAScooterShowsItInTheMapLeftVisibleAboveTheDock() {
+        let scooter = CLLocationCoordinate2D(latitude: 47.3769, longitude: 8.5417)
+        let mapView = MKMapView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        mapView.setRegion(
+            MKCoordinateRegion(center: scooter, latitudinalMeters: 850, longitudinalMeters: 850),
+            animated: false
+        )
+
+        // The search bar ends at 110 pt and a tall card begins at 380 pt: the middle is at 245 pt.
+        let center = ScooterMapCameraPolicy.center(showing: scooter, on: mapView, visibleTop: 110, visibleBottom: 380)
+        XCTAssertLessThan(center.latitude, scooter.latitude)
+        XCTAssertEqual(center.longitude, scooter.longitude, accuracy: 0.0001)
+
+        mapView.setCenter(center, animated: false)
+        let shown = mapView.convert(scooter, toPointTo: mapView)
+        XCTAssertEqual(shown.y, 245, accuracy: 3)
+        XCTAssertEqual(shown.x, 195, accuracy: 3)
+
+        // Nothing covers the map, or nearly all of it is covered: the scooter itself is the centre.
+        let uncovered = ScooterMapCameraPolicy.center(showing: scooter, on: mapView, visibleTop: 0, visibleBottom: 844)
+        XCTAssertEqual(uncovered.latitude, scooter.latitude, accuracy: 0.000_001)
+        let covered = ScooterMapCameraPolicy.center(showing: scooter, on: mapView, visibleTop: 400, visibleBottom: 420)
+        XCTAssertEqual(covered.latitude, scooter.latitude, accuracy: 0.000_001)
+    }
+
+    @MainActor
     func testFocusRequestWaitsUntilTheMapHasASize() {
         let request = MapFocusRequest(
             point: GeoPoint(latitude: 47.3769, longitude: 8.5417),

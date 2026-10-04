@@ -40,6 +40,28 @@ enum ScooterMapCameraPolicy {
         }
         mapView.setCamera(targetCamera, animated: animated)
     }
+
+    /// The centre that shows a point in the middle of the part of the map left
+    /// visible between what covers its top and its bottom, at the current zoom.
+    /// The search bar, the locate button and above all the dock cover the map:
+    /// centred on the point itself, a scooter can end up behind its own card.
+    @MainActor
+    static func center(
+        showing coordinate: CLLocationCoordinate2D,
+        on mapView: MKMapView,
+        visibleTop: CGFloat,
+        visibleBottom: CGFloat
+    ) -> CLLocationCoordinate2D {
+        let bounds = mapView.bounds
+        let top = max(bounds.minY, visibleTop)
+        let bottom = min(bounds.maxY, visibleBottom)
+        // With hardly anything left to show it in, the plain centre is as good.
+        guard bottom - top >= 44 else { return coordinate }
+        let offset = bounds.midY - (top + bottom) / 2
+        guard abs(offset) >= 1 else { return coordinate }
+        let point = mapView.convert(coordinate, toPointTo: mapView)
+        return mapView.convert(CGPoint(x: point.x, y: point.y + offset), toCoordinateFrom: mapView)
+    }
 }
 
 struct ScooterMapView: UIViewRepresentable {
@@ -54,6 +76,9 @@ struct ScooterMapView: UIViewRepresentable {
     let destination: MapDestination?
     let selectedScooterID: String?
     var interactionExclusionFrame: CGRect = .null
+    /// Where the locate button and the dock under it begin, in window
+    /// coordinates; the map from there down is covered.
+    var bottomChromeTop: CGFloat? = nil
     let onRegionChange: (MKCoordinateRegion, Int) -> Void
     let onSelectionChange: (String?) -> Void
     var userHeading: ScooterUserHeading? = nil
@@ -323,8 +348,19 @@ struct ScooterMapView: UIViewRepresentable {
             guard mapView.bounds.width > 0, mapView.bounds.height > 0 else { return }
             lastFocusToken = request.token
             guard !request.keepsZoom else {
+                let topFrame = parent.interactionExclusionFrame
+                let visibleTop = topFrame.isNull || topFrame.isEmpty
+                    ? mapView.safeAreaInsets.top
+                    : mapView.convert(CGPoint(x: topFrame.midX, y: topFrame.maxY), from: nil).y
+                let visibleBottom = parent.bottomChromeTop
+                    .map { mapView.convert(CGPoint(x: 0, y: $0), from: nil).y } ?? mapView.bounds.maxY
                 mapView.setCenter(
-                    request.point.coordinate,
+                    ScooterMapCameraPolicy.center(
+                        showing: request.point.coordinate,
+                        on: mapView,
+                        visibleTop: visibleTop,
+                        visibleBottom: visibleBottom
+                    ),
                     animated: !UIAccessibility.isReduceMotionEnabled
                 )
                 return
