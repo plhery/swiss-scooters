@@ -202,6 +202,8 @@ interface MapComponentProps {
   onVehicleSelect: (vehicle: Vehicle) => void;
   selectedParkingId: string | null;
   onParkingSelect: (location: ParkingLocation) => void;
+  /** A click or a tap on the map itself, not on a marker and not at the end of a drag. */
+  onMapClick?: () => void;
   /** Phone: what was picked stays in view when the dock grows over it with a card. */
   revealAboveDock?: boolean;
   /** Desktop: a scooter under the pointer says what it is, in place of the browser's tooltip. */
@@ -237,6 +239,7 @@ export default function MapComponent({
   onVehicleSelect,
   selectedParkingId,
   onParkingSelect,
+  onMapClick,
   revealAboveDock = false,
   hoverTips = false,
   popover = null,
@@ -263,6 +266,7 @@ export default function MapComponent({
   const onViewportChangeRef = useRef(onViewportChange);
   const onVehicleSelectRef = useRef(onVehicleSelect);
   const onParkingSelectRef = useRef(onParkingSelect);
+  const onMapClickRef = useRef(onMapClick);
   const [readyMap, setReadyMap] = useState<L.Map | null>(null);
   const [zoom, setZoom] = useState(initialZoom);
 
@@ -277,6 +281,10 @@ export default function MapComponent({
   useEffect(() => {
     onParkingSelectRef.current = onParkingSelect;
   }, [onParkingSelect]);
+
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
   const iconMap = useMemo(() => {
     const icons: Record<string, L.DivIcon> = {};
@@ -346,6 +354,8 @@ export default function MapComponent({
     const updateViewport = () => reportViewport(map);
     map.on('movestart', () => { movingRef.current = true; });
     map.on('moveend', () => { movingRef.current = false; });
+    // Markers keep their clicks to themselves, so this is the map and nothing on it.
+    map.on('click', () => onMapClickRef.current?.());
     map.on('zoomend', updateZoom);
     map.on('moveend', updateViewport);
     map.on('rotateend', updateViewport);

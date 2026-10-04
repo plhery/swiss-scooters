@@ -26,6 +26,7 @@ interface MapWrapperProps {
   onVehicleSelect: (vehicle: Vehicle) => void;
   selectedParkingId: string | null;
   onParkingSelect: (location: ParkingLocation) => void;
+  onMapClick?: () => void;
   revealAboveDock?: boolean;
   hoverTips?: boolean;
   popover?: MapPopover | null;

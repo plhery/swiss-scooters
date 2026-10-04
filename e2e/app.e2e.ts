@@ -241,6 +241,36 @@ test('does not invent a distance without location and offers walking directions'
   await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
 });
 
+test('a tap on the map closes the card, and a card that closed does not open again by itself', async ({ page }) => {
+  await page.goto('/?origin=47.3769,8.5417');
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  const bird = page.getByRole('button', { name: 'Bird scooter', exact: true });
+  const card = page.locator('.dock-card');
+  await bird.click();
+  await expect(card.getByRole('heading', { name: 'Bird' })).toBeVisible();
+  await expect(page.locator('.scooter-marker-selected')).toHaveCount(1);
+
+  // Somewhere on the map with nothing on it.
+  const map = page.locator('.leaflet-container');
+  const area = (await map.boundingBox())!;
+  await map.click({ position: { x: Math.round(area.width * 0.86), y: Math.round(area.height * 0.4) } });
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.scooter-marker-selected')).toHaveCount(0);
+
+  // Further out the scooters are a cluster, so the card of one of them closes...
+  await bird.click();
+  await expect(card.getByRole('heading', { name: 'Bird' })).toBeVisible();
+  await zoomTo(page, 15);
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  await expect(card).toHaveCount(0);
+  // ...and stays closed when the scooter is on the map again.
+  await zoomTo(page, 16);
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.scooter-marker-selected')).toHaveCount(0);
+});
+
 test('scooter card shows the walk, the battery and a ride estimate whose duration is remembered', async ({ page }) => {
   await page.goto('/');
   await allowLocationWithCompass(page, 'granted');

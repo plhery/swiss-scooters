@@ -5,17 +5,22 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { MapBounds, ParkingLocation, ScooterResponse, Vehicle } from '@/lib/types';
 import Home from './page';
+import { track as sendEvent } from '@/lib/analytics';
 import { I18nProvider } from '@/lib/i18n';
 import { recentPlaces } from '@/lib/places';
+
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
+const track = vi.mocked(sendEvent);
 
 const viewport = vi.hoisted(() => ({ bounds: { south: 47.36, west: 8.52, north: 47.39, east: 8.57 } }));
 vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
   onViewportChange, onVehicleSelect, onParkingSelect, selectedParkingId, vehicles, parking, focusLocation, focusZoom, destination,
-  hoverTips, popover, zoomStep,
+  hoverTips, popover, zoomStep, selectedVehicleKey, onMapClick,
 }: {
   hoverTips: boolean; popover: { label: string; content: React.ReactNode } | null; zoomStep: { direction: number; version: number };
   onViewportChange: (bounds: MapBounds, zoom: number) => void; onVehicleSelect: (vehicle: Vehicle) => void;
   onParkingSelect: (location: ParkingLocation) => void; selectedParkingId: string | null;
+  selectedVehicleKey: string | null; onMapClick: () => void;
   vehicles: Vehicle[]; parking: ParkingLocation[]; focusLocation: [number, number] | null; focusZoom: number | null;
   destination: { display_name: string } | null;
 }) {
@@ -24,6 +29,7 @@ vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
     <span data-testid="focus">{focusLocation ? `${focusLocation.join(',')} zoom ${focusZoom}` : 'none'}</span>
     <span data-testid="pin">{destination ? destination.display_name : 'none'}</span>
     <span data-testid="tips">{String(hoverTips)}</span><span data-testid="zoom-steps">{zoomStep.version}:{zoomStep.direction}</span>
+    <span data-testid="selected">{selectedVehicleKey ?? selectedParkingId ?? 'none'}</span><button onClick={onMapClick}>Tap the map</button>
     {popover && <div role="dialog" aria-label={popover.label}>{popover.content}</div>}
     {vehicles.map(vehicle => <button key={vehicle.vehicle_id} onClick={() => onVehicleSelect(vehicle)}>Marker {vehicle.vehicle_id}</button>)}
     {parking.map(location => <button key={location.id} aria-pressed={location.id === selectedParkingId} onClick={() => onParkingSelect(location)}>Parking {location.id}</button>)}
@@ -98,6 +104,7 @@ const dockCount = () => document.querySelector('.sheet-count');
 
 beforeEach(() => {
   vi.useFakeTimers();
+  track.mockClear();
   localStorage.clear();
   recentPlaces.clear();
   viewport.bounds = { south: 47.36, west: 8.52, north: 47.39, east: 8.57 };
@@ -433,6 +440,10 @@ it('shows parking bays from street level, and closes the card of a bay that leav
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Zoom to 16' })); });
   await act(async () => vi.advanceTimersByTimeAsync(180));
   expect(screen.getByTestId('parking')).toHaveTextContent('1');
+  // The bay is back on the map; its card is not, until it is chosen again.
+  expect(screen.queryByRole('heading', { name: 'Lime parking bay' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Parking bay' })).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByTestId('selected')).toHaveTextContent('none');
 
   // Switching its provider off in the filters removes the bay, and its card with it.
   fireEvent.click(screen.getByRole('button', { name: 'Parking bay' }));
@@ -440,6 +451,75 @@ it('shows parking bays from street level, and closes the card of a bay that leav
   fireEvent.click(screen.getByRole('button', { name: 'Lime in the filters' }));
   expect(screen.getByTestId('parking')).toHaveTextContent('0');
   expect(screen.queryByRole('heading', { name: 'Lime parking bay' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Lime in the filters' }));
+  expect(screen.getByTestId('parking')).toHaveTextContent('1');
+  expect(screen.queryByRole('heading', { name: 'Lime parking bay' })).toBeNull();
+  expect(screen.getByTestId('selected')).toHaveTextContent('none');
+});
+
+it('keeps the card of a scooter closed once the scooter has left the map, also when it is back', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  const moveTo = async (bounds: MapBounds) => {
+    viewport.bounds = bounds;
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Zoom to 16' })); });
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+  };
+  const zurich = viewport.bounds;
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  expect(screen.getByRole('heading', { name: 'Lime' })).toBeVisible();
+  expect(screen.getByTestId('selected')).toHaveTextContent('lime:one');
+
+  // A refresh that still holds the scooter leaves its card open.
+  await act(async () => vi.advanceTimersByTimeAsync(60_000));
+  expect(screen.getByRole('heading', { name: 'Lime' })).toBeVisible();
+
+  // Dragged out of view: the card closes, and nothing is selected any more.
+  await moveTo({ south: 47.40, west: 8.52, north: 47.43, east: 8.57 });
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('0');
+  expect(screen.queryByRole('heading', { name: 'Lime' })).toBeNull();
+  expect(screen.getByTestId('selected')).toHaveTextContent('none');
+
+  // Back in view, the scooter is there and its card stays closed.
+  await moveTo(zurich);
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
+  expect(screen.queryByRole('heading', { name: 'Lime' })).toBeNull();
+  expect(screen.getByTestId('selected')).toHaveTextContent('none');
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+
+  // The same when its provider is switched off and on again.
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  expect(screen.getByRole('heading', { name: 'Lime' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Lime in the filters' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Lime in the filters' }));
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
+  expect(screen.queryByRole('heading', { name: 'Lime' })).toBeNull();
+  expect(screen.getByTestId('selected')).toHaveTextContent('none');
+});
+
+it('closes the card of a scooter or a bay with a tap on the map', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  track.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  expect(screen.getByRole('heading', { name: 'Lime' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Tap the map' }));
+  expect(screen.queryByRole('heading', { name: 'Lime' })).toBeNull();
+  expect(screen.getByTestId('selected')).toHaveTextContent('none');
+  expect(track).toHaveBeenCalledWith('vehicle_dismiss');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Parking bay' }));
+  expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Tap the map' }));
+  expect(screen.queryByRole('heading', { name: 'Lime parking bay' })).toBeNull();
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+
+  // With nothing open a tap does nothing.
+  track.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Tap the map' }));
+  expect(track).not.toHaveBeenCalled();
 });
 
 it('explains an area without scooter data and flies to the closest city', async () => {

@@ -442,6 +442,12 @@ export default function Home() {
     return { vehicle, walk: walkEstimate(walkOrigin, vehicle.lat, vehicle.lng) };
   }, [selectedVehicleKey, viewportData.visibleVehicles, walkOrigin]);
 
+  // What closes a card clears the selection, as in the iOS app: a scooter or a
+  // bay that left the view, lost its provider or went with new data does not
+  // open again by itself once it is back.
+  if (selectedVehicleKey !== null && !selectedVehicle) setSelectedVehicleKey(null);
+  if (selectedParkingId !== null && !selectedParking) setSelectedParkingId(null);
+
   const availableProviders = viewportBounds
     ? [...new Set([...providersForViewport(viewportBounds), ...Object.keys(viewportData.providerCounts)])]
     : Object.keys(PROVIDERS);
@@ -641,6 +647,7 @@ export default function Home() {
           setSelectedVehicleKey(null);
           setSelectedParkingId(location.id);
         }}
+        onMapClick={closeCard}
         revealAboveDock={!desktop}
         hoverTips={desktop}
         popover={popover}
