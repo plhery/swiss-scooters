@@ -1159,7 +1159,11 @@ test('typing lists places with a second line, tags those without scooter data, a
   await expect(bar).toContainText('Scooters near this place');
   // Its pin on the map carries the name the bar shows.
   await expect(page.locator('.destination-marker')).toBeVisible();
-  await expect(page.getByTitle('Searched address: Zürich HB, Train')).toBeVisible();
+  // A picture with a name: not a button, and not a stop for the Tab key.
+  const pin = page.getByRole('img', { name: 'Searched address: Zürich HB, Train' });
+  await expect(pin).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Searched address/ })).toHaveCount(0);
+  expect(await pin.getAttribute('tabindex')).toBeNull();
 
   // Walking times are measured from the place, some 160 m from the scooters.
   await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters nearby$/);
@@ -1198,7 +1202,7 @@ test('the address search itself finds a typed city with scooter data first, with
   await page.keyboard.press('Enter');
   await expect(island.getByRole('combobox')).toHaveCount(0);
   await expect(island).toContainText('Biel/Bienne');
-  await expect(page.getByTitle('Gesuchte Adresse: Biel/Bienne, Schweiz')).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Gesuchte Adresse: Biel/Bienne, Schweiz' })).toBeVisible();
   // A typed city is shown as a whole, like a "Cities with scooters" chip, not one street in its middle.
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
 });
@@ -2417,7 +2421,7 @@ test.describe('on a small phone, or one held on its side', () => {
     await input.press('Enter');
     await expect(page.locator('.sheet').getByRole('heading', { name: 'Hier gibt es noch keine Scooter-Daten' })).toBeVisible();
     // The card that says so is tall: the place it is about is not left under it or under the controls on it.
-    const pin = page.getByTitle('Gesuchte Adresse: Lungern, OW');
+    const pin = page.getByRole('img', { name: 'Gesuchte Adresse: Lungern, OW' });
     await expect.poll(async () => {
       const [place, around] = [(await pin.boundingBox())!, await boxes()];
       return Object.values(around).some(box => overlap(place, box));

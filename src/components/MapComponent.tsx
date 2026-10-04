@@ -478,13 +478,17 @@ export default function MapComponent({
     destinationMarkerRef.current = null;
 
     if (destination) {
-      const label = t('marker.searchedAddress', { name: destination.display_name });
+      // A picture of where the place is: there is nothing to press, so it is
+      // neither a button nor a stop for the Tab key.
       const marker = L.marker([destination.lat, destination.lng], {
         icon: destinationIcon,
         zIndexOffset: 1800,
-        title: label,
+        interactive: false,
+        keyboard: false,
       }).addTo(layer);
-      labelMarker(marker, label);
+      const element = marker.getElement();
+      element?.setAttribute('role', 'img');
+      element?.setAttribute('aria-label', t('marker.searchedAddress', { name: destination.display_name }));
       destinationMarkerRef.current = marker;
     }
   }, [destination, destinationIcon, readyMap, t]);
