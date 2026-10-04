@@ -641,6 +641,7 @@ export default function Home() {
           setSelectedVehicleKey(null);
           setSelectedParkingId(location.id);
         }}
+        revealAboveDock={!desktop}
         hoverTips={desktop}
         popover={popover}
         zoomStep={zoomStep}

@@ -2143,3 +2143,166 @@ test.describe('on a wide touch screen', () => {
     await expect(page.locator('.sheet-count')).toHaveCount(0);
   });
 });
+
+test.describe('on a small phone, or one held on its side', () => {
+  const pick = async (page: Page, name: 'Bird' | 'Lime') => {
+    // The three scooters stand on one spot: one provider alone leaves one marker to press.
+    await page.getByRole('button', { name: `${name}, 1. Shown.`, exact: true }).click();
+    const marker = page.getByRole('button', { name: `${name} scooter`, exact: true });
+    await marker.click();
+    await expect(page.locator('.sheet .dock-card').getByRole('heading', { name })).toBeVisible();
+    return marker;
+  };
+  /** The two buttons of a card: how high each is, and whether the second is under the first. */
+  const buttons = async (card: ReturnType<Page['locator']>, second: string) => {
+    const [directions, open] = [
+      (await card.getByRole('link', { name: 'Directions' }).boundingBox())!,
+      (await card.getByRole('link', { name: second }).boundingBox())!,
+    ];
+    return { heights: [Math.round(directions.height), Math.round(open.height)], stacked: open.y >= directions.y + directions.height };
+  };
+  /** The room between the bottom of a marker and the top of the dock; negative when the dock covers it. */
+  const roomAboveDock = async (page: Page, marker: ReturnType<Page['locator']>) => {
+    const [scooter, dock] = [(await marker.boundingBox())!, (await page.locator('.sheet').boundingBox())!];
+    return Math.round(dock.y - (scooter.y + scooter.height));
+  };
+
+  test('a scooter picked just above the dock moves clear of the card that opens over it', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    // The scooters stand some 380 m south of the middle of the map: just above the dock.
+    await page.goto('/?origin=47.38036,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    const before = (await page.getByRole('button', { name: 'Bird scooter', exact: true }).boundingBox())!;
+    expect(before.y + before.height).toBeLessThan((await page.locator('.sheet').boundingBox())!.y);
+
+    // The card is taller than the dock was and would cover the scooter: the map moves up by what is needed.
+    const marker = await pick(page, 'Bird');
+    await expect.poll(() => roomAboveDock(page, marker)).toBe(8);
+    expect((await marker.boundingBox())!.y).toBeLessThan(before.y - 20);
+    await expect(page.locator('.scooter-marker-selected')).toHaveCount(1);
+  });
+
+  test('a scooter that its card does not cover stays where it is', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    const marker = await pick(page, 'Bird');
+    const before = (await marker.boundingBox())!;
+    // Longer than the dock takes to settle and the map to move.
+    await page.waitForTimeout(900);
+    expect((await marker.boundingBox())!.y).toBe(before.y);
+  });
+
+  test('a phone on its side shows a card whole, keeps its scooter in view and gives the open search the corner of the credits', async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    const marker = await pick(page, 'Lime');
+    const card = page.locator('.sheet .dock-card');
+    await expect(card.getByRole('link', { name: 'Open in Lime' })).toBeVisible();
+
+    // Nothing of the card is left to scroll to, down to its last line.
+    const content = page.locator('.sheet-content');
+    await expect.poll(() => content.evaluate(element => element.scrollHeight - element.clientHeight)).toBe(0);
+    const note = card.getByText('Opens the Lime app. It won’t reserve the scooter.');
+    await expect.poll(async () => { const box = (await note.boundingBox())!; return box.y + box.height; }).toBeLessThan(390);
+    expect(overlap((await page.locator('.sheet').boundingBox())!, (await page.locator('.search-island').boundingBox())!)).toBe(false);
+    // The scooter stood in the middle of the map, where the card now is.
+    await expect.poll(() => roomAboveDock(page, marker)).toBeGreaterThanOrEqual(0);
+
+    const credits = page.locator('.map-attribution');
+    await expect(credits).toBeVisible();
+    await page.getByRole('button', { name: 'Search city or address' }).click();
+    await expect(page.getByRole('combobox')).toBeFocused();
+    await expect(credits).toBeHidden();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(credits).toBeVisible();
+  });
+
+  test('a narrow phone keeps the two buttons of a card on one line each, and the search field is 44 px high', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await pick(page, 'Lime');
+    const card = page.locator('.sheet .dock-card');
+    // Once the card has arrived: both at their one-line height, side by side.
+    await expect.poll(() => buttons(card, 'Open in Lime')).toEqual({ heights: [48, 48], stacked: false });
+
+    await page.getByRole('button', { name: /^Search city or address/ }).click();
+    expect((await page.getByRole('combobox').boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test('two labels that do not fit side by side go one under the other', async ({ page }) => {
+    await page.route('**/api/scooters?**', async route => {
+      const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+        ...scooterResponse, clusters: [], providers: { publibike: 1 },
+        vehicles: [{
+          ...scooterResponse.vehicles[0], provider: 'publibike', vehicle_id: 'publibike-1',
+          rental_uris: { ios: 'https://www.publibike.ch/ride', android: 'https://www.publibike.ch/ride', web: 'https://www.publibike.ch/ride' },
+        }],
+        meta: { ...scooterResponse.meta, mode: 'vehicles', totalVehicles: 1, zoom },
+      }) });
+    });
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto('/?origin=47.3769,8.5417');
+    await page.locator('.scooter-marker-wrap').click();
+    const card = page.locator('.sheet .dock-card');
+    // "Open in PubliBike / Velospot" is wider than what 320 px leave beside "Directions".
+    const open = card.getByRole('link', { name: 'Open in PubliBike / Velospot' });
+    await expect(open).toBeVisible();
+    await expect.poll(() => buttons(card, 'Open in PubliBike / Velospot')).toEqual({ heights: [48, 48], stacked: true });
+    const widths = [(await open.boundingBox())!.width, (await card.getByRole('link', { name: 'Directions' }).boundingBox())!.width];
+    expect(Math.abs(widths[0] - widths[1])).toBeLessThan(2);
+    // The card is still shown whole.
+    expect(await page.locator('.sheet-content').evaluate(element => element.scrollHeight - element.clientHeight)).toBe(0);
+  });
+
+  test('on a narrow phone the credits make way for a long Near me, and a searched place stays in view above the card', async ({ page }) => {
+    await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([
+      { lat: 46.7741, lng: 8.1558, display_name: 'Lungern, OW', title: 'Lungern', subtitle: 'OW', covered: false },
+    ]) }));
+    await page.route('**/api/scooters?**', async route => {
+      const url = new URL(route.request().url());
+      // Nothing around Lungern; the fixtures everywhere else.
+      if (Number(url.searchParams.get('north')) > 47) return route.fallback();
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+        ...scooterResponse, vehicles: [], clusters: [], providers: {},
+        meta: { ...scooterResponse.meta, totalVehicles: 0, zoom: Number(url.searchParams.get('zoom')) },
+      }) });
+    });
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto('/');
+    await page.evaluate(() => localStorage.setItem('scooters-locale', 'de'));
+    await page.reload();
+
+    // "In meiner Nähe" leaves no room beside it on 320 px.
+    const nearMe = page.getByRole('button', { name: 'In meiner Nähe', exact: true });
+    const credits = page.locator('.map-attribution');
+    await expect(nearMe).toBeVisible();
+    await expect(credits).toBeVisible();
+    const boxes = async () => ({
+      nearMe: (await nearMe.boundingBox())!, credits: (await credits.boundingBox())!, dock: (await page.locator('.sheet').boundingBox())!,
+    });
+    // Once the dock has its height: the credits are above the button, not under it.
+    await expect.poll(async () => {
+      const now = await boxes();
+      return now.credits.y + now.credits.height <= now.nearMe.y && now.nearMe.y + now.nearMe.height <= now.dock.y;
+    }).toBe(true);
+
+    await page.getByRole('button', { name: 'Stadt oder Adresse suchen' }).click();
+    const input = page.getByRole('combobox');
+    await input.fill('Lungern');
+    await expect(page.getByRole('option', { name: /^Lungern/ })).toBeVisible();
+    await input.press('Enter');
+    await expect(page.locator('.sheet').getByRole('heading', { name: 'Hier gibt es noch keine Scooter-Daten' })).toBeVisible();
+    // The card that says so is tall: the place it is about is not left under it or under the controls on it.
+    const pin = page.getByTitle('Gesuchte Adresse: Lungern, OW');
+    await expect.poll(async () => {
+      const [place, around] = [(await pin.boundingBox())!, await boxes()];
+      return Object.values(around).some(box => overlap(place, box));
+    }).toBe(false);
+    const place = (await pin.boundingBox())!;
+    expect(place.y).toBeGreaterThan((await page.locator('.search-island').boundingBox())!.y);
+  });
+});

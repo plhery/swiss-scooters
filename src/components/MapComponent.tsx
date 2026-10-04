@@ -16,6 +16,7 @@ import { PROVIDERS } from '@/lib/types';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
 import type { AddressResult } from '@/components/AddressSearch';
 import { haversineM } from '@/lib/geo';
+import { revealShift } from '@/lib/markerReveal';
 import { stopMapRotation, syncRotationMotion } from '@/lib/mapRotation';
 import { scooterTip } from '@/lib/scooterTip';
 import './map.css';
@@ -58,6 +59,8 @@ const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright
 
 // A scooter's disc is 34 px inside the 44 px its marker takes; the hover tip sits just above the disc.
 const MARKER_INSET = 5;
+// The dock takes 280 ms to grow to the height of a new card.
+const DOCK_SETTLE_MS = 320;
 const TIP_GAP = 8;
 const TIP_MARGIN = 8;
 
@@ -199,6 +202,8 @@ interface MapComponentProps {
   onVehicleSelect: (vehicle: Vehicle) => void;
   selectedParkingId: string | null;
   onParkingSelect: (location: ParkingLocation) => void;
+  /** Phone: what was picked stays in view when the dock grows over it with a card. */
+  revealAboveDock?: boolean;
   /** Desktop: a scooter under the pointer says what it is, in place of the browser's tooltip. */
   hoverTips?: boolean;
   /** Desktop: the card of the selected scooter or parking bay, shown beside its marker. */
@@ -232,6 +237,7 @@ export default function MapComponent({
   onVehicleSelect,
   selectedParkingId,
   onParkingSelect,
+  revealAboveDock = false,
   hoverTips = false,
   popover = null,
   zoomStep,
@@ -241,6 +247,9 @@ export default function MapComponent({
   const mapRef = useRef<L.Map | null>(null);
   const scooterLayerRef = useRef<L.LayerGroup | null>(null);
   const destinationLayerRef = useRef<L.LayerGroup | null>(null);
+  const destinationMarkerRef = useRef<L.Marker | null>(null);
+  // True from the start of a move of the map, by hand or by itself, to its end.
+  const movingRef = useRef(false);
   const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const clusterMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const parkingMarkersRef = useRef<Map<string, { marker: L.Marker; signature: string }>>(new Map());
@@ -335,6 +344,8 @@ export default function MapComponent({
       setZoom(currentZoom);
     };
     const updateViewport = () => reportViewport(map);
+    map.on('movestart', () => { movingRef.current = true; });
+    map.on('moveend', () => { movingRef.current = false; });
     map.on('zoomend', updateZoom);
     map.on('moveend', updateViewport);
     map.on('rotateend', updateViewport);
@@ -448,6 +459,7 @@ export default function MapComponent({
     const layer = destinationLayerRef.current;
     if (!readyMap || !layer) return;
     layer.clearLayers();
+    destinationMarkerRef.current = null;
 
     if (destination) {
       const label = t('marker.searchedAddress', { name: destination.display_name });
@@ -457,6 +469,7 @@ export default function MapComponent({
         title: label,
       }).addTo(layer);
       labelMarker(marker, label);
+      destinationMarkerRef.current = marker;
     }
   }, [destination, destinationIcon, readyMap, t]);
 
@@ -616,6 +629,60 @@ export default function MapComponent({
     return marker?.getElement() ?? null;
   }, [selectedParkingId, selectedVehicleKey]);
   const hasPopover = popover !== null;
+
+  // On a phone a card opens in the dock, which grows and lifts the controls that
+  // sit on it. What the visitor picked, a scooter, a bay or a searched place, must
+  // not end up underneath: once the dock has settled, the map moves up by just
+  // what is needed. Declared after the effects that draw the markers.
+  useEffect(() => {
+    const map = mapRef.current;
+    const content = document.querySelector('.sheet-content');
+    if (!readyMap || !map || !revealAboveDock || !content) return;
+    let timer = 0;
+    let waiting = false;
+    const boxOf = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
+    const reveal = () => {
+      waiting = false;
+      const marker = popoverAnchor() ?? destinationMarkerRef.current?.getElement();
+      // While the search is open the dock is not shown.
+      if (!marker || document.querySelector('.app-shell[data-searching="true"]')) return;
+      const area = map.getContainer().getBoundingClientRect();
+      const above = [boxOf('.search-island'), ...[...document.querySelectorAll('.map-notices > *')].map(notice => notice.getBoundingClientRect())];
+      const shift = revealShift({
+        marker: marker.getBoundingClientRect(),
+        obstacles: [boxOf('.sheet'), boxOf('.fab-stack'), boxOf('.map-attribution')]
+          .filter((box): box is DOMRect => box !== undefined && box.height > 0),
+        ceiling: Math.max(area.top, ...above.map(box => box?.bottom ?? 0)),
+        floor: area.bottom,
+      });
+      if (shift === 0) return;
+      const size = map.getSize();
+      map.panTo(map.containerPointToLatLng(L.point(size.x / 2, size.y / 2 + shift)), {
+        animate: !prefersReducedMotion(),
+        duration: 0.25,
+      });
+    };
+    // A move in progress, such as the flight to a searched place, is left to finish.
+    const request = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (movingRef.current) waiting = true;
+        else reveal();
+      }, DOCK_SETTLE_MS);
+    };
+    const onMoveEnd = () => {
+      if (waiting) reveal();
+    };
+    map.on('moveend', onMoveEnd);
+    // Asks once for what was just picked, and again whenever the dock changes height.
+    const observer = new ResizeObserver(request);
+    observer.observe(content);
+    return () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+      map.off('moveend', onMoveEnd);
+    };
+  }, [destination, popoverAnchor, readyMap, revealAboveDock]);
 
   // The card stays beside its marker. Declared after the effects that draw the
   // markers, so that the marker is there to stand beside; new data may move it.
