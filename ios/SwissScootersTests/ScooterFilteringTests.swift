@@ -437,3 +437,72 @@ final class ScooterFilteringTests: XCTestCase {
         )
     }
 }
+
+// Filter presets and the filtered-out summary.
+extension ScooterFilteringTests {
+    func testBatteryFilterOffersFourPresetsAndSnapsOtherValuesDown() {
+        XCTAssertEqual(ScooterBatteryFilter.presets, [0, 30, 60, 80])
+
+        let examples = [(0, 0), (29, 0), (30, 30), (45, 30), (60, 60), (79, 60), (80, 80), (95, 80), (100, 80), (-10, 0)]
+        for (value, preset) in examples {
+            XCTAssertEqual(ScooterBatteryFilter.snapped(value), preset, "\(value)")
+        }
+        XCTAssertEqual(ScooterBatteryFilter.label(for: 0), String(localized: "Any"))
+        XCTAssertEqual(ScooterBatteryFilter.label(for: 60), "60%+")
+    }
+
+    func testVisibleSummaryAlsoCountsWhatTheFiltersHide() {
+        let scooters = [
+            scooter(id: "lime-inside", provider: "lime", battery: 80),
+            scooter(id: "lime-low", provider: "lime", battery: 10),
+            scooter(id: "bird-inside", provider: "bird", battery: 90),
+            scooter(id: "unknown", provider: "future-provider", battery: 95),
+            scooter(id: "bird-outside", provider: "bird", battery: 90, latitude: 47.5)
+        ]
+
+        let summary = ScooterFiltering.visibleSummary(
+            for: scooters,
+            viewport: viewport,
+            minimumBattery: 50,
+            enabledProviders: [.lime]
+        )
+
+        XCTAssertEqual(summary.count, 1)
+        XCTAssertEqual(summary.unfilteredCount, 4)
+    }
+
+    func testFilterResultTitlesUseSingularAndPluralForms() {
+        XCTAssertEqual(ScooterFiltering.showResultsTitle(count: 1), String(localized: "Show 1 scooter"))
+        XCTAssertTrue(ScooterFiltering.showResultsTitle(count: 16).contains("16"))
+        XCTAssertNotEqual(
+            ScooterFiltering.showResultsTitle(count: 0),
+            ScooterFiltering.showResultsTitle(count: 1)
+        )
+    }
+
+    func testFilterSummaryDescribesTheActiveFilters() {
+        let both = ScooterFilterSummary(hiddenCount: 26, providers: [.lime], minimumBattery: 60)
+
+        XCTAssertTrue(both.title.contains("26"))
+        XCTAssertTrue(both.showAllTitle.contains("26"))
+        XCTAssertEqual(both.parts.count, 2)
+        XCTAssertTrue(both.parts[0].contains("Lime"))
+        XCTAssertTrue(both.parts[1].contains("60%"))
+        XCTAssertFalse(both.parts[1].contains("%%"))
+        XCTAssertEqual(both.body, both.parts.joined(separator: " · "))
+
+        let one = ScooterFilterSummary(hiddenCount: 1, providers: [.bird, .voi], minimumBattery: nil)
+        XCTAssertEqual(one.title, String(localized: "1 scooter hidden by your filters"))
+        XCTAssertEqual(one.parts.count, 1)
+        XCTAssertTrue(one.body.contains("Bird") && one.body.contains("Voi"))
+
+        let unknown = ScooterFilterSummary(hiddenCount: nil, providers: [], minimumBattery: 80)
+        XCTAssertEqual(unknown.title, String(localized: "No scooters match your filters here"))
+        XCTAssertEqual(unknown.showAllTitle, String(localized: "Show all"))
+        XCTAssertEqual(unknown.parts.count, 1)
+        // On its own the battery part opens the line, so it starts with a capital.
+        XCTAssertEqual(String(unknown.body.prefix(1)), unknown.parts[0].prefix(1).localizedUppercase)
+        XCTAssertEqual(unknown.body.dropFirst(), unknown.parts[0].dropFirst())
+        XCTAssertNotEqual(unknown.body, unknown.parts[0])
+    }
+}

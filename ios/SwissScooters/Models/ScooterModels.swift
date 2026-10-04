@@ -88,6 +88,29 @@ struct Scooter: Identifiable, Hashable, Sendable {
     }
 }
 
+enum ScooterBatteryLevel: Equatable, Sendable {
+    case good
+    case low
+    case critical
+
+    /// Good from 50%, low from 20% to 49%, critical under 20%, as on the web.
+    init(percent: Int) {
+        if percent >= 50 {
+            self = .good
+        } else if percent >= 20 {
+            self = .low
+        } else {
+            self = .critical
+        }
+    }
+}
+
+extension Scooter {
+    var batteryLevel: ScooterBatteryLevel? {
+        battery.map(ScooterBatteryLevel.init(percent:))
+    }
+}
+
 struct ScooterRentalURIs: Hashable, Sendable {
     let ios: String?
     let android: String?
@@ -362,6 +385,30 @@ struct ScooterParking: Identifiable, Equatable, Sendable {
             : String(localized: "Designated scooter parking.")
         return "\(rule)\n\(String(localized: "Check the operator app to confirm you can end your ride here."))"
     }
+
+    var providerInfo: ScooterProvider? {
+        ScooterProvider(rawValue: provider)
+    }
+
+    var providerName: String {
+        providerInfo?.name ?? provider.capitalized
+    }
+
+    /// "Dott parking bay", the title of the bay card in the dock.
+    var bayTitle: String {
+        String(format: String(localized: "%@ parking bay"), providerName)
+    }
+
+    /// The card's notice: a warning when parking in a bay is mandatory, neutral otherwise.
+    var notice: String {
+        mandatory ? String(localized: "You must park in a bay in this zone.")
+            : String(localized: "Designated scooter parking.")
+    }
+
+    /// "Check the Dott app before you end your ride."
+    var footnote: String {
+        String(format: String(localized: "Check the %@ app before you end your ride."), providerName)
+    }
 }
 
 struct ScooterResponse: Sendable {
@@ -591,6 +638,14 @@ struct GeoBounds: Equatable, Sendable {
         latitude >= south && latitude <= north && longitude >= west && longitude <= east
     }
 
+    func contains(_ point: GeoPoint) -> Bool {
+        contains(latitude: point.latitude, longitude: point.longitude)
+    }
+
+    var center: GeoPoint {
+        GeoPoint(latitude: (south + north) / 2, longitude: (west + east) / 2)
+    }
+
     func expanded(by ratio: Double) -> GeoBounds {
         let latitudePadding = (north - south) * ratio
         let longitudePadding = (east - west) * ratio
@@ -622,7 +677,444 @@ struct MapFocusRequest: Equatable, Sendable {
     }
 }
 
-struct MapDestination: Equatable, Sendable {
+extension MapFocusRequest {
+    /// The span the map zooms to when a city total is tapped: 0.08° by 0.12°.
+    static func city(_ point: GeoPoint, token: Int) -> MapFocusRequest {
+        let metersPerDegree = 111_320.0
+        return MapFocusRequest(
+            point: point,
+            token: token,
+            latitudinalMeters: 0.08 * metersPerDegree,
+            longitudinalMeters: 0.12 * metersPerDegree * cos(point.latitude * .pi / 180)
+        )
+    }
+}
+
+struct MapDestination: Equatable, Identifiable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case address
+        /// A covered city: the map shows the whole city rather than one street.
+        case city
+    }
+
     let title: String
+    /// The second line of a recent place; may be empty.
+    let subtitle: String
     let point: GeoPoint
+    let kind: Kind
+
+    init(title: String, subtitle: String = "", point: GeoPoint, kind: Kind = .address) {
+        self.title = title
+        self.subtitle = subtitle
+        self.point = point
+        self.kind = kind
+    }
+
+    var id: String { "\(title)|\(point.latitude)|\(point.longitude)" }
+}
+
+extension ScooterCity {
+    /// The country in the user's language, such as "Germany".
+    var countryName: String {
+        Locale.current.localizedString(forRegionCode: countryCode) ?? countryCode
+    }
+
+    /// The city as a place to search from.
+    var destination: MapDestination {
+        MapDestination(title: name, subtitle: countryName, point: center, kind: .city)
+    }
+}
+
+extension ScooterCityDistance {
+    /// Whole kilometres such as "61 km", as on the web.
+    var formattedDistance: String {
+        Measurement(
+            value: max(1, (distanceMeters / 1_000).rounded()),
+            unit: UnitLength.kilometers
+        ).formatted(.measurement(
+            width: .abbreviated,
+            usage: .asProvided,
+            numberFormatStyle: .number.precision(.fractionLength(0))
+        ))
+    }
+
+    /// "Bern · 61 km", the label of a closest-city chip.
+    var label: String {
+        String(format: String(localized: "%1$@ · %2$@"), city.name, formattedDistance)
+    }
+}
+
+/// When scooter data is refreshed automatically. Web and iOS follow the same rules.
+struct ScooterRefreshPolicy: Equatable, Sendable {
+    /// The interval when a response names none.
+    var defaultRefreshAfter: TimeInterval = 60
+    /// Refresh this long before the data expires.
+    var expiryLead: TimeInterval = 5
+    /// Automatic requests leave at least this long after the previous one finished.
+    var minimumAttemptGap: TimeInterval = 10
+
+    static let standard = ScooterRefreshPolicy()
+
+    /// When the data is due for a refresh, before the gap between requests is
+    /// applied: at the server's interval or shortly before the data expires,
+    /// whichever comes first. Without a successful load it is always due.
+    func refreshDue(
+        lastSuccess: Date?,
+        refreshAfter: TimeInterval,
+        expiresAt: Date?
+    ) -> Date {
+        guard let lastSuccess else { return .distantPast }
+        let interval = lastSuccess.addingTimeInterval(max(minimumAttemptGap, refreshAfter))
+        guard let expiresAt else { return interval }
+        return min(interval, expiresAt.addingTimeInterval(-expiryLead))
+    }
+
+    /// When the next automatic request may start. `lastAttempt` is when the
+    /// previous request finished, whatever its outcome.
+    func nextAttempt(
+        lastSuccess: Date?,
+        refreshAfter: TimeInterval,
+        expiresAt: Date?,
+        lastAttempt: Date?
+    ) -> Date {
+        let due = refreshDue(lastSuccess: lastSuccess, refreshAfter: refreshAfter, expiresAt: expiresAt)
+        guard let lastAttempt else { return due }
+        return max(due, lastAttempt.addingTimeInterval(minimumAttemptGap))
+    }
+}
+
+/// What went wrong with loading scooters, and what is still on the map.
+enum ScooterLoadIssue: Equatable, Sendable {
+    /// Nothing has loaded yet and the load failed: the banner under the search bar.
+    case firstLoadFailed(ScooterLoadFailure)
+    /// The last refresh failed and the data from `showing` is still on the map,
+    /// unchanged: the warning status line and the Try again pill in the dock.
+    case refreshFailed(ScooterLoadFailure, showing: Date)
+    /// The data expired and the refresh after that failed, so the map was cleared:
+    /// the out-of-date card in the dock.
+    case outOfDate(ScooterLoadFailure, lastUpdate: Date)
+
+    var failure: ScooterLoadFailure {
+        switch self {
+        case let .firstLoadFailed(failure),
+             let .refreshFailed(failure, _),
+             let .outOfDate(failure, _):
+            failure
+        }
+    }
+}
+
+/// Which providers are not sharing data for the area on screen.
+struct ScooterProviderHealth: Equatable, Sendable {
+    /// Providers with a failed feed that operate in the viewport, in catalogue order.
+    let downProviders: [ScooterProvider]
+    /// A failed source belongs to no known provider, such as "city-overview".
+    let hasUnknownFailures: Bool
+
+    static let healthy = ScooterProviderHealth(downProviders: [], hasUnknownFailures: false)
+
+    init(downProviders: [ScooterProvider], hasUnknownFailures: Bool) {
+        self.downProviders = downProviders
+        self.hasUnknownFailures = hasUnknownFailures
+    }
+
+    init(failedSources: [String], operating: [ScooterProvider]) {
+        var failed = Set<ScooterProvider>()
+        var hasUnknownFailures = false
+        for source in failedSources {
+            if let provider = Self.provider(forSource: source) {
+                failed.insert(provider)
+            } else {
+                hasUnknownFailures = true
+            }
+        }
+        let operating = Set(operating)
+        downProviders = ScooterProvider.allCases.filter {
+            failed.contains($0) && operating.contains($0)
+        }
+        self.hasUnknownFailures = hasUnknownFailures
+    }
+
+    /// The provider behind an entry of `failedSources`. An id can carry its
+    /// source in front ("national:lime_zurich", "france:dott_fr_lyon", plain
+    /// "hopp"), so the source goes before the system id is matched.
+    static func provider(forSource source: String) -> ScooterProvider? {
+        let systemID = source.firstIndex(of: ":").map { source[source.index(after: $0)...] } ?? source[...]
+        return ScooterProvider.provider(forSystemID: String(systemID))
+    }
+}
+
+/// What the dock shows; `ScooterMapModel.dock` picks the one that applies.
+enum ScooterDockContent: Equatable, Sendable {
+    /// Only the scooter card: no count, no chips.
+    case scooter(Scooter)
+    /// Only the parking bay card.
+    case parking(ScooterParking)
+    /// The out-of-date card with a Refresh button, instead of count and chips.
+    case outOfDate(ScooterLoadFailure, lastUpdate: Date)
+    /// The answer for this view is on its way: "Finding scooters…" instead of
+    /// a count. The chips are empty until something has loaded.
+    case finding(chips: [ScooterProviderEntry])
+    /// Nothing has loaded and the load failed: "Waiting for scooter data", no count, no chips.
+    case waiting
+    /// No provider operates here: the three closest covered cities.
+    case outsideCoverage([ScooterCityDistance])
+    /// There are scooters here, all of them hidden by the filters.
+    case filtersHideEverything(ScooterFilterSummary)
+    /// Count, status line, notices and chips.
+    case summary(ScooterDockSummary)
+}
+
+struct ScooterDockSummary: Equatable, Sendable {
+    let count: Int
+    let countContext: ScooterCountContext
+    /// When the data on the map was observed.
+    let lastUpdated: Date
+    /// Set while the last refresh failed and the earlier data is still shown.
+    let refreshFailure: ScooterLoadFailure?
+    /// City totals instead of single scooters.
+    let isOverview: Bool
+    /// The server answered with data it could not renew.
+    let isDelayed: Bool
+    /// One calm line each, under the status.
+    let notices: [ScooterDockNotice]
+    let hint: ScooterDockHint?
+    /// Providers after the "All" chip, in display order.
+    let chips: [ScooterProviderEntry]
+
+    /// "scooters nearby" or "scooters on this map"; the view renders the number.
+    var countLabel: String { countContext.label(for: count) }
+
+    /// The Try again pill at the right of the dock header.
+    var showsTryAgain: Bool { refreshFailure != nil }
+
+    /// The status line. It changes as the data ages, so ask again over time.
+    func status(at now: Date = .now) -> ScooterDockStatus {
+        if let refreshFailure {
+            return refreshFailure == .offline
+                ? .offline(showing: lastUpdated)
+                : .refreshFailed(showing: lastUpdated)
+        }
+        if isOverview { return .cityTotals }
+        if isDelayed { return .delayed(showing: lastUpdated) }
+
+        let age = max(0, now.timeIntervalSince(lastUpdated))
+        if age < ScooterDockStatus.liveWindow { return .live }
+        if age < 3_600 { return .updatedMinutesAgo(Int(age / 60)) }
+        return .updatedAt(lastUpdated)
+    }
+}
+
+enum ScooterCountContext: Equatable, Sendable {
+    /// Your location or the chosen place is on screen.
+    case nearby
+    case onThisMap
+
+    func label(for count: Int) -> String {
+        switch (self, count == 1) {
+        case (.nearby, true): String(localized: "scooter nearby")
+        case (.nearby, false): String(localized: "scooters nearby")
+        case (.onThisMap, true): String(localized: "scooter on this map")
+        case (.onThisMap, false): String(localized: "scooters on this map")
+        }
+    }
+}
+
+enum ScooterDockStatus: Equatable, Sendable {
+    case refreshFailed(showing: Date)
+    case offline(showing: Date)
+    case cityTotals
+    case delayed(showing: Date)
+    case live
+    case updatedMinutesAgo(Int)
+    case updatedAt(Date)
+
+    /// Data younger than this reads "Live".
+    static let liveWindow: TimeInterval = 90
+
+    /// Failed refreshes use the warning style.
+    var isWarning: Bool {
+        switch self {
+        case .refreshFailed, .offline: true
+        default: false
+        }
+    }
+
+    /// The green dot in front of "Live".
+    var isLive: Bool { self == .live }
+
+    var text: String {
+        switch self {
+        case let .refreshFailed(date):
+            String(format: String(localized: "Couldn’t refresh · showing %@"), Self.clockTime(date))
+        case let .offline(date):
+            String(format: String(localized: "You’re offline · showing %@"), Self.clockTime(date))
+        case .cityTotals:
+            String(localized: "City totals · refreshed hourly")
+        case let .delayed(date):
+            String(format: String(localized: "Data delayed · showing %@"), Self.clockTime(date))
+        case .live:
+            String(localized: "Live")
+        case let .updatedMinutesAgo(minutes):
+            String(format: String(localized: "Updated %lld min ago"), Int64(minutes))
+        case let .updatedAt(date):
+            String(format: String(localized: "Updated %@"), Self.clockTime(date))
+        }
+    }
+
+    /// "14:02", the time of day in the user's format.
+    static func clockTime(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// The body of the out-of-date card: "Last update 14:02. You’re offline. Check your connection."
+    static func outOfDateBody(_ failure: ScooterLoadFailure, lastUpdate: Date) -> String {
+        "\(String(format: String(localized: "Last update %@."), clockTime(lastUpdate))) \(failure.message)"
+    }
+}
+
+enum ScooterDockNotice: Hashable, Identifiable, Sendable {
+    /// Named providers, in catalogue order; never empty.
+    case providersDown([ScooterProvider])
+    /// Only sources that belong to no known provider failed.
+    case someProvidersDown
+    case truncated(shown: Int, total: Int)
+    case parkingUnavailable
+    case parkingOutOfDate
+
+    var id: Self { self }
+
+    var text: String {
+        switch self {
+        case let .providersDown(providers) where providers.count == 1:
+            String(format: String(localized: "%@ isn’t sharing data right now."), providers[0].name)
+        case let .providersDown(providers) where providers.count == 2:
+            String(
+                format: String(localized: "%1$@ and %2$@ aren’t sharing data right now."),
+                providers[0].name,
+                providers[1].name
+            )
+        case let .providersDown(providers):
+            String(
+                format: String(localized: "%lld providers aren’t sharing data right now."),
+                Int64(providers.count)
+            )
+        case .someProvidersDown:
+            String(localized: "Some providers aren’t sharing data right now.")
+        case let .truncated(shown, total):
+            String(
+                format: String(localized: "Showing %1$@ of %2$@ — zoom in to see all"),
+                shown.formatted(),
+                total.formatted()
+            )
+        case .parkingUnavailable:
+            String(localized: "Parking bays unavailable right now")
+        case .parkingOutOfDate:
+            String(localized: "Parking bays may be out of date")
+        }
+    }
+
+    /// Providers down, then truncation, then parking.
+    static func notices(
+        health: ScooterProviderHealth,
+        metadata: ScooterResponseMetadata,
+        shownCount: Int
+    ) -> [ScooterDockNotice] {
+        var notices: [ScooterDockNotice] = []
+        if !health.downProviders.isEmpty {
+            notices.append(.providersDown(health.downProviders))
+        } else if health.hasUnknownFailures {
+            notices.append(.someProvidersDown)
+        }
+        if metadata.truncated {
+            notices.append(.truncated(shown: shownCount, total: metadata.totalVehicles ?? shownCount))
+        }
+        if metadata.parkingStatus == "failed" || metadata.parkingStatus == "partial" {
+            notices.append(.parkingUnavailable)
+        } else if metadata.parkingStatus == "stale" {
+            notices.append(.parkingOutOfDate)
+        }
+        return notices
+    }
+}
+
+enum ScooterDockHint: Equatable, Sendable {
+    /// City totals are on screen: "Tap a city to see its scooters."
+    case tapCity
+    /// A covered area with no scooters: "No scooters here right now. Zoom out or move the map."
+    case emptyArea
+
+    var text: String {
+        switch self {
+        case .tapCity: String(localized: "Tap a city to see its scooters.")
+        case .emptyArea: String(localized: "No scooters here right now. Zoom out or move the map.")
+        }
+    }
+}
+
+/// The dismissible card under the search bar when locating did not work.
+enum ScooterLocationIssue: Equatable, Sendable {
+    /// Refused: "Location is off", with Open Settings and Search a place.
+    case denied
+    /// Restricted on this device: Search a place only.
+    case restricted
+    /// No position in time: Try again.
+    case notFound
+
+    var title: String? {
+        self == .denied ? String(localized: "Location is off") : nil
+    }
+
+    var message: String {
+        switch self {
+        case .denied: String(localized: "Turn it on in Settings, or search a place instead.")
+        case .restricted: String(localized: "Location is restricted on this device. Search a place instead.")
+        case .notFound: String(localized: "Couldn’t find your location.")
+        }
+    }
+
+    var canOpenSettings: Bool { self == .denied }
+    var canSearchPlace: Bool { self != .notFound }
+    var canRetry: Bool { self == .notFound }
+}
+
+/// What the collapsed search bar shows.
+enum ScooterSearchBarState: Equatable, Sendable {
+    /// Nothing chosen: search icon and "Search city or address".
+    case empty
+    /// Using your location: "Near you" / "Tap to search a city or address".
+    case nearYou
+    /// A searched place: its title / "Scooters near this place", with a clear button.
+    case place(MapDestination)
+    /// A spinner and "Finding your location…".
+    case locating
+
+    var title: String {
+        switch self {
+        case .empty: String(localized: "Search city or address")
+        case .nearYou: String(localized: "Near you")
+        case let .place(destination): destination.title
+        case .locating: String(localized: "Finding your location…")
+        }
+    }
+
+    /// The second line; nil when there is only one.
+    var subtitle: String? {
+        switch self {
+        case .nearYou: String(localized: "Tap to search a city or address")
+        case .place: String(localized: "Scooters near this place")
+        case .empty, .locating: nil
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .nearYou:
+            String(localized: "Showing scooters near you. Search a city or address.")
+        case let .place(destination):
+            String(format: String(localized: "Showing scooters near %@. Search another place."), destination.title)
+        case .empty, .locating:
+            title
+        }
+    }
 }

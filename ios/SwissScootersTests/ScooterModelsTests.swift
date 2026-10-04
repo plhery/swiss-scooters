@@ -423,3 +423,282 @@ final class ScooterModelsTests: XCTestCase {
         )
     }
 }
+
+// Freshness, provider health and the dock.
+extension ScooterModelsTests {
+    func testBatteryLevelIsGoodFromFiftyLowFromTwentyAndCriticalBelow() throws {
+        let levels: [(Int, ScooterBatteryLevel)] = [
+            (100, .good), (50, .good), (49, .low), (20, .low), (19, .critical), (0, .critical)
+        ]
+        for (percent, level) in levels {
+            XCTAssertEqual(ScooterBatteryLevel(percent: percent), level, "\(percent)%")
+        }
+
+        XCTAssertEqual(try makeScooter().batteryLevel, .good)
+        let unknown = Scooter(provider: "lime", latitude: 47.3769, longitude: 8.5417, battery: nil,
+            rangeMeters: nil, vehicleID: "unknown", deepLink: nil, rentalURIs: nil, distanceMeters: nil)
+        XCTAssertNil(unknown.batteryLevel)
+    }
+
+    func testRefreshIsDueAfterTheIntervalOrFiveSecondsBeforeExpiry() {
+        let loaded = Date(timeIntervalSince1970: 1_790_000_000)
+
+        // A normal response: the interval comes first.
+        XCTAssertEqual(
+            ScooterRefreshPolicy.standard.refreshDue(
+                lastSuccess: loaded, refreshAfter: 60, expiresAt: loaded.addingTimeInterval(300)
+            ),
+            loaded.addingTimeInterval(60)
+        )
+        // A healthy response can arrive with seconds left: refresh before it expires.
+        XCTAssertEqual(
+            ScooterRefreshPolicy.standard.refreshDue(
+                lastSuccess: loaded, refreshAfter: 60, expiresAt: loaded.addingTimeInterval(20)
+            ),
+            loaded.addingTimeInterval(15)
+        )
+        // City totals refresh hourly.
+        XCTAssertEqual(
+            ScooterRefreshPolicy.standard.refreshDue(
+                lastSuccess: loaded, refreshAfter: 3_600, expiresAt: loaded.addingTimeInterval(3 * 3_600)
+            ),
+            loaded.addingTimeInterval(3_600)
+        )
+        // Nothing has loaded yet: a refresh is always due.
+        XCTAssertLessThan(
+            ScooterRefreshPolicy.standard.refreshDue(lastSuccess: nil, refreshAfter: 60, expiresAt: nil),
+            loaded
+        )
+    }
+
+    func testAutomaticAttemptsAreNeverCloserThanTenSeconds() {
+        let loaded = Date(timeIntervalSince1970: 1_790_000_000)
+        func nextAttempt(expiresIn: TimeInterval, lastAttemptAfter: TimeInterval) -> TimeInterval {
+            ScooterRefreshPolicy.standard.nextAttempt(
+                lastSuccess: loaded,
+                refreshAfter: 60,
+                expiresAt: loaded.addingTimeInterval(expiresIn),
+                lastAttempt: loaded.addingTimeInterval(lastAttemptAfter)
+            ).timeIntervalSince(loaded)
+        }
+
+        XCTAssertEqual(nextAttempt(expiresIn: 300, lastAttemptAfter: 0), 60)
+        // Seconds from expiry on arrival: still ten seconds after the attempt.
+        XCTAssertEqual(nextAttempt(expiresIn: 8, lastAttemptAfter: 0), 10)
+        // A refresh that failed at 60 s is tried again at 70 s.
+        XCTAssertEqual(nextAttempt(expiresIn: 300, lastAttemptAfter: 60), 70)
+        XCTAssertEqual(ScooterRefreshPolicy.standard.minimumAttemptGap, 10)
+        XCTAssertEqual(ScooterRefreshPolicy.standard.expiryLead, 5)
+        XCTAssertEqual(ScooterRefreshPolicy.standard.defaultRefreshAfter, 60)
+
+        let firstAttempt = loaded
+        XCTAssertEqual(
+            ScooterRefreshPolicy.standard.nextAttempt(
+                lastSuccess: nil, refreshAfter: 60, expiresAt: nil, lastAttempt: firstAttempt
+            ),
+            firstAttempt.addingTimeInterval(10)
+        )
+    }
+
+    func testFailedSourcesBecomeDownProvidersOperatingInTheViewport() {
+        let health = ScooterProviderHealth(
+            failedSources: ["voi_zurich", "Bird_Basel", "velospot", "pony_fr_angers", "city-overview"],
+            operating: [.bolt, .bird, .voi, .publibike]
+        )
+
+        XCTAssertEqual(health.downProviders, [.bird, .voi, .publibike])
+        XCTAssertTrue(health.hasUnknownFailures)
+
+        XCTAssertEqual(
+            ScooterProviderHealth(failedSources: [], operating: ScooterProvider.allCases),
+            .healthy
+        )
+        // A source prefix does not hide the provider behind it.
+        XCTAssertEqual(ScooterProviderHealth.provider(forSource: "france:dott_fr_lyon"), .dott)
+        XCTAssertNil(ScooterProviderHealth.provider(forSource: "national"))
+    }
+
+    func testDockNoticesNameProvidersThenTruncationThenParking() {
+        let metadata = ScooterResponseMetadata(
+            partial: true, failedSources: ["bird_zurich"], truncated: true,
+            totalVehicles: 5_412, parkingStatus: "partial"
+        )
+        let oneDown = ScooterProviderHealth(downProviders: [.bird], hasUnknownFailures: true)
+
+        XCTAssertEqual(
+            ScooterDockNotice.notices(health: oneDown, metadata: metadata, shownCount: 2_000),
+            [.providersDown([.bird]), .truncated(shown: 2_000, total: 5_412), .parkingUnavailable]
+        )
+        XCTAssertEqual(
+            ScooterDockNotice.notices(
+                health: ScooterProviderHealth(downProviders: [], hasUnknownFailures: true),
+                metadata: ScooterResponseMetadata(partial: true, failedSources: ["city-overview"], parkingStatus: "stale"),
+                shownCount: 0
+            ),
+            [.someProvidersDown, .parkingOutOfDate]
+        )
+        XCTAssertTrue(ScooterDockNotice.notices(
+            health: .healthy,
+            metadata: ScooterResponseMetadata(partial: false, failedSources: [], parkingStatus: "fresh"),
+            shownCount: 12
+        ).isEmpty)
+
+        let one = ScooterDockNotice.providersDown([.bird]).text
+        let two = ScooterDockNotice.providersDown([.bird, .dott]).text
+        let many = ScooterDockNotice.providersDown([.bird, .dott, .lime]).text
+        XCTAssertTrue(one.contains("Bird"))
+        XCTAssertTrue(two.contains("Bird") && two.contains("Dott"))
+        XCTAssertTrue(many.contains("3"))
+        XCTAssertFalse(many.contains("Bird"))
+        XCTAssertEqual(Set([one, two, many, ScooterDockNotice.someProvidersDown.text]).count, 4)
+
+        let truncated = ScooterDockNotice.truncated(shown: 2_000, total: 5_412).text
+        XCTAssertTrue(truncated.contains(2_000.formatted()))
+        XCTAssertTrue(truncated.contains(5_412.formatted()))
+        XCTAssertNotEqual(
+            ScooterDockNotice.parkingUnavailable.text,
+            ScooterDockNotice.parkingOutOfDate.text
+        )
+    }
+
+    func testDockStatusPrefersFailureThenCityTotalsThenDelayThenAge() {
+        let updated = Date(timeIntervalSince1970: 1_790_000_000)
+        func summary(
+            failure: ScooterLoadFailure? = nil,
+            overview: Bool = false,
+            delayed: Bool = false
+        ) -> ScooterDockSummary {
+            ScooterDockSummary(
+                count: 22, countContext: .nearby, lastUpdated: updated, refreshFailure: failure,
+                isOverview: overview, isDelayed: delayed, notices: [], hint: nil, chips: []
+            )
+        }
+        func status(after seconds: TimeInterval) -> ScooterDockStatus {
+            summary().status(at: updated.addingTimeInterval(seconds))
+        }
+
+        XCTAssertEqual(status(after: 0), .live)
+        XCTAssertEqual(status(after: 89), .live)
+        XCTAssertEqual(status(after: 90), .updatedMinutesAgo(1))
+        XCTAssertEqual(status(after: 150), .updatedMinutesAgo(2))
+        XCTAssertEqual(status(after: 3_599), .updatedMinutesAgo(59))
+        XCTAssertEqual(status(after: 3_600), .updatedAt(updated))
+        // A clock that runs behind the server still reads as live.
+        XCTAssertEqual(status(after: -30), .live)
+
+        let later = updated.addingTimeInterval(600)
+        XCTAssertEqual(summary(delayed: true).status(at: later), .delayed(showing: updated))
+        XCTAssertEqual(summary(overview: true, delayed: true).status(at: later), .cityTotals)
+        XCTAssertEqual(
+            summary(failure: .offline, overview: true, delayed: true).status(at: later),
+            .offline(showing: updated)
+        )
+        for failure in ScooterLoadFailure.allCases where failure != .offline {
+            XCTAssertEqual(summary(failure: failure).status(at: later), .refreshFailed(showing: updated))
+        }
+        XCTAssertTrue(summary(failure: .busy).showsTryAgain)
+        XCTAssertFalse(summary().showsTryAgain)
+    }
+
+    func testDockStatusTextCarriesTheTimeOrTheMinutes() {
+        let updated = Date(timeIntervalSince1970: 1_790_000_000)
+        let time = ScooterDockStatus.clockTime(updated)
+
+        XCTAssertFalse(time.isEmpty)
+        for status in [
+            ScooterDockStatus.refreshFailed(showing: updated),
+            .offline(showing: updated),
+            .delayed(showing: updated),
+            .updatedAt(updated)
+        ] {
+            XCTAssertTrue(status.text.contains(time), status.text)
+        }
+        XCTAssertTrue(ScooterDockStatus.updatedMinutesAgo(7).text.contains("7"))
+        XCTAssertEqual(ScooterDockStatus.live.text, String(localized: "Live"))
+        XCTAssertEqual(ScooterDockStatus.cityTotals.text, String(localized: "City totals · refreshed hourly"))
+
+        XCTAssertTrue(ScooterDockStatus.live.isLive)
+        XCTAssertFalse(ScooterDockStatus.updatedMinutesAgo(2).isLive)
+        XCTAssertTrue(ScooterDockStatus.refreshFailed(showing: updated).isWarning)
+        XCTAssertTrue(ScooterDockStatus.offline(showing: updated).isWarning)
+        XCTAssertFalse(ScooterDockStatus.delayed(showing: updated).isWarning)
+
+        let body = ScooterDockStatus.outOfDateBody(.offline, lastUpdate: updated)
+        XCTAssertTrue(body.contains(time))
+        XCTAssertTrue(body.hasSuffix(ScooterLoadFailure.offline.message))
+    }
+
+    func testCountLabelsHaveSingularAndPluralFormsForBothContexts() {
+        XCTAssertEqual(ScooterCountContext.nearby.label(for: 1), String(localized: "scooter nearby"))
+        XCTAssertEqual(ScooterCountContext.nearby.label(for: 22), String(localized: "scooters nearby"))
+        XCTAssertEqual(ScooterCountContext.nearby.label(for: 0), String(localized: "scooters nearby"))
+        XCTAssertEqual(ScooterCountContext.onThisMap.label(for: 1), String(localized: "scooter on this map"))
+        XCTAssertEqual(ScooterCountContext.onThisMap.label(for: 2), String(localized: "scooters on this map"))
+        XCTAssertNotEqual(ScooterDockHint.tapCity.text, ScooterDockHint.emptyArea.text)
+    }
+
+    func testClosestCityLabelsShowWholeKilometres() throws {
+        let lungern = GeoPoint(latitude: 46.7741, longitude: 8.1558)
+        let closest = ScooterCityCatalog.nearest(to: lungern, count: 3)
+
+        XCTAssertEqual(closest.map(\.city.name), ["Zug", "Bern", "Grenchen"])
+        let zug = try XCTUnwrap(closest.first)
+        XCTAssertTrue(zug.formattedDistance.contains("52"), zug.formattedDistance)
+        XCTAssertFalse(zug.formattedDistance.contains("52."), zug.formattedDistance)
+        XCTAssertTrue(zug.label.hasPrefix("Zug"))
+        XCTAssertTrue(zug.label.hasSuffix(zug.formattedDistance))
+        XCTAssertFalse(ScooterCityCatalog.contains(lungern))
+
+        let place = zug.city.destination
+        XCTAssertEqual(place.title, "Zug")
+        XCTAssertEqual(place.point, zug.city.center)
+        XCTAssertEqual(place.kind, .city)
+        XCTAssertFalse(place.subtitle.isEmpty)
+        XCTAssertNotEqual(place.subtitle, "CH")
+    }
+
+    func testParkingBayCardNamesTheProviderAndTheRule() {
+        let mandatory = ScooterParking(id: "dott:bay", provider: "dott", name: "Rue Faidherbe",
+            latitude: 50.6365, longitude: 3.0635, mandatory: true)
+        let optional = ScooterParking(id: "lime:bay", provider: "lime", name: "Place",
+            latitude: 50.6365, longitude: 3.0635, mandatory: false)
+
+        XCTAssertEqual(mandatory.providerInfo, .dott)
+        XCTAssertTrue(mandatory.bayTitle.contains("Dott"))
+        XCTAssertTrue(mandatory.footnote.contains("Dott"))
+        XCTAssertNotEqual(mandatory.bayTitle, mandatory.footnote)
+        XCTAssertEqual(mandatory.notice, String(localized: "You must park in a bay in this zone."))
+        XCTAssertEqual(optional.notice, String(localized: "Designated scooter parking."))
+    }
+
+    func testLocationCardsOfferTheActionsThatCanHelp() {
+        XCTAssertNotNil(ScooterLocationIssue.denied.title)
+        XCTAssertTrue(ScooterLocationIssue.denied.canOpenSettings)
+        XCTAssertTrue(ScooterLocationIssue.denied.canSearchPlace)
+        XCTAssertFalse(ScooterLocationIssue.denied.canRetry)
+
+        XCTAssertNil(ScooterLocationIssue.restricted.title)
+        XCTAssertFalse(ScooterLocationIssue.restricted.canOpenSettings)
+        XCTAssertTrue(ScooterLocationIssue.restricted.canSearchPlace)
+
+        XCTAssertNil(ScooterLocationIssue.notFound.title)
+        XCTAssertTrue(ScooterLocationIssue.notFound.canRetry)
+        XCTAssertFalse(ScooterLocationIssue.notFound.canSearchPlace)
+
+        let messages = [ScooterLocationIssue.denied, .restricted, .notFound].map(\.message)
+        XCTAssertEqual(Set(messages).count, 3)
+    }
+
+    func testSearchBarStatesHaveTheirOwnLines() {
+        let place = MapDestination(title: "Zürich HB", point: GeoPoint(latitude: 47.3782, longitude: 8.5402))
+
+        XCTAssertNil(ScooterSearchBarState.empty.subtitle)
+        XCTAssertNil(ScooterSearchBarState.locating.subtitle)
+        XCTAssertNotNil(ScooterSearchBarState.nearYou.subtitle)
+        XCTAssertEqual(ScooterSearchBarState.place(place).title, "Zürich HB")
+        XCTAssertNotNil(ScooterSearchBarState.place(place).subtitle)
+        XCTAssertTrue(ScooterSearchBarState.place(place).accessibilityLabel.contains("Zürich HB"))
+        XCTAssertEqual(place.subtitle, "")
+        XCTAssertEqual(place.kind, .address)
+    }
+}

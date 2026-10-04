@@ -90,6 +90,31 @@ actor ScooterAPI: ScooterAPIClient {
     }
 }
 
+/// Why loading scooters failed. Web and iOS show the same sentence for each reason.
+enum ScooterLoadFailure: String, CaseIterable, Equatable, Sendable {
+    case offline
+    case timeout
+    /// HTTP 429.
+    case busy
+    /// HTTP 5xx.
+    case unavailable
+    case failed
+
+    init(_ error: any Error) {
+        self = (error as? ScooterAPIError)?.loadFailure ?? .failed
+    }
+
+    var message: String {
+        switch self {
+        case .offline: String(localized: "You’re offline. Check your connection.")
+        case .timeout: String(localized: "Scooters took too long to respond.")
+        case .busy: String(localized: "Scooters is busy right now. Try again in a moment.")
+        case .unavailable: String(localized: "Scooters is having trouble. Try again in a moment.")
+        case .failed: String(localized: "Couldn’t load scooters.")
+        }
+    }
+}
+
 enum ScooterAPIError: LocalizedError {
     case invalidURL
     case offline
@@ -102,6 +127,16 @@ enum ScooterAPIError: LocalizedError {
     var statusCode: Int? {
         guard case let .httpStatus(statusCode) = self else { return nil }
         return statusCode
+    }
+
+    var loadFailure: ScooterLoadFailure {
+        switch self {
+        case .offline: .offline
+        case .timedOut: .timeout
+        case .httpStatus(429): .busy
+        case let .httpStatus(statusCode) where (500 ... 599).contains(statusCode): .unavailable
+        default: .failed
+        }
     }
 
     var errorDescription: String? {

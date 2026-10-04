@@ -134,8 +134,9 @@ final class ScooterMapModelTests: XCTestCase {
 
         let loadingFinished = await waitUntil { model.lastUpdated != nil && !model.isLoading }
         XCTAssertTrue(loadingFinished)
+        XCTAssertEqual(model.dockNotices, [.someProvidersDown, .truncated(shown: 1, total: 5_100)])
         let message = try XCTUnwrap(model.dataHealthMessage)
-        XCTAssertEqual(message.components(separatedBy: " · ").count, 3)
+        XCTAssertEqual(message, model.dockNotices.map(\.text).joined(separator: " · "))
         XCTAssertTrue(message.contains(1.formatted()))
         XCTAssertTrue(message.contains(5_100.formatted()))
     }
@@ -204,7 +205,7 @@ final class ScooterMapModelTests: XCTestCase {
         let initialLoadFinished = await waitUntil { model.lastUpdated != nil && !model.isLoading }
         XCTAssertTrue(initialLoadFinished)
 
-        model.setMinimumBattery(53)
+        model.setMinimumBattery(60)
         let filteredLoadFinished = await waitUntil {
             let snapshot = await api.snapshot()
             return snapshot.calls == 2 && !model.isLoading
@@ -213,10 +214,10 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(filteredLoadFinished)
         let snapshot = await api.snapshot()
         XCTAssertEqual(snapshot.lastZoom, 8)
-        XCTAssertEqual(snapshot.lastMinimumBattery, 55)
+        XCTAssertEqual(snapshot.lastMinimumBattery, 60)
     }
 
-    func testBatteryFilterNormalizesValuePersistsItAndClearsHiddenSelection() async throws {
+    func testBatteryFilterSnapsDownToAPresetPersistsItAndClearsHiddenSelection() async throws {
         let scooter = Scooter(
             provider: "lime",
             latitude: 47.3769,
@@ -240,10 +241,15 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(loadingFinished)
 
         model.selectScooter(scooter.id)
-        model.setMinimumBattery(53)
+        model.setMinimumBattery(29)
 
-        XCTAssertEqual(model.minimumBattery, 55)
-        XCTAssertEqual(defaults.integer(forKey: "minimum-battery"), 55)
+        XCTAssertEqual(model.minimumBattery, 0)
+        XCTAssertEqual(model.selectedScooterID, scooter.id)
+
+        model.setMinimumBattery(75)
+
+        XCTAssertEqual(model.minimumBattery, 60)
+        XCTAssertEqual(defaults.integer(forKey: "minimum-battery"), 60)
         XCTAssertNil(model.selectedScooterID)
         XCTAssertTrue(model.mapScooters.isEmpty)
     }
@@ -351,7 +357,7 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertTrue(ScooterLocationPolicy.bestCandidate(in: [fallback, stale, preferred]) === preferred)
     }
 
-    func testUserLocationFocusUsesThreeAdditionalZoomLevels() throws {
+    func testUserLocationFocusShowsAboutThreeHundredFiftyMetres() throws {
         let locationManager = CLLocationManager()
         let model = ScooterMapModel(
             api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
@@ -365,14 +371,14 @@ final class ScooterMapModelTests: XCTestCase {
             verticalAccuracy: 10,
             timestamp: Date()
         )
-        let expectedFocusMeters: CLLocationDistance = 850 / pow(2, 3)
+        let expectedFocusMeters: CLLocationDistance = 350
 
         model.locationManager(locationManager, didUpdateLocations: [location])
 
         let openingFocus = try XCTUnwrap(model.focusRequest)
         XCTAssertEqual(openingFocus.latitudinalMeters, expectedFocusMeters, accuracy: 0.001)
         XCTAssertEqual(openingFocus.longitudinalMeters, expectedFocusMeters, accuracy: 0.001)
-        XCTAssertEqual(model.viewportZoom, 19)
+        XCTAssertEqual(model.viewportZoom, 17)
 
         model.focusOnUser()
 
@@ -521,7 +527,7 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertEqual(model.count(for: .dott), 1)
     }
 
-    func testQuickProviderOrderSurfacesSelectionsThenAvailableProviders() async {
+    func testQuickProviderOrderFollowsCountsAndKeepsCatalogueOrderForTies() async {
         let origin = GeoPoint(latitude: 47.3769, longitude: 8.5417)
         let model = await loadedModel(
             vehicles: [
@@ -535,14 +541,15 @@ final class ScooterMapModelTests: XCTestCase {
             origin: origin
         )
 
-        XCTAssertEqual(Array(model.quickProviderOrder.prefix(4)), [.bird, .bolt, .dott, .lime])
+        XCTAssertEqual(Array(model.quickProviderOrder.prefix(4)), [.bolt, .bird, .dott, .lime])
+        XCTAssertEqual(Array(model.quickProviderOrder.dropFirst(4).prefix(2)), [.hopp, .voi])
 
+        // Choosing providers highlights their chips without moving them.
         model.showProviders([.lime, .voi])
 
-        XCTAssertEqual(
-            Array(model.quickProviderOrder.prefix(5)),
-            [.lime, .voi, .bird, .bolt, .dott]
-        )
+        XCTAssertEqual(Array(model.quickProviderOrder.prefix(4)), [.bolt, .bird, .dott, .lime])
+        XCTAssertEqual(model.dockChips.filter(\.isSelected).map(\.provider), [.lime, .voi])
+        XCTAssertEqual(model.dockChips.first?.count, 2)
     }
 
     func testProviderChoicePersistsAcrossModelInstances() {
@@ -729,6 +736,7 @@ final class ScooterMapModelTests: XCTestCase {
 
 private actor StubScooterAPI: ScooterAPIClient {
     private var response: ScooterResponse
+    private var failure: ScooterAPIError?
     private let delaysFirstRequest: Bool
     private var calls = 0
     private var cancellations = 0
@@ -753,11 +761,16 @@ private actor StubScooterAPI: ScooterAPIClient {
                 throw error
             }
         }
+        if let failure { throw failure }
         return response
     }
 
     func setResponse(_ response: ScooterResponse) {
         self.response = response
+    }
+
+    func setFailure(_ failure: ScooterAPIError?) {
+        self.failure = failure
     }
 
     func snapshot() -> (
@@ -817,27 +830,965 @@ private actor CancelledAPI: ScooterAPIClient {
 }
 
 
+/// Holds a request until the test releases it, optionally with a failure.
+private actor HeldScooterAPI: ScooterAPIClient {
+    private let response: ScooterResponse
+    private var calls = 0
+    private var holdsNextRequest = false
+    private var held: CheckedContinuation<Void, Never>?
+    private var heldFailure: ScooterAPIError?
+
+    init(response: ScooterResponse) {
+        self.response = response
+    }
+
+    var isHolding: Bool { held != nil }
+
+    func callCount() -> Int { calls }
+
+    func holdNextRequest() {
+        holdsNextRequest = true
+    }
+
+    func release(failing failure: ScooterAPIError? = nil) {
+        heldFailure = failure
+        held?.resume()
+        held = nil
+    }
+
+    func scooters(bounds: GeoBounds, zoom: Int, minimumBattery: Int) async throws -> ScooterResponse {
+        calls += 1
+        if holdsNextRequest {
+            holdsNextRequest = false
+            await withCheckedContinuation { held = $0 }
+            if let heldFailure {
+                self.heldFailure = nil
+                throw heldFailure
+            }
+        }
+        return response
+    }
+}
+
+private final class TestClock {
+    var now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    func advance(_ seconds: TimeInterval) {
+        now = now.addingTimeInterval(seconds)
+    }
+}
+
+private final class StubLocationManager: CLLocationManager {
+    private let status: CLAuthorizationStatus
+
+    init(status: CLAuthorizationStatus) {
+        self.status = status
+        super.init()
+    }
+
+    override var authorizationStatus: CLAuthorizationStatus { status }
+    override var location: CLLocation? { nil }
+    override func requestWhenInUseAuthorization() {}
+    override func startUpdatingLocation() {}
+    override func startUpdatingHeading() {}
+    override func stopUpdatingHeading() {}
+}
+
+// Freshness, refresh and failures.
 extension ScooterMapModelTests {
-    func testExpiresVehiclesAndParkingWithoutWaitingForAnotherSuccessfulResponse() async {
-        let now = Date()
-        let formatter = ISO8601DateFormatter()
-        let scooter = scooter(id: "one", provider: "lime")
-        let location = ScooterParking(id: "bay", provider: "lime", name: "Bay", latitude: 47.377, longitude: 8.542, mandatory: true)
-        let response = ScooterResponse(vehicles: [scooter], meta: ScooterResponseMetadata(
-            partial: false, failedSources: [], generatedAt: formatter.string(from: now),
-            expiresAt: formatter.string(from: now.addingTimeInterval(60)),
-            parkingExpiresAt: formatter.string(from: now.addingTimeInterval(120))), parking: [location])
-        let model = makeModel(api: StubScooterAPI(response: response))
+    func testFirstLoadFailureIsReportedWithItsReasonWhileTheDockWaits() async {
+        let api = StubScooterAPI(response: ScooterResponse(vehicles: []))
+        await api.setFailure(.httpStatus(503))
+        let model = makeModel(api: api)
+
+        XCTAssertEqual(model.dock, .finding(chips: []))
+
+        model.refresh()
+        let failed = await waitUntil { model.loadIssue != nil && !model.isLoading }
+
+        XCTAssertTrue(failed)
+        XCTAssertEqual(model.loadIssue, .firstLoadFailed(.unavailable))
+        XCTAssertEqual(model.errorMessage, ScooterLoadFailure.unavailable.message)
+        XCTAssertEqual(model.dock, .waiting)
+        XCTAssertNil(model.lastUpdated)
+
+        await api.setFailure(nil)
+        model.retryLoad()
+        let recovered = await waitUntil { model.loadIssue == nil && model.lastUpdated != nil }
+
+        XCTAssertTrue(recovered)
+        XCTAssertNil(model.errorMessage)
+        guard case .summary = model.dock else { return XCTFail("Expected the dock summary") }
+    }
+
+    func testFailedRefreshKeepsValidDataAndNamesTheTimeStillShown() async throws {
+        let clock = TestClock()
+        let api = StubScooterAPI(response: timedResponse(generatedAt: clock.now, expiresIn: 300))
+        let model = makeModel(api: api, clock: clock)
         model.refresh()
         let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
         XCTAssertTrue(loaded)
-        model.selectScooter(scooter.id)
-        model.expireDataIfNeeded(now: now.addingTimeInterval(61))
+        let shownAt = try XCTUnwrap(model.lastUpdated)
+        let revision = model.mapScootersRevision
+
+        await api.setFailure(.offline)
+        clock.advance(61)
+        model.autoRefreshIfNeeded()
+        let failed = await waitUntil { model.loadIssue != nil && !model.isLoading }
+
+        XCTAssertTrue(failed)
+        XCTAssertEqual(model.loadIssue, .refreshFailed(.offline, showing: shownAt))
+        XCTAssertEqual(model.mapScooters.count, 1)
+        XCTAssertEqual(model.mapScootersRevision, revision, "Markers stay exactly as they are")
+        guard case let .summary(offline) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(offline.status(at: clock.now), .offline(showing: shownAt))
+        XCTAssertTrue(offline.status(at: clock.now).isWarning)
+        XCTAssertTrue(offline.showsTryAgain)
+        XCTAssertEqual(offline.count, 1)
+
+        await api.setFailure(.timedOut)
+        model.retryLoad()
+        let failedAgain = await waitUntil {
+            model.loadIssue == .refreshFailed(.timeout, showing: shownAt) && !model.isLoading
+        }
+
+        XCTAssertTrue(failedAgain)
+        guard case let .summary(timedOut) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(timedOut.status(at: clock.now), .refreshFailed(showing: shownAt))
+
+        await api.setFailure(nil)
+        model.retryLoad()
+        let recovered = await waitUntil { model.loadIssue == nil && !model.isLoading }
+
+        XCTAssertTrue(recovered)
+        guard case let .summary(healthy) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertFalse(healthy.showsTryAgain)
+        XCTAssertFalse(healthy.status(at: clock.now).isWarning)
+    }
+
+    func testExpiredDataIsClearedOnlyWhenTheRefreshThatFollowsFails() async throws {
+        let clock = TestClock()
+        let generatedAt = clock.now
+        let api = StubScooterAPI(response: timedResponse(generatedAt: generatedAt, expiresIn: 60))
+        let model = makeModel(api: api, clock: clock)
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        model.selectScooter(try XCTUnwrap(model.mapScooters.first?.id))
+
+        // Passing the expiry clears nothing by itself.
+        clock.advance(61)
+        XCTAssertEqual(model.mapScooters.count, 1)
+        XCTAssertNotNil(model.selectedScooter)
+        XCTAssertNil(model.loadIssue)
+
+        await api.setFailure(.timedOut)
+        model.autoRefreshIfNeeded()
+        let expired = await waitUntil { model.loadIssue != nil && !model.isLoading }
+
+        XCTAssertTrue(expired)
+        XCTAssertEqual(model.loadIssue, .outOfDate(.timeout, lastUpdate: generatedAt))
         XCTAssertTrue(model.mapScooters.isEmpty)
-        XCTAssertNil(model.selectedScooter)
-        XCTAssertEqual(model.parking, [location])
-        XCTAssertNotNil(model.errorMessage)
-        model.expireDataIfNeeded(now: now.addingTimeInterval(121))
+        XCTAssertNil(model.selectedScooterID)
+        XCTAssertEqual(model.lastUpdated, generatedAt)
+        XCTAssertEqual(model.dock, .outOfDate(.timeout, lastUpdate: generatedAt))
+
+        // The reason follows the latest attempt; the last update does not move.
+        await api.setFailure(.offline)
+        model.retryLoad()
+        let stillOutOfDate = await waitUntil {
+            model.loadIssue == .outOfDate(.offline, lastUpdate: generatedAt) && !model.isLoading
+        }
+        XCTAssertTrue(stillOutOfDate)
+
+        await api.setFailure(nil)
+        model.retryLoad()
+        let recovered = await waitUntil { model.loadIssue == nil && !model.isLoading }
+
+        XCTAssertTrue(recovered)
+        XCTAssertEqual(model.mapScooters.count, 1)
+        guard case .summary = model.dock else { return XCTFail("Expected the dock summary") }
+    }
+
+    func testResponseIsNeverAnErrorBecauseOfItsOwnTimestamps() async {
+        let clock = TestClock()
+        // Observed six minutes ago, so it arrives already past its own expiry.
+        let api = StubScooterAPI(response: timedResponse(
+            generatedAt: clock.now.addingTimeInterval(-360),
+            expiresIn: 300
+        ))
+        let model = makeModel(api: api, clock: clock)
+
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+
+        XCTAssertTrue(loaded)
+        XCTAssertNil(model.loadIssue)
+        XCTAssertEqual(model.mapScooters.count, 1)
+        guard case let .summary(summary) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(summary.status(at: clock.now), .updatedMinutesAgo(6))
+
+        // The next attempt follows as soon as the gap between attempts allows.
+        clock.advance(9)
+        model.autoRefreshIfNeeded()
+        await settle()
+        var calls = await api.snapshot().calls
+        XCTAssertEqual(calls, 1)
+
+        clock.advance(1)
+        model.autoRefreshIfNeeded()
+        let refreshed = await waitUntil { await api.snapshot().calls == 2 && !model.isLoading }
+
+        XCTAssertTrue(refreshed)
+        calls = await api.snapshot().calls
+        XCTAssertEqual(calls, 2)
+        XCTAssertNil(model.loadIssue)
+        XCTAssertEqual(model.mapScooters.count, 1)
+    }
+
+    func testAutomaticRefreshWaitsForTheIntervalOrTheApproachingExpiry() async {
+        let clock = TestClock()
+        let api = StubScooterAPI(response: timedResponse(generatedAt: clock.now, expiresIn: 300))
+        let model = makeModel(api: api, clock: clock)
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        clock.advance(59)
+        model.autoRefreshIfNeeded()
+        await settle()
+        var calls = await api.snapshot().calls
+        XCTAssertEqual(calls, 1)
+
+        clock.advance(1)
+        model.autoRefreshIfNeeded()
+        let refreshedAfterInterval = await waitUntil { await api.snapshot().calls == 2 && !model.isLoading }
+        XCTAssertTrue(refreshedAfterInterval)
+
+        // Data that expires sooner is refreshed five seconds before it does.
+        await api.setResponse(timedResponse(generatedAt: clock.now, expiresIn: 40))
+        model.refresh()
+        let reloaded = await waitUntil { await api.snapshot().calls == 3 && !model.isLoading }
+        XCTAssertTrue(reloaded)
+
+        clock.advance(34)
+        model.autoRefreshIfNeeded()
+        await settle()
+        calls = await api.snapshot().calls
+        XCTAssertEqual(calls, 3)
+
+        clock.advance(1)
+        model.autoRefreshIfNeeded()
+        let refreshedBeforeExpiry = await waitUntil { await api.snapshot().calls == 4 && !model.isLoading }
+        XCTAssertTrue(refreshedBeforeExpiry)
+    }
+
+    func testAutomaticRetriesKeepTenSecondsBetweenAttempts() async {
+        let clock = TestClock()
+        let api = StubScooterAPI(response: ScooterResponse(vehicles: []))
+        await api.setFailure(.httpStatus(429))
+        let model = makeModel(api: api, clock: clock)
+        model.refresh()
+        let failed = await waitUntil { model.loadIssue == .firstLoadFailed(.busy) && !model.isLoading }
+        XCTAssertTrue(failed)
+
+        clock.advance(9)
+        model.autoRefreshIfNeeded()
+        await settle()
+        let calls = await api.snapshot().calls
+        XCTAssertEqual(calls, 1)
+
+        clock.advance(1)
+        model.autoRefreshIfNeeded()
+        let retried = await waitUntil { await api.snapshot().calls == 2 && !model.isLoading }
+        XCTAssertTrue(retried)
+    }
+
+    func testReturningToTheForegroundRefreshesAtOnceWhenARefreshIsDue() async {
+        let clock = TestClock()
+        let api = StubScooterAPI(response: timedResponse(generatedAt: clock.now, expiresIn: 300))
+        let model = makeModel(api: api, clock: clock)
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        // Nothing refreshes while the app is in the background.
+        model.becameInactive()
+        clock.advance(61)
+        model.autoRefreshIfNeeded()
+        await settle()
+        let calls = await api.snapshot().calls
+        XCTAssertEqual(calls, 1)
+
+        await api.setFailure(.offline)
+        model.becameActive()
+        let refreshedOnReturn = await waitUntil { await api.snapshot().calls == 2 && !model.isLoading }
+
+        XCTAssertTrue(refreshedOnReturn)
+        XCTAssertEqual(model.mapScooters.count, 1, "The old data stays until it has expired")
+
+        // A return to the foreground does not wait for the gap between attempts.
+        model.becameInactive()
+        clock.advance(2)
+        model.becameActive()
+        let retriedOnReturn = await waitUntil { await api.snapshot().calls == 3 && !model.isLoading }
+        XCTAssertTrue(retriedOnReturn)
+
+        // Nothing is due right after a successful load.
+        await api.setFailure(nil)
+        model.retryLoad()
+        let recovered = await waitUntil { await api.snapshot().calls == 4 && model.loadIssue == nil && !model.isLoading }
+        XCTAssertTrue(recovered)
+        model.becameInactive()
+        clock.advance(30)
+        model.becameActive()
+        await settle()
+        let callsAfterEarlyReturn = await api.snapshot().calls
+        XCTAssertEqual(callsAfterEarlyReturn, 4)
+    }
+
+    func testExpiryWaitsForTheRequestInFlightBeforeAnythingIsCleared() async {
+        let clock = TestClock()
+        let generatedAt = clock.now
+        let api = HeldScooterAPI(response: timedResponse(generatedAt: generatedAt, expiresIn: 60))
+        let model = makeModel(api: api, clock: clock)
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        await api.holdNextRequest()
+        clock.advance(56)
+        model.autoRefreshIfNeeded()
+        let inFlight = await waitUntil { await api.isHolding }
+        XCTAssertTrue(inFlight)
+
+        // The data expires while that request is still out: no second request, nothing cleared.
+        clock.advance(5)
+        model.autoRefreshIfNeeded()
+        await settle()
+        let calls = await api.callCount()
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(model.mapScooters.count, 1)
+        XCTAssertNil(model.loadIssue)
+
+        await api.release(failing: .offline)
+        let cleared = await waitUntil { model.loadIssue != nil && !model.isLoading }
+
+        XCTAssertTrue(cleared)
+        XCTAssertEqual(model.loadIssue, .outOfDate(.offline, lastUpdate: generatedAt))
+        XCTAssertTrue(model.mapScooters.isEmpty)
+    }
+
+    func testModelRetriesByItselfWhileActiveAndWaitsWhileInTheBackground() async {
+        let api = StubScooterAPI(response: ScooterResponse(vehicles: [scooter(id: "one", provider: "lime")]))
+        await api.setFailure(.timedOut)
+        let model = ScooterMapModel(
+            api: api,
+            locationManager: CLLocationManager(),
+            defaults: isolatedDefaults(),
+            refreshPolicy: ScooterRefreshPolicy(minimumAttemptGap: 0.05)
+        )
+
+        // Nothing nudges the model: it keeps trying on its own.
+        model.refresh()
+        let retried = await waitUntil { await api.snapshot().calls >= 3 }
+        XCTAssertTrue(retried)
+        XCTAssertEqual(model.loadIssue, .firstLoadFailed(.timeout))
+
+        // In the background it stops.
+        model.becameInactive()
+        await settle()
+        let callsInBackground = await api.snapshot().calls
+        try? await Task.sleep(for: .milliseconds(200))
+        let callsLater = await api.snapshot().calls
+        XCTAssertEqual(callsLater, callsInBackground)
+
+        // Back in the foreground it tries at once, and a success ends the retries.
+        await api.setFailure(nil)
+        model.becameActive()
+        let recovered = await waitUntil { model.loadIssue == nil && model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(recovered)
+        XCTAssertEqual(model.mapScooters.count, 1)
+        let callsAfterRecovery = await api.snapshot().calls
+        XCTAssertEqual(callsAfterRecovery, callsLater + 1)
+        try? await Task.sleep(for: .milliseconds(200))
+        let callsAtRest = await api.snapshot().calls
+        XCTAssertEqual(callsAtRest, callsAfterRecovery)
+    }
+
+    func testParkingExpiresOnItsOwnScheduleWhileScootersStay() async {
+        let clock = TestClock()
+        let bay = ScooterParking(id: "bay", provider: "lime", name: "Bay",
+            latitude: 47.3769, longitude: 8.5417, mandatory: true)
+        let api = StubScooterAPI(response: timedResponse(
+            generatedAt: clock.now, expiresIn: 60, parking: [bay], parkingExpiresIn: 120
+        ))
+        let model = makeModel(api: api, clock: clock)
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        model.selectParking(bay.id)
+        XCTAssertEqual(model.selectedParking, bay)
+
+        clock.advance(119)
+        model.expireParkingIfNeeded()
+        XCTAssertEqual(model.parking, [bay])
+        XCTAssertEqual(model.mapScooters.count, 1)
+
+        clock.advance(2)
+        model.expireParkingIfNeeded()
         XCTAssertTrue(model.parking.isEmpty)
+        XCTAssertNil(model.selectedParkingID)
+        XCTAssertEqual(model.mapScooters.count, 1)
+        XCTAssertNil(model.loadIssue)
+    }
+}
+
+// Provider health and the dock.
+extension ScooterMapModelTests {
+    func testDownProvidersAreNamedOnlyWhereTheyOperateAndLeadTheChips() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [
+                scooter(id: "voi", provider: "voi"),
+                scooter(id: "lime-one", provider: "lime"),
+                scooter(id: "lime-two", provider: "lime")
+            ],
+            meta: ScooterResponseMetadata(
+                partial: true,
+                failedSources: ["bird_zurich", "pony_fr_angers", "city-overview"]
+            )
+        ))
+        let model = makeModel(api: api)
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        XCTAssertEqual(
+            model.providerHealth,
+            ScooterProviderHealth(downProviders: [.bird], hasUnknownFailures: true)
+        )
+        XCTAssertEqual(model.dockNotices, [.providersDown([.bird])])
+
+        let chips = model.dockChips
+        XCTAssertEqual(chips.prefix(3).map(\.provider), [.bird, .lime, .voi])
+        XCTAssertEqual(chips.dropFirst(3).map(\.provider), [.bolt, .dott, .hopp, .publibike])
+        XCTAssertEqual(chips.filter(\.isDown).map(\.provider), [.bird])
+        XCTAssertEqual(chips[0].count, 0)
+        XCTAssertFalse(chips[0].downLabel.isEmpty)
+        XCTAssertEqual(chips[1].count, 2)
+        XCTAssertEqual(model.quickProviderOrder, chips.map(\.provider))
+
+        // A chip that is down is never drawn as selected.
+        model.showProviders([.bird, .lime])
+        XCTAssertEqual(model.dockChips.filter(\.isSelected).map(\.provider), [.lime])
+        XCTAssertEqual(model.dockChips.filter(\.isEnabled).map(\.provider), [.bird, .lime])
+
+        // The filter sheet lists the same providers in catalogue order.
+        XCTAssertEqual(model.filterProviders.map(\.provider), model.availableProviders)
+        XCTAssertEqual(model.filterProviders.filter(\.isDown).map(\.provider), [.bird])
+        XCTAssertEqual(model.filterProviders.filter(\.isEnabled).map(\.provider), [.bird, .lime])
+    }
+
+    func testProviderWithAFailedFeedAndScootersInViewKeepsItsCount() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [scooter(id: "lime", provider: "lime")],
+            meta: ScooterResponseMetadata(partial: true, failedSources: ["national:lime_zurich"])
+        ))
+        let model = makeModel(api: api)
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        XCTAssertEqual(model.providerHealth.downProviders, [.lime])
+        XCTAssertFalse(model.providerHealth.hasUnknownFailures)
+        XCTAssertEqual(model.dockNotices, [.providersDown([.lime])])
+        XCTAssertTrue(model.dockChips.allSatisfy { !$0.isDown })
+        XCTAssertEqual(model.dockChips.first?.provider, .lime)
+    }
+
+    func testDockCountsScootersNearbyWhileTheOriginIsOnScreen() async throws {
+        let origin = GeoPoint(latitude: 47.3769, longitude: 8.5417)
+        let model = await loadedModel(vehicles: [scooter(id: "one", provider: "lime")], origin: origin)
+        let lastUpdated = try XCTUnwrap(model.lastUpdated)
+
+        guard case let .summary(nearby) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(nearby.count, 1)
+        XCTAssertEqual(nearby.countContext, .nearby)
+        XCTAssertEqual(nearby.countLabel, String(localized: "scooter nearby"))
+        XCTAssertEqual(nearby.status(at: lastUpdated.addingTimeInterval(30)), .live)
+        XCTAssertNil(nearby.hint)
+        XCTAssertFalse(nearby.showsTryAgain)
+
+        // A chosen place takes over as the origin, and this one is off screen.
+        model.focusOnAddress(MapDestination(
+            title: "Berlin",
+            point: GeoPoint(latitude: 52.52, longitude: 13.405)
+        ))
+        guard case let .summary(elsewhere) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(elsewhere.countContext, .onThisMap)
+        XCTAssertEqual(elsewhere.countLabel, String(localized: "scooter on this map"))
+
+        model.clearAddressSearch()
+        guard case let .summary(nearbyAgain) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(nearbyAgain.countContext, .nearby)
+
+        model.userLocation = nil
+        guard case let .summary(withoutOrigin) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(withoutOrigin.countContext, .onThisMap)
+    }
+
+    func testCityTotalsShowTheirOwnStatusAndHint() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [],
+            clusters: [ScooterCluster(id: "city:ch:zurich", latitude: 47.38, longitude: 8.54,
+                count: 100, providers: ["lime": 80, "bird": 20], city: "Zürich")],
+            meta: ScooterResponseMetadata(partial: false, stale: true, failedSources: [],
+                mode: "clusters", zoom: 8, overview: true, refreshAfterSeconds: 3_600)
+        ))
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+
+        XCTAssertTrue(loaded)
+        guard case let .summary(summary) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(summary.count, 100)
+        XCTAssertEqual(summary.status(at: .distantFuture), .cityTotals)
+        XCTAssertEqual(summary.hint, .tapCity)
+        XCTAssertEqual(summary.chips.prefix(2).map(\.provider), [.lime, .bird])
+    }
+
+    func testDelayedDataSaysWhichTimeItShows() async throws {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [scooter(id: "one", provider: "lime")],
+            meta: ScooterResponseMetadata(partial: false, stale: true, failedSources: [])
+        ))
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+
+        XCTAssertTrue(loaded)
+        let lastUpdated = try XCTUnwrap(model.lastUpdated)
+        guard case let .summary(summary) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(summary.status(at: lastUpdated), .delayed(showing: lastUpdated))
+        XCTAssertFalse(summary.showsTryAgain)
+    }
+
+    func testOutsideCoverageOffersTheThreeClosestCities() async {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+
+        model.updateViewport(lungernRegion, zoom: 14)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+
+        XCTAssertTrue(loaded)
+        XCTAssertTrue(model.availableProviders.isEmpty)
+        guard case let .outsideCoverage(cities) = model.dock else {
+            return XCTFail("Expected the outside-coverage card")
+        }
+        XCTAssertEqual(cities.map(\.city.name), ["Zug", "Bern", "Grenchen"])
+        XCTAssertEqual(cities.map { Int(($0.distanceMeters / 1_000).rounded()) }, [52, 57, 73])
+        XCTAssertEqual(cities, model.closestCities)
+
+        // A chip flies to the city; it does not become the chosen place.
+        model.focusOnCity(cities[1].city)
+        XCTAssertEqual(model.focusRequest?.point, cities[1].city.center)
+        XCTAssertNil(model.searchedDestination)
+        XCTAssertTrue(model.recentPlaces.isEmpty)
+    }
+
+    func testFiltersThatHideEverythingReportWhatIsHidden() async {
+        let api = StubScooterAPI(response: ScooterResponse(vehicles: [
+            scooter(id: "lime-low", provider: "lime", battery: 40),
+            scooter(id: "lime-high", provider: "lime", battery: 90),
+            scooter(id: "bird", provider: "bird", battery: 70)
+        ]))
+        let model = makeModel(api: api)
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(model.showResultsTitle, ScooterFiltering.showResultsTitle(count: 3))
+
+        model.showProviders([.voi])
+        XCTAssertEqual(model.dock, .filtersHideEverything(ScooterFilterSummary(
+            hiddenCount: 3, providers: [.voi], minimumBattery: nil
+        )))
+
+        model.showProviders([.bird])
+        model.setMinimumBattery(80)
+        guard case let .filtersHideEverything(summary) = model.dock else {
+            return XCTFail("Expected the hidden-by-filters card")
+        }
+        XCTAssertEqual(summary, ScooterFilterSummary(hiddenCount: 3, providers: [.bird], minimumBattery: 80))
+        XCTAssertEqual(summary.parts.count, 2)
+        XCTAssertEqual(model.showResultsTitle, ScooterFiltering.showResultsTitle(count: 0))
+
+        model.resetFilters()
+        guard case let .summary(all) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(all.count, 3)
+        XCTAssertNil(all.hint)
+
+        // A list the server cut short cannot say how many scooters are here.
+        await api.setResponse(ScooterResponse(
+            vehicles: [scooter(id: "lime", provider: "lime")],
+            meta: ScooterResponseMetadata(partial: false, failedSources: [], truncated: true, totalVehicles: 4_000)
+        ))
+        model.refresh()
+        let reloaded = await waitUntil { model.responseMetadata?.truncated == true && !model.isLoading }
+        XCTAssertTrue(reloaded)
+        model.showProviders([.voi])
+        XCTAssertEqual(model.dock, .filtersHideEverything(ScooterFilterSummary(
+            hiddenCount: nil, providers: [.voi], minimumBattery: nil
+        )))
+    }
+
+    func testClusteredBatteryFilterCannotCountWhatItHides() async {
+        let cluster = ScooterCluster(id: "12:1:1", latitude: 47.3769, longitude: 8.5417,
+            count: 10, providers: ["lime": 10])
+        let meta = ScooterResponseMetadata(partial: false, failedSources: [], mode: "clusters", zoom: 12)
+        let api = StubScooterAPI(response: ScooterResponse(vehicles: [], clusters: [cluster], meta: meta))
+        let model = makeModel(api: api)
+        model.updateViewport(zurichRegion, zoom: 12)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(model.visibleCount, 10)
+
+        // Only the provider filter is active, so every scooter here is known.
+        model.showProviders([.voi])
+        XCTAssertEqual(model.dock, .filtersHideEverything(ScooterFilterSummary(
+            hiddenCount: 10, providers: [.voi], minimumBattery: nil
+        )))
+        model.showAllProviders()
+
+        await api.setResponse(ScooterResponse(vehicles: [], meta: meta))
+        model.setMinimumBattery(80)
+        let filtered = await waitUntil { await api.snapshot().calls == 2 && !model.isLoading }
+
+        XCTAssertTrue(filtered)
+        let summary = ScooterFilterSummary(hiddenCount: nil, providers: [], minimumBattery: 80)
+        XCTAssertEqual(model.dock, .filtersHideEverything(summary))
+        XCTAssertEqual(summary.title, String(localized: "No scooters match your filters here"))
+        XCTAssertEqual(summary.showAllTitle, String(localized: "Show all"))
+    }
+
+    func testEmptyCoveredAreaSaysSoOnlyOnceItsDataHasLoaded() async {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        guard case let .summary(empty) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(empty.count, 0)
+        XCTAssertEqual(empty.hint, .emptyArea)
+        XCTAssertEqual(empty.countContext, .onThisMap)
+        XCTAssertFalse(empty.chips.isEmpty)
+
+        // Filters that would hide nothing here are not blamed for the empty map.
+        model.showProviders([.voi])
+        guard case let .summary(filtered) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(filtered.hint, .emptyArea)
+        model.showAllProviders()
+
+        // Another covered area whose data has not arrived yet has no count to show.
+        model.viewport = GeoBounds(south: 46.94, west: 7.43, north: 46.96, east: 7.46)
+        XCTAssertEqual(model.dock, .finding(chips: model.dockChips))
+        XCTAssertFalse(model.dockChips.isEmpty)
+    }
+
+    func testSelectingAParkingBayAndAScooterAreMutuallyExclusive() async throws {
+        let bay = ScooterParking(id: "lime:bay", provider: "lime", name: "Bay",
+            latitude: 47.3769, longitude: 8.5417, mandatory: false)
+        let parked = scooter(id: "one", provider: "lime")
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [parked], parking: [bay])))
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        model.selectScooter(parked.id)
+        XCTAssertEqual(model.dock, .scooter(parked))
+
+        model.selectParking(bay.id)
+        XCTAssertNil(model.selectedScooterID)
+        XCTAssertEqual(model.selectedParking, bay)
+        XCTAssertEqual(model.dock, .parking(bay))
+
+        model.selectScooter(parked.id)
+        XCTAssertNil(model.selectedParkingID)
+        XCTAssertEqual(model.dock, .scooter(parked))
+
+        model.selectParking(bay.id)
+        model.clearSelection()
+        XCTAssertNil(model.selectedParkingID)
+        XCTAssertNil(model.selectedScooterID)
+        guard case .summary = model.dock else { return XCTFail("Expected the dock summary") }
+
+        // Without an origin the card shows the name alone.
+        XCTAssertEqual(model.parkingSubtitle(for: bay), bay.name)
+        XCTAssertNil(model.approximateWalkingMinutes(to: bay))
+        model.userLocation = GeoPoint(latitude: 47.3779, longitude: 8.5417)
+        XCTAssertEqual(model.approximateWalkingMinutes(to: bay), 2)
+        XCTAssertTrue(model.parkingSubtitle(for: bay).hasPrefix(bay.name))
+        XCTAssertNotEqual(model.parkingSubtitle(for: bay), bay.name)
+
+        // A bay that leaves the map is no longer selected.
+        model.selectParking(bay.id)
+        model.toggle(provider: .lime)
+        XCTAssertNil(model.selectedParkingID)
+        XCTAssertNil(model.selectedParking)
+    }
+}
+
+// Location, search, filters and settings.
+extension ScooterMapModelTests {
+    func testLocatingWithoutAFixInTimeReportsNotFoundUntilDismissedOrRetried() async {
+        let manager = StubLocationManager(status: .authorizedWhenInUse)
+        let defaults = isolatedDefaults()
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: manager,
+            defaults: defaults,
+            locationTimeout: .milliseconds(50)
+        )
+        XCTAssertEqual(model.searchBarState, .empty)
+        XCTAssertFalse(model.hasLocatedOnce)
+
+        model.focusOnUser()
+        XCTAssertTrue(model.isLocating)
+        XCTAssertEqual(model.searchBarState, .locating)
+        XCTAssertNil(model.locationIssue)
+
+        let timedOut = await waitUntil { model.locationIssue == .notFound }
+        XCTAssertTrue(timedOut)
+        XCTAssertFalse(model.isLocating)
+        XCTAssertFalse(model.hasLocatedOnce)
+        XCTAssertNil(model.locationAuthorizationIssue)
+
+        model.dismissLocationIssue()
+        XCTAssertNil(model.locationIssue)
+
+        // The next attempt starts clean and brings the card back if it fails again.
+        model.focusOnUser()
+        XCTAssertNil(model.locationIssue)
+        let timedOutAgain = await waitUntil { model.locationIssue == .notFound }
+        XCTAssertTrue(timedOutAgain)
+
+        model.locationManager(manager, didUpdateLocations: [CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 47.3769, longitude: 8.5417),
+            altitude: 0,
+            horizontalAccuracy: 25,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )])
+
+        XCTAssertNil(model.locationIssue)
+        XCTAssertTrue(model.hasLocatedOnce)
+        XCTAssertTrue(defaults.bool(forKey: "has-located-once"))
+        XCTAssertEqual(model.focusRequest?.latitudinalMeters, 350)
+        XCTAssertEqual(model.focusRequest?.longitudinalMeters, 350)
+        XCTAssertEqual(model.searchBarState, .nearYou)
+
+        let restored = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: StubLocationManager(status: .denied),
+            defaults: defaults
+        )
+        XCTAssertTrue(restored.hasLocatedOnce)
+    }
+
+    func testRefusedLocationShowsADismissibleCardUntilTheNextAttempt() {
+        let manager = StubLocationManager(status: .denied)
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: manager,
+            defaults: isolatedDefaults()
+        )
+
+        // Opening the app is not a locate attempt, so nothing is shown.
+        model.start()
+        model.locationManagerDidChangeAuthorization(manager)
+        XCTAssertNil(model.locationIssue)
+
+        model.focusOnUser()
+        XCTAssertEqual(model.locationIssue, .denied)
+        XCTAssertEqual(model.locationAuthorizationIssue, .denied)
+        XCTAssertFalse(model.isLocating)
+        XCTAssertEqual(model.searchBarState, .empty)
+
+        model.dismissLocationIssue()
+        XCTAssertNil(model.locationIssue)
+        model.locationManagerDidChangeAuthorization(manager)
+        XCTAssertNil(model.locationIssue, "An unchanged status is not a new attempt")
+
+        model.focusOnUser()
+        XCTAssertEqual(model.locationIssue, .denied)
+
+        let restricted = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: StubLocationManager(status: .restricted),
+            defaults: isolatedDefaults()
+        )
+        restricted.focusOnUser()
+        XCTAssertEqual(restricted.locationIssue, .restricted)
+    }
+
+    func testRecentPlacesKeepTheLastThreeForThisSessionOnly() throws {
+        let suiteName = "SwissScootersTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: CLLocationManager(),
+            defaults: defaults
+        )
+        let places = ["Zürich HB", "Bellevue", "Paradeplatz", "Stauffacher"].enumerated().map { index, title in
+            MapDestination(
+                title: title,
+                subtitle: "Zürich",
+                point: GeoPoint(latitude: 47.37 + Double(index) / 1_000, longitude: 8.54)
+            )
+        }
+        XCTAssertTrue(model.recentPlaces.isEmpty)
+
+        for place in places {
+            model.focusOnAddress(place)
+        }
+        XCTAssertEqual(model.recentPlaces, [places[3], places[2], places[1]])
+        XCTAssertEqual(model.searchBarState, .place(places[3]))
+
+        // Choosing a recent place again moves it to the front without repeating it.
+        model.focusOnAddress(places[2])
+        XCTAssertEqual(model.recentPlaces, [places[2], places[3], places[1]])
+
+        // Clearing the place keeps the list for the rest of the session.
+        model.clearAddressSearch()
+        XCTAssertEqual(model.searchBarState, .empty)
+        XCTAssertEqual(model.recentPlaces.count, 3)
+
+        let stored = defaults.persistentDomain(forName: suiteName) ?? [:]
+        XCTAssertFalse(String(describing: stored).contains("Paradeplatz"))
+        XCTAssertFalse(String(describing: stored).contains("47.37"))
+        let nextSession = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: CLLocationManager(),
+            defaults: defaults
+        )
+        XCTAssertTrue(nextSession.recentPlaces.isEmpty)
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    func testCitiesWithScootersAreTheSixNearestToTheMapCentre() throws {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+
+        let cities = model.nearbyCities
+        XCTAssertEqual(
+            cities.map(\.city.name),
+            ["Zug", "Bern", "Zürich", "Uster", "Wetzikon", "Opfikon"]
+        )
+        XCTAssertEqual(cities.map(\.distanceMeters), cities.map(\.distanceMeters).sorted())
+
+        // A chip behaves like choosing that city as a place, and shows the whole city.
+        let bern = cities[1].city
+        model.chooseCity(bern)
+
+        let place = try XCTUnwrap(model.searchedDestination)
+        XCTAssertEqual(place, bern.destination)
+        XCTAssertEqual(place.title, "Bern")
+        XCTAssertEqual(place.kind, .city)
+        XCTAssertEqual(model.activeOrigin, .searchedDestination(place))
+        XCTAssertEqual(model.recentPlaces, [place])
+        let focus = try XCTUnwrap(model.focusRequest)
+        XCTAssertEqual(focus, .city(bern.center, token: focus.token))
+        XCTAssertGreaterThan(focus.latitudinalMeters, 8_000)
+
+        // The list follows the map.
+        model.viewport = GeoBounds(south: 47.37, west: 8.53, north: 47.38, east: 8.55)
+        XCTAssertEqual(model.nearbyCities.first?.city.name, "Zürich")
+        XCTAssertEqual(model.nearbyCities.count, 6)
+    }
+
+    func testStoredBatteryValuesSnapDownToAPreset() {
+        for (stored, expected) in [(45, 30.0), (95, 80.0), (60, 60.0), (10, 0.0), (-5, 0.0)] {
+            let defaults = isolatedDefaults()
+            defaults.set(stored, forKey: "minimum-battery")
+
+            let model = ScooterMapModel(
+                api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+                locationManager: CLLocationManager(),
+                defaults: defaults
+            )
+
+            XCTAssertEqual(model.minimumBattery, expected, "Stored \(stored)")
+        }
+    }
+
+    func testPassesListProvidersHereOrWithAPassAndEveryProviderOtherwise() {
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        model.viewport = GeoBounds(region: zurichRegion)
+        XCTAssertEqual(model.passProviders, ScooterProvider.allCases.filter { $0 != .pony })
+
+        model.setRidePass(ProviderRidePass(enabled: true, freeMinutes: 10), for: .pony)
+        XCTAssertEqual(model.passProviders, ScooterProvider.allCases)
+
+        // Nobody operates here and no pass is set: every provider is offered.
+        model.setRidePass(ProviderRidePass(), for: .pony)
+        model.viewport = GeoBounds(region: lungernRegion)
+        XCTAssertEqual(model.passProviders, ScooterProvider.allCases)
+
+        model.setRidePass(ProviderRidePass(enabled: true, freeUnlock: true), for: .voi)
+        XCTAssertEqual(model.passProviders, [.voi])
+    }
+}
+
+extension ScooterMapModelTests {
+    private var zurichRegion: MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 47.3769, longitude: 8.5417),
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
+    }
+
+    /// Lungern has no scooter operator; Zug, Bern and Grenchen are the closest covered cities.
+    private var lungernRegion: MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 46.7741, longitude: 8.1558),
+            span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+        )
+    }
+
+    private func makeModel(api: any ScooterAPIClient, clock: TestClock) -> ScooterMapModel {
+        ScooterMapModel(
+            api: api,
+            locationManager: CLLocationManager(),
+            defaults: isolatedDefaults(),
+            now: { clock.now }
+        )
+    }
+
+    private func timedResponse(
+        generatedAt: Date,
+        expiresIn: TimeInterval,
+        parking: [ScooterParking] = [],
+        parkingExpiresIn: TimeInterval? = nil
+    ) -> ScooterResponse {
+        let formatter = ISO8601DateFormatter()
+        return ScooterResponse(
+            vehicles: [scooter(id: "one", provider: "lime")],
+            meta: ScooterResponseMetadata(
+                partial: false,
+                failedSources: [],
+                generatedAt: formatter.string(from: generatedAt),
+                refreshAfterSeconds: 60,
+                expiresAt: formatter.string(from: generatedAt.addingTimeInterval(expiresIn)),
+                parkingExpiresAt: parkingExpiresIn.map {
+                    formatter.string(from: generatedAt.addingTimeInterval($0))
+                }
+            ),
+            parking: parking
+        )
+    }
+
+    /// Long enough for a refresh that was going to start to have reached the API.
+    private func settle() async {
+        try? await Task.sleep(for: .milliseconds(60))
     }
 }

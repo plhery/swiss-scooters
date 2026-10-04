@@ -882,6 +882,8 @@ struct ScooterFilterSheet: View {
                 Slider(value: $batteryDraft, in: 0 ... 100, step: 5) { editing in
                     if !editing {
                         model.setMinimumBattery(batteryDraft)
+                        // The model keeps to its presets; show what it kept.
+                        batteryDraft = model.minimumBattery
                     }
                 }
                 .sensoryFeedback(.selection, trigger: Int(batteryDraft / 5))

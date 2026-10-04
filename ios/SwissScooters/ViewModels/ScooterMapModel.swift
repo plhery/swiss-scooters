@@ -94,6 +94,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
     }
     private(set) var parking: [ScooterParking] = []
+    /// The bays drawn on the map: zoom 16 and closer, for the providers that are shown.
     var mapParking: [ScooterParking] {
         guard viewportZoom >= 16 else { return [] }
         return parking.filter { location in
@@ -107,12 +108,22 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     private(set) var viewportZoom = 8
     var isLoading = false
     var isLocating = false
-    var errorMessage: String?
+    /// What went wrong with loading, until a load succeeds again.
+    private(set) var loadIssue: ScooterLoadIssue?
+    /// When the data on the map was observed. It survives the map being cleared,
+    /// so the out-of-date card can say when the last update was.
     var lastUpdated: Date?
     private(set) var responseMetadata: ScooterResponseMetadata?
     var userLocation: GeoPoint?
     private(set) var userHeading: ScooterUserHeading?
-    private(set) var locationAuthorizationIssue: LocationAuthorizationIssue?
+    /// True once this device has located successfully. Only this boolean is stored.
+    private(set) var hasLocatedOnce: Bool
+    private var locationProblem: ScooterLocationIssue? {
+        didSet {
+            if locationProblem != oldValue { locationIssueDismissed = false }
+        }
+    }
+    private var locationIssueDismissed = false
     private(set) var enabledProviders = Set(ScooterProvider.allCases) {
         didSet {
             defaults.set(
@@ -125,8 +136,17 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             clearSelectionIfHidden()
         }
     }
-    var selectedScooterID: String?
+    var selectedScooterID: String? {
+        didSet {
+            if selectedScooterID != nil { selectedParkingID = nil }
+        }
+    }
+    /// Selecting a bay clears the selected scooter, and the other way round.
+    private(set) var selectedParkingID: String?
     var searchedDestination: MapDestination?
+    /// Places chosen during this session, newest first. Never persisted: the
+    /// privacy notice promises that precise origins are not stored.
+    private(set) var recentPlaces: [MapDestination] = []
     var focusRequest: MapFocusRequest?
 
     var minimumBattery: Double {
@@ -153,17 +173,27 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var isTrackingHeading = false
     @ObservationIgnored private var isSceneActive = true
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private var queryBounds: GeoBounds?
-    @ObservationIgnored private var queryZoom: Int?
-    @ObservationIgnored private var queryMinimumBattery: Int?
+    @ObservationIgnored private let locationTimeout: Duration
+    @ObservationIgnored private let refreshPolicy: ScooterRefreshPolicy
+    @ObservationIgnored private let clock: () -> Date
+    // What the data on the map was requested for. Observed, because the dock
+    // only reports an area as empty once the data covers it.
+    private var queryBounds: GeoBounds?
+    private var queryZoom: Int?
+    private var queryMinimumBattery: Int?
     @ObservationIgnored private var pendingQueryBounds: GeoBounds?
     @ObservationIgnored private var pendingQueryZoom: Int?
     @ObservationIgnored private var pendingQueryMinimumBattery: Int?
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
-    @ObservationIgnored private var expirationTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTimerTask: Task<Void, Never>?
+    @ObservationIgnored private var parkingExpiryTask: Task<Void, Never>?
+    /// When the previous request finished, whatever its outcome.
+    @ObservationIgnored private var lastAttemptAt: Date?
+    @ObservationIgnored private var lastSuccessAt: Date?
     @ObservationIgnored private var vehiclesExpireAt: Date?
     @ObservationIgnored private var parkingExpireAt: Date?
     @ObservationIgnored private var locationTimeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var knownAuthorizationStatus: CLAuthorizationStatus
     @ObservationIgnored private var activeRequestID: UUID?
     @ObservationIgnored private var bestLocationCandidate: CLLocation?
     @ObservationIgnored private var focusToken = 0
@@ -177,19 +207,18 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     private(set) var mapClustersRevision = 0
     private(set) var visibleScooterCount = 0
     private(set) var visibleProviderCounts: [ScooterProvider: Int] = [:]
+    private var unfilteredVisibleCount = 0
 
     private static let minimumBatteryKey = "minimum-battery"
     private static let mapStyleKey = "apple-map-style"
     private static let enabledProvidersKey = "enabled-providers"
     private static let rideEstimateMinutesKey = "ride-estimate-minutes-v1"
     private static let ridePassesKey = "provider-ride-passes-v1"
-    private static let locationTimeout: Duration = .seconds(5)
-    private static let userFocusZoomIncrease = 3
-    private static let userFocusMeters: CLLocationDistance = 850 / pow(
-        2,
-        Double(userFocusZoomIncrease)
-    )
-    private static let userFocusZoom = 16 + userFocusZoomIncrease
+    private static let hasLocatedOnceKey = "has-located-once"
+    private static let maximumRecentPlaces = 3
+    /// Locating shows about 350 m across, like zoom 17 on the web.
+    static let userFocusMeters: CLLocationDistance = 350
+    private static let userFocusZoom = 17
     private static let approximateWalkingMetersPerMinute: CLLocationDistance = 80
 
     override convenience init() {
@@ -199,14 +228,22 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     init(
         api: any ScooterAPIClient,
         locationManager: CLLocationManager,
-        defaults: UserDefaults
+        defaults: UserDefaults,
+        locationTimeout: Duration = .seconds(5),
+        refreshPolicy: ScooterRefreshPolicy = .standard,
+        now: @escaping () -> Date = Date.init
     ) {
         self.api = api
         self.locationManager = locationManager
         self.defaults = defaults
+        self.locationTimeout = locationTimeout
+        self.refreshPolicy = refreshPolicy
+        clock = now
+        knownAuthorizationStatus = locationManager.authorizationStatus
+        hasLocatedOnce = defaults.bool(forKey: Self.hasLocatedOnceKey)
 
         let savedBattery = defaults.object(forKey: Self.minimumBatteryKey) as? Int ?? 0
-        minimumBattery = Double(min(100, max(0, savedBattery)))
+        minimumBattery = Double(ScooterBatteryFilter.snapped(savedBattery))
 
         let savedStyle = defaults.string(forKey: Self.mapStyleKey)
         mapStyle = AppleMapStyle(rawValue: savedStyle ?? "") ?? .standard
@@ -235,6 +272,47 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var selectedScooter: Scooter? {
         guard let selectedScooterID else { return nil }
         return vehiclesByID[selectedScooterID]
+    }
+
+    /// The selected bay, while it is still drawn on the map.
+    var selectedParking: ScooterParking? {
+        guard let selectedParkingID else { return nil }
+        return mapParking.first { $0.id == selectedParkingID }
+    }
+
+    /// The reason sentence of the current load issue, for the banner the views show today.
+    var errorMessage: String? {
+        loadIssue?.failure.message
+    }
+
+    /// The location card under the search bar, unless it was dismissed. The
+    /// next locate attempt brings it back.
+    var locationIssue: ScooterLocationIssue? {
+        locationIssueDismissed ? nil : locationProblem
+    }
+
+    var locationAuthorizationIssue: LocationAuthorizationIssue? {
+        switch locationProblem {
+        case .denied: .denied
+        case .restricted: .restricted
+        case .notFound, nil: nil
+        }
+    }
+
+    var searchBarState: ScooterSearchBarState {
+        if let searchedDestination { return .place(searchedDestination) }
+        if isLocating { return .locating }
+        return userLocation == nil ? .empty : .nearYou
+    }
+
+    /// The six covered cities nearest to the map centre, for "Cities with scooters".
+    var nearbyCities: [ScooterCityDistance] {
+        ScooterCityCatalog.nearest(to: viewport.center, count: 6)
+    }
+
+    /// The three covered cities nearest to the map centre, for the outside-coverage card.
+    var closestCities: [ScooterCityDistance] {
+        ScooterCityCatalog.nearest(to: viewport.center, count: 3)
     }
 
     var activeOrigin: NearbyOrigin? {
@@ -270,31 +348,29 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         minimumBattery > 0 || !allProvidersSelected
     }
 
-    var dataHealthMessage: String? {
-        guard let responseMetadata else { return nil }
+    /// The providers whose feeds failed, limited to those that operate in the viewport.
+    var providerHealth: ScooterProviderHealth {
+        guard let responseMetadata else { return .healthy }
+        return ScooterProviderHealth(
+            failedSources: responseMetadata.failedSources,
+            operating: ScooterProviderCoverage.providers(in: viewport)
+        )
+    }
 
-        var messages: [String] = []
-        if responseMetadata.stale && !responseMetadata.overview {
-            messages.append(String(localized: "Showing cached data"))
-        }
-        if responseMetadata.partial {
-            messages.append(String(localized: "Some providers are unavailable"))
-        }
-        if responseMetadata.parkingStatus == "failed" || responseMetadata.parkingStatus == "partial" {
-            messages.append(String(localized: "Parking data is temporarily unavailable"))
-        } else if responseMetadata.parkingStatus == "stale" {
-            messages.append(String(localized: "Parking data may be out of date"))
-        }
-        if responseMetadata.truncated {
-            let shown = representedVehicleCount
-            let total = responseMetadata.totalVehicles ?? shown
-            messages.append(String(
-                format: String(localized: "Showing %@ of %@ results"),
-                shown.formatted(),
-                total.formatted()
-            ))
-        }
-        return messages.isEmpty ? nil : messages.joined(separator: " · ")
+    /// The calm lines under the dock status: providers down, truncation, parking.
+    var dockNotices: [ScooterDockNotice] {
+        guard let responseMetadata else { return [] }
+        return ScooterDockNotice.notices(
+            health: providerHealth,
+            metadata: responseMetadata,
+            shownCount: representedVehicleCount
+        )
+    }
+
+    /// The dock notices on one line, for the status label the views show today.
+    var dataHealthMessage: String? {
+        let notices = dockNotices
+        return notices.isEmpty ? nil : notices.map(\.text).joined(separator: " · ")
     }
 
     func count(for provider: ScooterProvider) -> Int {
@@ -303,24 +379,132 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     var allProviderCount: Int { visibleProviderCounts.values.reduce(0, +) }
 
-    var quickProviderOrder: [ScooterProvider] {
+    /// The providers in the filter sheet, in catalogue order.
+    var filterProviders: [ScooterProviderEntry] {
+        let down = Set(providerHealth.downProviders)
         let isFilteringProviders = !allProvidersSelected
-
-        return availableProviders.sorted { lhs, rhs in
-            let lhsSelected = isFilteringProviders && self.enabledProviders.contains(lhs)
-            let rhsSelected = isFilteringProviders && self.enabledProviders.contains(rhs)
-            if lhsSelected != rhsSelected {
-                return lhsSelected
-            }
-
-            let lhsCount = self.count(for: lhs)
-            let rhsCount = self.count(for: rhs)
-            if lhsCount != rhsCount {
-                return lhsCount > rhsCount
-            }
-
-            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        return availableProviders.map { provider in
+            let count = count(for: provider)
+            let isDown = count == 0 && down.contains(provider)
+            let isEnabled = enabledProviders.contains(provider)
+            return ScooterProviderEntry(
+                provider: provider,
+                count: count,
+                isEnabled: isEnabled,
+                isSelected: isFilteringProviders && isEnabled && !isDown,
+                isDown: isDown
+            )
         }
+    }
+
+    /// The chips after "All": providers that are down first, then by count,
+    /// largest first. Ties keep the catalogue order.
+    var dockChips: [ScooterProviderEntry] {
+        let entries = filterProviders
+        let sharing = entries.enumerated()
+            .filter { !$0.element.isDown }
+            .sorted { lhs, rhs in
+                lhs.element.count != rhs.element.count
+                    ? lhs.element.count > rhs.element.count
+                    : lhs.offset < rhs.offset
+            }
+            .map(\.element)
+        return entries.filter(\.isDown) + sharing
+    }
+
+    var quickProviderOrder: [ScooterProvider] {
+        dockChips.map(\.provider)
+    }
+
+    /// What the filter sheet's "Show n scooters" button promises: filters apply
+    /// as they are chosen, so this is the count on the map.
+    var showResultsTitle: String {
+        ScooterFiltering.showResultsTitle(count: visibleCount)
+    }
+
+    /// The providers listed under Passes: those operating in the viewport or
+    /// with a pass, and every provider when that leaves none.
+    var passProviders: [ScooterProvider] {
+        let operating = Set(availableProviders)
+        let listed = ScooterProvider.allCases.filter {
+            operating.contains($0) || ridePass(for: $0).enabled
+        }
+        return listed.isEmpty ? ScooterProvider.allCases : listed
+    }
+
+    /// What the dock shows.
+    var dock: ScooterDockContent {
+        if let selectedScooter { return .scooter(selectedScooter) }
+        if let selectedParking { return .parking(selectedParking) }
+        if case let .outOfDate(failure, lastUpdate) = loadIssue {
+            return .outOfDate(failure, lastUpdate: lastUpdate)
+        }
+        guard let lastUpdated else {
+            return loadIssue == nil ? .finding(chips: []) : .waiting
+        }
+
+        // A failure already explains an empty map.
+        let isEmpty = visibleCount == 0 && loadIssue == nil
+        if isEmpty {
+            // No provider operates here, whatever the pending request answers.
+            if availableProviders.isEmpty { return .outsideCoverage(closestCities) }
+            // The data on the map is for another area: no count to show yet.
+            guard viewportIsLoaded else { return .finding(chips: dockChips) }
+            if let filterSummary = hiddenByFilters { return .filtersHideEverything(filterSummary) }
+        }
+
+        let isOverview = responseMetadata?.overview == true
+        let hint: ScooterDockHint? = if isEmpty {
+            .emptyArea
+        } else {
+            isOverview && visibleCount > 0 ? .tapCity : nil
+        }
+        return .summary(ScooterDockSummary(
+            count: visibleCount,
+            countContext: activeOrigin.map { viewport.contains($0.point) } == true ? .nearby : .onThisMap,
+            lastUpdated: lastUpdated,
+            refreshFailure: refreshFailure,
+            isOverview: isOverview,
+            isDelayed: responseMetadata?.stale == true && !isOverview,
+            notices: dockNotices,
+            hint: hint,
+            chips: dockChips
+        ))
+    }
+
+    private var refreshFailure: ScooterLoadFailure? {
+        guard case let .refreshFailed(failure, _) = loadIssue else { return nil }
+        return failure
+    }
+
+    /// Whether the data on the map was loaded for the area on screen. Only then
+    /// is an empty map a fact about the area rather than a load in progress.
+    private var viewportIsLoaded: Bool {
+        queryCovers(viewport, zoom: viewportZoom, pending: false)
+    }
+
+    /// The filters and what they hide, when they are the reason the loaded area is empty.
+    private var hiddenByFilters: ScooterFilterSummary? {
+        guard hasActiveFilters else { return nil }
+        // The response cannot tell how many scooters there are once the server
+        // filtered clustered data by battery or cut the list short.
+        let isCountKnown = (queryMinimumBattery ?? 0) == 0 && responseMetadata?.truncated != true
+        let hiddenCount: Int? = isCountKnown ? unfilteredVisibleCount : nil
+        // Filters that hide nothing are not the reason the map is empty.
+        if hiddenCount == 0 { return nil }
+
+        var providers: [ScooterProvider] = []
+        if !allProvidersSelected {
+            providers = availableProviders.filter(enabledProviders.contains)
+            if providers.isEmpty {
+                providers = ScooterProvider.allCases.filter(enabledProviders.contains)
+            }
+        }
+        return ScooterFilterSummary(
+            hiddenCount: hiddenCount,
+            providers: providers,
+            minimumBattery: minimumBattery > 0 ? Int(minimumBattery) : nil
+        )
     }
 
     func formattedDistance(for scooter: Scooter) -> String? {
@@ -336,6 +520,27 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     func approximateWalkingMinutes(to scooter: Scooter) -> Int? {
         guard let distance = straightLineDistance(to: scooter), distance.isFinite else { return nil }
         return max(1, Int(ceil(distance / Self.approximateWalkingMetersPerMinute)))
+    }
+
+    func approximateWalkingMinutes(to parking: ScooterParking) -> Int? {
+        guard let origin = activeOrigin?.point else { return nil }
+        let distance = Self.distance(
+            from: origin,
+            to: GeoPoint(latitude: parking.latitude, longitude: parking.longitude)
+        )
+        guard distance.isFinite else { return nil }
+        return max(1, Int(ceil(distance / Self.approximateWalkingMetersPerMinute)))
+    }
+
+    /// The second line of the bay card: "Rue Faidherbe · ≈3 min walk", or the
+    /// name alone without an origin.
+    func parkingSubtitle(for parking: ScooterParking) -> String {
+        guard let minutes = approximateWalkingMinutes(to: parking) else { return parking.name }
+        return String(
+            format: String(localized: "%1$@ · %2$@"),
+            parking.name,
+            String(format: String(localized: "≈%lld min walk"), Int64(minutes))
+        )
     }
 
     func setRideEstimateMinutes(_ minutes: Int) {
@@ -394,15 +599,19 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func becameActive() {
-        expireDataIfNeeded()
         isSceneActive = true
         if hasStarted { startHeadingUpdates() }
-        refreshIfStale()
+        expireParkingIfNeeded()
+        // Back in the foreground a due refresh starts at once. The old data
+        // stays on the map until the outcome is known.
+        refreshIfDue(respectingAttemptGap: false)
     }
 
     func becameInactive() {
         isSceneActive = false
         stopHeadingUpdates()
+        refreshTimerTask?.cancel()
+        refreshTimerTask = nil
     }
 
     private func startHeadingUpdates() {
@@ -421,20 +630,64 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         userHeading = nil
     }
 
+    /// Refreshes when the data is due or has expired. The model schedules this
+    /// itself while the app is active, so calling it is only ever a nudge.
     func autoRefreshIfNeeded() {
-        expireDataIfNeeded()
-        refreshIfStale()
+        expireParkingIfNeeded()
+        refreshIfDue(respectingAttemptGap: true)
     }
 
-    private func refreshIfStale() {
-        guard let lastUpdated else {
-            if fetchTask == nil, !isLocating {
-                refresh()
-            }
+    private var refreshAfter: TimeInterval {
+        guard let seconds = responseMetadata?.refreshAfterSeconds, seconds > 0 else {
+            return refreshPolicy.defaultRefreshAfter
+        }
+        return TimeInterval(seconds)
+    }
+
+    private func refreshIfDue(respectingAttemptGap: Bool) {
+        // A request in flight decides the outcome; nothing is cleared meanwhile.
+        guard isSceneActive, fetchTask == nil else { return }
+        guard lastAttemptAt != nil else {
+            if !isLocating { refresh() }
             return
         }
-        if fetchTask == nil, Date().timeIntervalSince(lastUpdated) >= Double(responseMetadata?.refreshAfterSeconds ?? 60) {
+
+        let due = respectingAttemptGap
+            ? refreshPolicy.nextAttempt(
+                lastSuccess: lastSuccessAt,
+                refreshAfter: refreshAfter,
+                expiresAt: vehiclesExpireAt,
+                lastAttempt: lastAttemptAt
+            )
+            : refreshPolicy.refreshDue(
+                lastSuccess: lastSuccessAt,
+                refreshAfter: refreshAfter,
+                expiresAt: vehiclesExpireAt
+            )
+        if clock() >= due {
             refresh()
+        } else {
+            scheduleAutomaticRefresh()
+        }
+    }
+
+    private func scheduleAutomaticRefresh() {
+        refreshTimerTask?.cancel()
+        refreshTimerTask = nil
+        guard isSceneActive, fetchTask == nil, lastAttemptAt != nil else { return }
+
+        let nextAttempt = refreshPolicy.nextAttempt(
+            lastSuccess: lastSuccessAt,
+            refreshAfter: refreshAfter,
+            expiresAt: vehiclesExpireAt,
+            lastAttempt: lastAttemptAt
+        )
+        let delay = max(0, nextAttempt.timeIntervalSince(clock()))
+        refreshTimerTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self else { return }
+            refreshTimerTask = nil
+            refreshIfDue(respectingAttemptGap: true)
         }
     }
 
@@ -456,6 +709,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     func refresh() {
         scheduleFetch(for: viewport.expanded(by: 0.25), zoom: viewportZoom, debounce: false)
+    }
+
+    /// "Try again" and "Refresh": a manual refresh, fetched at once.
+    func retryLoad() {
+        ScooterAnalytics.shared.track("refresh")
+        refresh()
     }
 
     func showAllProviders() {
@@ -498,8 +757,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
     }
 
+    /// Sets the minimum battery to a preset; other values snap down (45 → 30).
     func setMinimumBattery(_ value: Double) {
-        let normalizedValue = min(100, max(0, (value / 5).rounded() * 5))
+        let normalizedValue = Double(ScooterBatteryFilter.snapped(
+            value.isFinite ? Int(min(100, max(0, value))) : 0
+        ))
         guard normalizedValue != minimumBattery else { return }
         ScooterAnalytics.shared.track("battery_filter", value: Int(normalizedValue))
         minimumBattery = normalizedValue
@@ -520,17 +782,45 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
     }
 
+    /// Chooses a place: it becomes the origin for walking times, is remembered
+    /// for this session and the map moves there.
     func focusOnAddress(_ destination: MapDestination) {
         ScooterAnalytics.shared.track("search_select")
         selectedScooterID = nil
+        selectedParkingID = nil
         searchedDestination = destination
+        rememberPlace(destination)
         focusToken += 1
-        focusRequest = MapFocusRequest(point: destination.point, token: focusToken)
+        focusRequest = destination.kind == .city
+            ? .city(destination.point, token: focusToken)
+            : MapFocusRequest(point: destination.point, token: focusToken)
+    }
+
+    /// A "Cities with scooters" chip: like choosing the city as a place.
+    func chooseCity(_ city: ScooterCity) {
+        focusOnAddress(city.destination)
+    }
+
+    /// A closest-city chip: the map flies to the city, the place stays as it is.
+    func focusOnCity(_ city: ScooterCity) {
+        selectedScooterID = nil
+        selectedParkingID = nil
+        focusToken += 1
+        focusRequest = .city(city.center, token: focusToken)
+    }
+
+    private func rememberPlace(_ destination: MapDestination) {
+        recentPlaces.removeAll { $0.id == destination.id }
+        recentPlaces.insert(destination, at: 0)
+        if recentPlaces.count > Self.maximumRecentPlaces {
+            recentPlaces.removeLast(recentPlaces.count - Self.maximumRecentPlaces)
+        }
     }
 
     func focusOnSwitzerland() {
         ScooterAnalytics.shared.track("browse_map")
         selectedScooterID = nil
+        selectedParkingID = nil
         focusToken += 1
         focusRequest = MapFocusRequest(
             point: Self.switzerlandCenter,
@@ -554,6 +844,24 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         guard id != selectedScooterID else { return }
         ScooterAnalytics.shared.track(id == nil ? "vehicle_dismiss" : "vehicle_select", provider: id.flatMap { vehiclesByID[$0]?.provider })
         selectedScooterID = id
+    }
+
+    /// Selects a parking bay by id, or closes the bay card with nil. The map
+    /// reports `parking_select` itself, so nothing is tracked here.
+    func selectParking(_ id: String?) {
+        guard id != selectedParkingID else { return }
+        if id != nil { selectedScooterID = nil }
+        selectedParkingID = id
+    }
+
+    /// A tap on the map background: closes the scooter or the bay card.
+    func clearSelection() {
+        selectScooter(nil)
+        selectedParkingID = nil
+    }
+
+    func dismissLocationIssue() {
+        locationIssueDismissed = true
     }
 
     private func passesBatteryFilter(_ scooter: Scooter) -> Bool {
@@ -592,9 +900,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         )
         var count = summary.count
         var providers = summary.providerCounts
+        var unfilteredCount = summary.unfilteredCount
         if responseMetadata?.mode == "clusters" {
             for cluster in clusters where viewport.contains(latitude: cluster.latitude, longitude: cluster.longitude) {
                 for (providerID, providerCount) in cluster.providers {
+                    unfilteredCount += providerCount
                     guard let provider = ScooterProvider(rawValue: providerID) else { continue }
                     providers[provider, default: 0] += providerCount
                     if enabledProviders.contains(provider) { count += providerCount }
@@ -603,6 +913,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         }
         visibleScooterCount = count
         visibleProviderCounts = providers
+        unfilteredVisibleCount = unfilteredCount
     }
 
     private var representedVehicleCount: Int {
@@ -610,6 +921,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     private func clearSelectionIfHidden() {
+        if let selectedParkingID, !mapParking.contains(where: { $0.id == selectedParkingID }) {
+            self.selectedParkingID = nil
+        }
+
         guard let selectedScooter else { return }
         let remainsVisible = viewport.contains(
             latitude: selectedScooter.latitude,
@@ -625,6 +940,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
     private func scheduleFetch(for bounds: GeoBounds, zoom: Int, debounce: Bool) {
         fetchTask?.cancel()
+        refreshTimerTask?.cancel()
+        refreshTimerTask = nil
 
         let requestID = UUID()
         let fetchOrigin = userLocation ?? Self.switzerlandCenter
@@ -651,7 +968,6 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
 
             guard !Task.isCancelled else { return }
             isLoading = true
-            errorMessage = nil
 
             do {
                 let response = try await api.scooters(
@@ -662,37 +978,66 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                 guard !Task.isCancelled, activeRequestID == requestID else { return }
                 // The backend preserves recent successful feeds independently.
                 // Accept healthy cities even when another operator is unavailable.
+                // A response is shown whatever its own timestamps say.
+                let receivedAt = clock()
                 isApplyingResponse = true
                 vehicles = response.vehicles
                 clusters = response.clusters
                 parking = response.parking
                 responseMetadata = response.meta
                 isApplyingResponse = false
+                queryBounds = bounds
+                queryZoom = zoom
+                queryMinimumBattery = requestMinimumBattery
                 rebuildVehicleIndex()
                 rebuildMapScooters()
                 rebuildMapClusters()
                 rebuildVisibleCounts()
-                queryBounds = bounds
-                queryZoom = zoom
-                queryMinimumBattery = requestMinimumBattery
                 distanceOrigin = fetchOrigin
-                lastUpdated = response.meta?.generatedAt.flatMap { value in
-                    let formatter = ISO8601DateFormatter()
-                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                    return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
-                } ?? Date()
-                scheduleDataExpiry(response.meta)
-                expireDataIfNeeded()
+                lastUpdated = min(Self.apiDate(response.meta?.generatedAt) ?? receivedAt, receivedAt)
+                lastSuccessAt = receivedAt
+                lastAttemptAt = receivedAt
+                loadIssue = nil
+                scheduleDataExpiry(response.meta, receivedAt: receivedAt)
+                expireParkingIfNeeded()
                 clearSelectionIfHidden()
             } catch is CancellationError {
                 return
             } catch {
                 guard activeRequestID == requestID else { return }
-                ScooterAnalytics.shared.track("data_error", result: "request_failed")
-                errorMessage = error.localizedDescription
+                // Retries repeat every few seconds; report a failure once, when it starts.
+                if loadIssue == nil {
+                    ScooterAnalytics.shared.track("data_error", result: "request_failed")
+                }
+                lastAttemptAt = clock()
+                handleLoadFailure(ScooterLoadFailure(error))
             }
 
         }
+    }
+
+    private func handleLoadFailure(_ failure: ScooterLoadFailure) {
+        guard let lastUpdated else {
+            loadIssue = .firstLoadFailed(failure)
+            return
+        }
+        if case let .outOfDate(_, lastUpdate) = loadIssue {
+            loadIssue = .outOfDate(failure, lastUpdate: lastUpdate)
+            return
+        }
+        guard let vehiclesExpireAt, clock() >= vehiclesExpireAt else {
+            // The data on the map is still valid and stays exactly as it is.
+            loadIssue = .refreshFailed(failure, showing: lastUpdated)
+            return
+        }
+
+        // Only now is the data both expired and impossible to renew.
+        vehicles = []
+        clusters = []
+        selectedScooterID = nil
+        selectedParkingID = nil
+        queryBounds = nil
+        loadIssue = .outOfDate(failure, lastUpdate: lastUpdated)
     }
 
     private func clearPendingFetch() {
@@ -702,6 +1047,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         pendingQueryZoom = nil
         pendingQueryMinimumBattery = nil
         fetchTask = nil
+        scheduleAutomaticRefresh()
     }
 
     private func cancelPendingFetch() {
@@ -716,44 +1062,29 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
-    private func scheduleDataExpiry(_ meta: ScooterResponseMetadata?) {
-        let receivedAt = Date()
+    private func scheduleDataExpiry(_ meta: ScooterResponseMetadata?, receivedAt: Date) {
         let observedAt = min(receivedAt, Self.apiDate(meta?.generatedAt) ?? receivedAt)
         let maximumAge: TimeInterval = meta?.overview == true ? 3 * 3600 : 300
+        // Scooters past this moment are only cleared once a refresh has failed.
         vehiclesExpireAt = min(Self.apiDate(meta?.expiresAt) ?? .distantFuture,
             observedAt.addingTimeInterval(maximumAge))
         parkingExpireAt = min(Self.apiDate(meta?.parkingExpiresAt) ?? .distantFuture,
             receivedAt.addingTimeInterval(300))
-        scheduleExpirationTimer()
-    }
 
-    private func scheduleExpirationTimer() {
-        expirationTask?.cancel()
-        guard let deadline = [vehiclesExpireAt, parkingExpireAt].compactMap({ $0 }).min() else { return }
-        let delay = max(0, deadline.timeIntervalSinceNow)
-        expirationTask = Task { [weak self] in
+        parkingExpiryTask?.cancel()
+        let delay = max(0, (parkingExpireAt ?? receivedAt).timeIntervalSince(receivedAt))
+        parkingExpiryTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
-            self?.expireDataIfNeeded()
+            self?.expireParkingIfNeeded()
         }
     }
 
-    func expireDataIfNeeded(now: Date = .now) {
-        var expired = false
-        if let deadline = vehiclesExpireAt, now >= deadline {
-            vehiclesExpireAt = nil
-            vehicles = []
-            clusters = []
-            selectedScooterID = nil
-            queryBounds = nil
-            errorMessage = String(localized: "Availability has expired. Refresh to see current scooters.")
-            expired = true
-        }
-        if let deadline = parkingExpireAt, now >= deadline {
-            parkingExpireAt = nil
-            parking = []
-            expired = true
-        }
-        if expired { scheduleExpirationTimer() }
+    /// Parking bays expire on their own schedule, whatever happens to the scooters.
+    func expireParkingIfNeeded() {
+        guard let parkingExpireAt, clock() >= parkingExpireAt else { return }
+        self.parkingExpireAt = nil
+        parking = []
+        clearSelectionIfHidden()
     }
 
     private func fetchIfNeeded(
@@ -792,15 +1123,24 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return storedMinimumBattery == targetMinimumBattery
     }
 
+    private var isLocationAuthorized: Bool {
+        locationManager.authorizationStatus == .authorizedWhenInUse ||
+            locationManager.authorizationStatus == .authorizedAlways
+    }
+
     private func requestLocationAccess() {
+        // A new attempt brings a dismissed card back and retires the last "not found".
+        locationIssueDismissed = false
+        if locationProblem == .notFound { locationProblem = nil }
+
         switch locationManager.authorizationStatus {
         case .notDetermined:
-            locationAuthorizationIssue = nil
+            locationProblem = nil
             isLocating = true
             locationManager.requestWhenInUseAuthorization()
             beginLocationTimeout()
         case .authorizedAlways, .authorizedWhenInUse:
-            locationAuthorizationIssue = nil
+            locationProblem = nil
             isLocating = true
             locationManager.startUpdatingLocation()
             startHeadingUpdates()
@@ -808,11 +1148,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
                 beginLocationTimeout()
             }
         case .denied:
-            locationAuthorizationIssue = .denied
+            locationProblem = .denied
             isLocating = false
             finishLocationAttemptWithoutFix()
         case .restricted:
-            locationAuthorizationIssue = .restricted
+            locationProblem = .restricted
             isLocating = false
             finishLocationAttemptWithoutFix()
         @unknown default:
@@ -822,8 +1162,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus != .authorizedAlways &&
-            manager.authorizationStatus != .authorizedWhenInUse {
+        let status = manager.authorizationStatus
+        let statusChanged = status != knownAuthorizationStatus
+        knownAuthorizationStatus = status
+        if status != .authorizedAlways && status != .authorizedWhenInUse {
             stopHeadingUpdates()
         }
         // CLLocationManager can deliver the current authorization state as soon as
@@ -831,26 +1173,25 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         // location so model initialization cannot unexpectedly recenter the map.
         guard hasStarted || isLocating else { return }
 
-        switch manager.authorizationStatus {
+        switch status {
         case .authorizedAlways, .authorizedWhenInUse:
-            locationAuthorizationIssue = nil
-            isLocating = true
+            locationProblem = nil
             manager.startUpdatingLocation()
             startHeadingUpdates()
+            // With a position already in hand there is nothing to wait for.
             if userLocation == nil {
+                isLocating = true
                 beginLocationTimeout()
             }
-        case .denied:
-            locationAuthorizationIssue = .denied
-            isLocating = false
-            finishLocationAttemptWithoutFix()
-        case .restricted:
-            locationAuthorizationIssue = .restricted
+        case .denied, .restricted:
+            // The same goes for the location card: a refusal that was already
+            // known, with no request pending, answers nothing the user just did.
+            guard statusChanged || isLocating else { return }
+            locationProblem = status == .denied ? .denied : .restricted
             isLocating = false
             finishLocationAttemptWithoutFix()
         case .notDetermined:
-            locationAuthorizationIssue = nil
-            break
+            locationProblem = nil
         @unknown default:
             isLocating = false
             finishLocationAttemptWithoutFix()
@@ -895,6 +1236,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         if !hadLocation { ScooterAnalytics.shared.track("location_result", result: "success") }
         userLocation = nextLocation
         isLocating = false
+        locationProblem = nil
+        if !hasLocatedOnce {
+            hasLocatedOnce = true
+            defaults.set(true, forKey: Self.hasLocatedOnceKey)
+        }
 
         if !hadLocation {
             requestUserFocus(at: nextLocation)
@@ -925,25 +1271,29 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        if let locationError = error as? CLError, locationError.code == .denied {
+        let code = (error as? CLError)?.code
+        if code == .denied {
             switch manager.authorizationStatus {
             case .denied:
-                locationAuthorizationIssue = .denied
+                locationProblem = .denied
             case .restricted:
-                locationAuthorizationIssue = .restricted
+                locationProblem = .restricted
             default:
                 break
             }
         }
+        // Core Location keeps trying after "location unknown"; the timeout decides.
+        if code == .locationUnknown, locationTimeoutTask != nil { return }
         isLocating = false
         finishLocationAttemptWithoutFix()
     }
 
     private func beginLocationTimeout() {
         locationTimeoutTask?.cancel()
+        let timeout = locationTimeout
         locationTimeoutTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: Self.locationTimeout)
+                try await Task.sleep(for: timeout)
             } catch {
                 return
             }
@@ -959,7 +1309,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     }
 
     private func finishLocationAttemptWithoutFix() {
-        ScooterAnalytics.shared.track("location_result", result: locationAuthorizationIssue == .denied ? "denied" : "unavailable")
+        // Allowed, and still no position in time.
+        if locationProblem == nil, userLocation == nil, isLocationAuthorized {
+            locationProblem = .notFound
+        }
+        ScooterAnalytics.shared.track("location_result", result: locationProblem == .denied ? "denied" : "unavailable")
         locationTimeoutTask?.cancel()
         locationTimeoutTask = nil
         bestLocationCandidate = nil

@@ -122,6 +122,45 @@ final class ScooterAPITests: XCTestCase {
         }
     }
 
+    func testLoadFailureReasonIsDerivedFromTheAPIError() async {
+        let expectations: [(ScooterAPIError, ScooterLoadFailure)] = [
+            (.offline, .offline),
+            (.timedOut, .timeout),
+            (.httpStatus(429), .busy),
+            (.httpStatus(500), .unavailable),
+            (.httpStatus(503), .unavailable),
+            (.httpStatus(599), .unavailable),
+            (.httpStatus(404), .failed),
+            (.invalidURL, .failed),
+            (.invalidResponse, .failed),
+            (.invalidData(URLError(.cannotParseResponse)), .failed),
+            (.network(URLError(.cannotFindHost)), .failed)
+        ]
+        for (error, failure) in expectations {
+            XCTAssertEqual(error.loadFailure, failure, "\(error)")
+            XCTAssertEqual(ScooterLoadFailure(error), failure, "\(error)")
+        }
+        XCTAssertEqual(ScooterLoadFailure(URLError(.badURL)), .failed)
+        XCTAssertEqual(Set(ScooterLoadFailure.allCases.map(\.message)).count, 5)
+
+        // The reason survives the trip through the real client.
+        for (api, failure) in [
+            (makeAPI(urlError: .notConnectedToInternet), ScooterLoadFailure.offline),
+            (makeAPI(urlError: .networkConnectionLost), .offline),
+            (makeAPI(urlError: .timedOut), .timeout),
+            (makeAPI(responseStatus: 429), .busy),
+            (makeAPI(responseStatus: 502), .unavailable),
+            (makeAPI(responseStatus: 200, data: Data("{}".utf8)), .failed)
+        ] {
+            do {
+                _ = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
+                XCTFail("Expected a \(failure) failure")
+            } catch {
+                XCTAssertEqual(ScooterLoadFailure(error), failure)
+            }
+        }
+    }
+
     private var origin: GeoPoint {
         GeoPoint(latitude: 47.3769, longitude: 8.5417)
     }
@@ -180,6 +219,62 @@ final class AddressSearchAPITests: XCTestCase {
         let body = try XCTUnwrap(request?.httpBody)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
         XCTAssertEqual(json, ["q": "Ankerstrasse 114", "lang": "de"])
+    }
+
+    func testTitleSubtitleAndCoverageAreDecodedWhenTheAPISendsThem() throws {
+        let data = Data(#"""
+        [
+          {"lat": 47.3695, "lng": 8.5389, "display_name": "Paradeplatz 2 8001 Zürich",
+           "title": "Paradeplatz 2", "subtitle": "8001 Zürich", "covered": true},
+          {"lat": 46.7741, "lng": 8.1558, "display_name": "Paradeplatz (OW) - Lungern",
+           "title": "Paradeplatz", "subtitle": "Lungern OW", "covered": false},
+          {"lat": 47.3782, "lng": 8.5402, "display_name": "Zürich HB",
+           "title": "Zürich HB", "subtitle": "", "covered": true}
+        ]
+        """#.utf8)
+
+        let results = try JSONDecoder().decode([AddressSearchResult].self, from: data)
+
+        XCTAssertEqual(results.map(\.title), ["Paradeplatz 2", "Paradeplatz", "Zürich HB"])
+        XCTAssertEqual(results.map(\.subtitle), ["8001 Zürich", "Lungern OW", ""])
+        XCTAssertEqual(results.map(\.isCovered), [true, false, true])
+        XCTAssertEqual(results[1].displayName, "Paradeplatz (OW) - Lungern")
+        XCTAssertEqual(results[1].destination, MapDestination(
+            title: "Paradeplatz",
+            subtitle: "Lungern OW",
+            point: GeoPoint(latitude: 46.7741, longitude: 8.1558)
+        ))
+        XCTAssertEqual(Set(results.map(\.id)).count, 3)
+    }
+
+    func testOlderResponsesFallBackToLabelSplittingAndBundledCoverage() throws {
+        let data = Data(#"""
+        [
+          {"lat": 47.3695, "lng": 8.5389, "display_name": "Paradeplatz 2 8001 Zürich"},
+          {"lat": 46.7741, "lng": 8.1558, "display_name": "Lungern", "title": "", "covered": null},
+          {"lat": 47.3762772, "lng": 8.5280816, "display_name": "114, Ankerstrasse, Zurich, Switzerland",
+           "title": 12, "subtitle": "ignored without a title"}
+        ]
+        """#.utf8)
+
+        let results = try JSONDecoder().decode([AddressSearchResult].self, from: data)
+
+        XCTAssertEqual(results.map(\.title), ["Paradeplatz 2", "Lungern", "Ankerstrasse 114"])
+        XCTAssertEqual(results.map(\.subtitle), ["8001 Zürich", "", "Zurich, Switzerland"])
+        // Without `covered`, the service areas bundled with the app decide.
+        XCTAssertEqual(results.map(\.isCovered), [true, false, true])
+
+        let examples: [(String, String, String)] = [
+            ("Bahnhofstrasse 1 8001 Zürich", "Bahnhofstrasse 1", "8001 Zürich"),
+            ("Via Nassa 5, 6900 Lugano", "Via Nassa 5", "6900 Lugano"),
+            ("Zürich HB", "Zürich HB", ""),
+            ("  Bahnhofstrasse 1, CH-8001 Zürich  ", "Bahnhofstrasse 1", "CH-8001 Zürich")
+        ]
+        for (label, title, subtitle) in examples {
+            let lines = AddressSearchResult.lines(fromDisplayName: label)
+            XCTAssertEqual(lines.title, title, label)
+            XCTAssertEqual(lines.subtitle, subtitle, label)
+        }
     }
 }
 
