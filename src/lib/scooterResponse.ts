@@ -2,6 +2,7 @@ import { clusterVehicles, shouldClusterAtZoom } from '@/lib/clustering';
 import { MAX_SCOOTER_RESULTS } from '@/lib/scooterQuery';
 import type { ScooterFetchResult } from '@/lib/scooterFeeds';
 import type { ScooterResponse, ScooterResponseMeta } from '@/lib/types';
+import { VEHICLE_MAX_AGE_MS } from './dataFreshness';
 
 export const MOBILITY_SOURCE =
   'Open data platform mobility Switzerland; Hopp GBFS; PubliBike Velospot public app feed; France: Dott, Bird, Lime, Voi, Pony GBFS (transport.data.gouv.fr); Germany: Dott, Bolt, Hopp, Lime, Voi GBFS; MobiData BW; Italy: Bird GBFS; Lille parking: Metropole Europeenne de Lille';
@@ -24,7 +25,7 @@ export function scooterResponse(
   return {
     vehicles, clusters, providers,
     meta: {
-      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      expiresAt: new Date(Date.now() + VEHICLE_MAX_AGE_MS).toISOString(),
       ...result.meta,
       generatedAt: new Date().toISOString(),
       truncated: clusters.length < representation.clusters.length || vehicles.length < representation.vehicles.length,

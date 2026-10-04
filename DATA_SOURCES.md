@@ -41,9 +41,10 @@ the other feeds are served directly by their operators.
 Production collects each system independently every minute on Netcup, with at
 most six systems in flight. Map requests read only the relevant cached systems,
 with no operator requests. The local direct-feed fallback selects by viewport
-and allows four concurrent French systems. Individual vehicles expire after a
-five-minute stale-on-error window; city totals are aggregated hourly. French feed timestamps older than five minutes
-are marked stale; timestamps older than fifteen minutes are rejected.
+and allows four concurrent French systems. Individual scooter positions remain
+usable for at most ten minutes from their source timestamp, including when a
+refresh fails; missing timestamps and older data are rejected. City totals are
+aggregated hourly.
 
 These endpoints are publicly accessible but do not share one universal license.
 In particular, [Dott's API terms](https://ridedott.com/api-licence/) contain

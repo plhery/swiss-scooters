@@ -132,9 +132,12 @@ Coolify remains the source of truth for the application, storage, and resource l
 The collector schedules each feed independently at most once per minute with
 six concurrent systems and at most two per host. A slow host cannot monopolize
 collection slots. Vehicle results are published immediately, before optional
-parking completes; disk writes and city overview rebuilding are batched every five seconds. Discovery/type/pricing metadata lasts an hour. Status feeds must carry a timestamp within five minutes; failed feeds retain
-vehicles only until that observation expires. Cached metadata is reported as
-degraded independently and does not prevent live vehicle timestamps advancing.
+parking completes; disk writes and city overview rebuilding are batched every
+five seconds. Discovery/type/pricing metadata lasts an hour. Scooter status feeds
+must carry a timestamp within ten minutes; failed feeds retain vehicles only
+until that observation expires. Parking availability expires after five minutes.
+Cached metadata is reported as degraded independently and does not prevent live
+vehicle timestamps advancing.
 Both clients honor response expiry times, including parking expiry, during outages. Snapshots
 are written atomically and restored after restarts. City totals are rebuilt
 hourly, marked as an overview in the API, and rejected after three hours without

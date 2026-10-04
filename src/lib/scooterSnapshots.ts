@@ -6,8 +6,9 @@ import { PARKING_MAX_AGE_MS, PARKING_MIN_ZOOM, type ParkingSnapshot } from '@/li
 import { scooterResponse } from '@/lib/scooterResponse';
 import { ScooterFeedsUnavailableError, type FeedQuery, type ScooterFetchMetadata } from '@/lib/scooterFeeds';
 import type { MapBounds, ScooterCluster, ScooterResponse, Vehicle } from '@/lib/types';
+import { VEHICLE_MAX_AGE_MS } from './dataFreshness';
 
-export const VEHICLE_MAX_AGE_MS = 5 * 60_000;
+export { VEHICLE_MAX_AGE_MS } from './dataFreshness';
 export const OVERVIEW_REFRESH_MS = 60 * 60_000;
 const OVERVIEW_MAX_AGE_MS = 3 * OVERVIEW_REFRESH_MS;
 

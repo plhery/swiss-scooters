@@ -3,7 +3,7 @@ import type { ParkingLocation } from './types';
 import { boundsContainPoint } from './geo';
 
 export const PARKING_MIN_ZOOM = 16;
-export const PARKING_MAX_AGE_MS = 5 * 60_000;
+export { PARKING_MAX_AGE_MS } from './dataFreshness';
 export interface ParkingSnapshot { locations: ParkingLocation[]; observedAt: number; stale: boolean }
 interface VehicleType { vehicle_type_id: string; form_factor?: string; propulsion_type?: string }
 interface Station {

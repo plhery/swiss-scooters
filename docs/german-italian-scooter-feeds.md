@@ -23,8 +23,8 @@ The complete reviewed city bounds, public discovery URLs and aliases are in
 
 - GBFS 2.3 and 3.0 feeds are normalized using electric standing-scooter types.
   Bicycles, seated mopeds, reserved/disabled vehicles and invalid positions are excluded.
-- Vehicle timestamps older than 15 minutes are rejected; stale responses do not
-  make old scooter positions look live. Snapshot fallback lasts at most five minutes.
+- Vehicle timestamps older than ten minutes are rejected; snapshot fallback
+  never extends the ten-minute maximum age of individual scooter positions.
 - GBFS discovery links must stay within the reviewed HTTPS city/feed base.
 - German MobiData BW feeds use GBFS 3.0 and localized names. Multi-city feeds
   retain their published city subregions for provider filters and overview counts.

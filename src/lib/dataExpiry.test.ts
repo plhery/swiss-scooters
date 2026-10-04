@@ -31,15 +31,15 @@ describe('responseExpiry', () => {
     expect(responseExpiry(meta({ generatedAt: iso(T0 - 310_000), expiresAt: iso(T0 - 10_000) }), T0).vehicles).toBe(T0 - 10_000);
   });
 
-  it('falls back to five minutes after the observation, three hours for the city overview', () => {
-    expect(responseExpiry(meta({ generatedAt: iso(T0 - 60_000) }), T0)).toEqual({ vehicles: T0 + 240_000, parking: T0 + 300_000 });
+  it('falls back to ten minutes after the observation, three hours for the city overview', () => {
+    expect(responseExpiry(meta({ generatedAt: iso(T0 - 60_000) }), T0)).toEqual({ vehicles: T0 + 540_000, parking: T0 + 300_000 });
     expect(responseExpiry(meta({ generatedAt: iso(T0 - 60_000), overview: true }), T0).vehicles).toBe(T0 - 60_000 + 3 * 3_600_000);
   });
 
   it('never trusts an expiry beyond the fallback, or a generation time in the future', () => {
-    expect(responseExpiry(meta({ expiresAt: iso(T0 + 86_400_000) }), T0 + 5_000).vehicles).toBe(T0 + 300_000);
-    expect(responseExpiry(meta({ generatedAt: iso(T0 + 600_000) }), T0).vehicles).toBe(T0 + 300_000);
-    expect(responseExpiry(meta({ generatedAt: 'yesterday', expiresAt: 'soon' }), T0).vehicles).toBe(T0 + 300_000);
+    expect(responseExpiry(meta({ expiresAt: iso(T0 + 86_400_000) }), T0 + 5_000).vehicles).toBe(T0 + 600_000);
+    expect(responseExpiry(meta({ generatedAt: iso(T0 + 600_000) }), T0).vehicles).toBe(T0 + 600_000);
+    expect(responseExpiry(meta({ generatedAt: 'yesterday', expiresAt: 'soon' }), T0).vehicles).toBe(T0 + 600_000);
   });
 });
 
@@ -70,7 +70,7 @@ describe('responseExpiry on a wrong device clock', () => {
   });
 
   it('still caps the expiry at the fallback', () => {
-    expect(responseExpiry(meta({ expiresAt: iso(T0 + 86_400_000) }), T0 + 360_000, 360_000).vehicles).toBe(T0 + 660_000);
+    expect(responseExpiry(meta({ expiresAt: iso(T0 + 86_400_000) }), T0 + 360_000, 360_000).vehicles).toBe(T0 + 960_000);
   });
 });
 

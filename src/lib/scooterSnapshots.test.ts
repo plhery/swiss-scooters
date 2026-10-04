@@ -4,6 +4,7 @@ import { ScooterFeedsUnavailableError } from './scooterFeeds';
 import { providersForViewport, mapRepresentationsMatch } from './mapCoverage';
 import type { Vehicle } from './types';
 import { providerHealth, providersDownNotice } from './dataHealth';
+import { PARKING_MAX_AGE_MS } from './dataFreshness';
 
 const now = Date.parse('2026-09-08T12:00:00Z');
 const lyon = { south: 45.70, west: 4.7, north: 45.9, east: 5.0 };
@@ -65,28 +66,30 @@ describe('persistent map snapshots', () => {
     expect(querySnapshot(cached, { ...query, providers: new Set(['pony']) }, 9, now).clusters).toEqual([]);
   });
 
-  it('preserves a recent failing feed but stops offering its vehicles after five minutes', () => {
+  it('preserves a failing feed up to ten minutes but never offers older vehicles', () => {
     const cached = snapshot([feed({ failed: true, stale: true })]);
-    const response = querySnapshot(cached, query, 16, now + 60_000);
+    const response = querySnapshot(cached, query, 16, now + 8 * 60_000);
     expect(response.vehicles).toHaveLength(2);
-    expect(response.meta).toMatchObject({ partial: true, stale: true });
+    expect(response.meta).toMatchObject({ partial: true, stale: true,
+      expiresAt: new Date(now + 10 * 60_000).toISOString(), refreshAfterSeconds: 60 });
+    expect(querySnapshot(cached, query, 16, now + 10 * 60_000).vehicles).toHaveLength(2);
     expect(() => querySnapshot(cached, query, 16, now + VEHICLE_MAX_AGE_MS + 1)).toThrow(ScooterFeedsUnavailableError);
   });
 
-  it('reports an unavailable provider without calling a successfully collected four-minute observation cached', () => {
+  it('reports an unavailable provider without rejecting a successfully collected eight-minute observation', () => {
     const cached = snapshot([
-      feed({ observedAt: now - 240_000 }),
-      feed({ id: 'france:voi', provider: 'voi', observedAt: now - 600_000, failed: true, stale: true }),
+      feed({ observedAt: now - 480_000 }),
+      feed({ id: 'france:voi', provider: 'voi', observedAt: now - 600_001, failed: true, stale: true }),
     ]);
     const response = querySnapshot(cached, query, null, now);
     expect(response.vehicles).toHaveLength(2);
     expect(response.meta).toMatchObject({ partial: true, stale: false,
-      failedSources: ['france:voi'], expiresAt: new Date(now + 60_000).toISOString() });
+      failedSources: ['france:voi'], expiresAt: new Date(now + 120_000).toISOString() });
     // The dock would name Voi, which shows nothing here, and say nothing about Dott.
     expect(providersDownNotice(providerHealth({
       meta: response.meta, viewportProviders: ['dott', 'voi'], inView: new Set(['dott']),
     }))).toEqual({ key: 'dock.down.one', values: { name: 'Voi' } });
-    expect(() => querySnapshot(cached, query, 16, now + 60_001)).toThrow(ScooterFeedsUnavailableError);
+    expect(() => querySnapshot(cached, query, 16, now + 120_001)).toThrow(ScooterFeedsUnavailableError);
   });
 
   it('does not confuse an empty operating area with an upstream failure', () => {
@@ -135,7 +138,7 @@ it('returns parking only at street zoom, separately from scooter counts and batt
   expect(street.meta.parkingStatus).toBe('fresh');
   expect(querySnapshot(cached, query, 15, now).parking).toBeUndefined();
   expect(querySnapshot(cached, { ...query, providers: new Set(['voi']) }, 16, now).parking).toEqual([]);
-  cached.feeds[0].parking!.observedAt = now - VEHICLE_MAX_AGE_MS - 1;
+  cached.feeds[0].parking!.observedAt = now - PARKING_MAX_AGE_MS - 1;
   const expired = querySnapshot(cached, query, 16, now);
   expect(expired.parking).toEqual([]);
   expect(expired.meta.parkingStatus).toBe('failed');

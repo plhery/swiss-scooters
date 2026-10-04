@@ -1,4 +1,5 @@
 import { statusObservedAt, validateDiscovery, validateRegistry, validateTypes, validateVehicleStatus } from './feedValidation';
+import { VEHICLE_MAX_AGE_MS } from './dataFreshness';
 import {
   coverageForRegionNames,
   coverageIntersects,
@@ -26,7 +27,7 @@ const PUBLIBIKE_ESCOOTER_TYPE = 5;
 
 const STATUS_REVALIDATE_SECONDS = 30;
 const METADATA_REVALIDATE_SECONDS = 3600;
-const STATUS_STALE_IF_ERROR_SECONDS = 300;
+const STATUS_STALE_IF_ERROR_SECONDS = VEHICLE_MAX_AGE_MS / 1000;
 const METADATA_STALE_IF_ERROR_SECONDS = 86400;
 const FETCH_TIMEOUT_MS = 15_000;
 const DEFAULT_AUTH_EMAIL = 'swiss-scooters@plhery.com';
@@ -1059,7 +1060,7 @@ export async function fetchScooters(query: FeedQuery): Promise<ScooterFetchResul
     meta: {
       expiresAt: new Date(Math.min(Date.now(), ...sourceResults.flatMap(([, result]) =>
         result.status === 'fulfilled' && !result.value.skipped && result.value.observedAt !== undefined
-          ? [result.value.observedAt] : [])) + 300_000).toISOString(),
+          ? [result.value.observedAt] : [])) + VEHICLE_MAX_AGE_MS).toISOString(),
       partial: failedSources.length > 0,
       stale: sourceResults.some(([, result]) => result.status === 'fulfilled' && result.value.stale),
       failedSources,

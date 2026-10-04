@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import { discoverCollectableFeeds, independentCollectableFeeds, type CollectableScooterFeed } from '../src/lib/scooterFeeds';
-import { buildCityOverview, overviewNeedsRefresh, type FeedSnapshot, type MobilitySnapshot } from '../src/lib/scooterSnapshots';
+import { buildCityOverview, overviewNeedsRefresh, VEHICLE_MAX_AGE_MS, type FeedSnapshot, type MobilitySnapshot } from '../src/lib/scooterSnapshots';
 import { REGIONAL_SCOOTER_SYSTEMS, regionalSource } from '../src/lib/regionalScooterSystems';
 import { upstreamJsonCache } from '../src/lib/upstreamJsonCache';
 import { fetchRegionalParking } from '../src/lib/parkingFeeds';
@@ -79,7 +79,7 @@ async function persist() {
     const relevant = snapshot.feeds.filter(feed => !feed.skipped);
     console.log(JSON.stringify({ event: 'snapshot_health', feeds: relevant.length,
       failedFeeds: relevant.filter(feed => feed.failed).length,
-      expiredFeeds: relevant.filter(feed => Date.now() - feed.observedAt > 300_000).length,
+      expiredFeeds: relevant.filter(feed => Date.now() - feed.observedAt > VEHICLE_MAX_AGE_MS).length,
       oldestObservationAgeSeconds: relevant.length
         ? Math.round(Math.max(...relevant.map(feed => Date.now() - feed.observedAt)) / 1000) : null }));
   }

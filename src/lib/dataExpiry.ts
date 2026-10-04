@@ -1,4 +1,5 @@
 import type { ScooterResponseMeta } from './types';
+import { PARKING_MAX_AGE_MS, VEHICLE_MAX_AGE_MS } from './dataFreshness';
 
 /**
  * How far the clock of this device is ahead of the server's (negative when it
@@ -29,8 +30,8 @@ export function responseExpiry(meta: ScooterResponseMeta, receivedAt: number, cl
     return Number.isFinite(parsed) ? Math.min(parsed, fallback) : fallback;
   };
   return {
-    vehicles: deadline(meta.expiresAt, observedAt + (meta.overview ? 3 * 3600_000 : 300_000)),
-    parking: deadline(meta.parkingExpiresAt, receivedAt + 300_000),
+    vehicles: deadline(meta.expiresAt, observedAt + (meta.overview ? 3 * 3600_000 : VEHICLE_MAX_AGE_MS)),
+    parking: deadline(meta.parkingExpiresAt, receivedAt + PARKING_MAX_AGE_MS),
   };
 }
 

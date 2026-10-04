@@ -1,4 +1,4 @@
-export const LIVE_DATA_MAX_AGE_MS = 5 * 60_000;
+import { PARKING_MAX_AGE_MS, VEHICLE_MAX_AGE_MS } from './dataFreshness';
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid feed object');
@@ -34,11 +34,11 @@ export function validateTypes(value: unknown): void {
   }
 }
 
-export function statusObservedAt(value: unknown, now = Date.now()): number {
+export function statusObservedAt(value: unknown, now = Date.now(), maximumAgeMs = VEHICLE_MAX_AGE_MS): number {
   const timestamp = object(value).last_updated;
   const updatedAt = typeof timestamp === 'number' ? timestamp * 1000
     : typeof timestamp === 'string' ? Date.parse(timestamp) : NaN;
-  if (!Number.isFinite(updatedAt) || now - updatedAt > LIVE_DATA_MAX_AGE_MS || updatedAt - now > 300_000) {
+  if (!Number.isFinite(updatedAt) || now - updatedAt > maximumAgeMs || updatedAt - now > 300_000) {
     throw new Error('Status timestamp is missing or out of date');
   }
   return Math.min(now, updatedAt);
@@ -58,5 +58,5 @@ export function validateStations(value: unknown): void {
 
 export function validateStationStatus(value: unknown): void {
   validateStations(value);
-  statusObservedAt(value);
+  statusObservedAt(value, Date.now(), PARKING_MAX_AGE_MS);
 }
