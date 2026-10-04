@@ -478,7 +478,8 @@ it('says how many scooters the filters hide and brings them back', async () => {
 it('tells the filters what the map will show, what each provider has in view and who is not sharing data', async () => {
   const body = response();
   body.vehicles.push({ ...body.vehicles[0], provider: 'voi', vehicle_id: 'two', battery: 40 });
-  body.meta.failedSources = ['national:bird_zurich', 'city-overview'];
+  // Bird shows nothing here. A feed of Voi failed too, but another one has a scooter on screen.
+  body.meta.failedSources = ['national:bird_zurich', 'national:voi_winterthur'];
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(body)));
   mount();
   const filters = () => JSON.parse(screen.getByTestId('filters').textContent!);
@@ -486,12 +487,54 @@ it('tells the filters what the map will show, what each provider has in view and
   expect(filters()).toEqual({ show: null, counts: {}, down: [], active: false });
   await act(async () => vi.advanceTimersByTimeAsync(180));
   expect(filters()).toEqual({ show: 2, counts: { lime: 1, voi: 1 }, down: ['bird'], active: false });
+  expect(screen.getByText('Bird isn’t sharing data right now.')).toBeVisible();
 
   // Counts follow the battery choice and ignore the provider choice, so each row says what it would add.
+  // Voi's only scooter is now hidden by the rider's own choice: that does not make Voi down.
   fireEvent.click(screen.getByRole('button', { name: 'At least 60% in the filters' }));
   expect(filters()).toEqual({ show: 1, counts: { lime: 1 }, down: ['bird'], active: true });
   fireEvent.click(screen.getByRole('button', { name: 'Lime in the filters' }));
   expect(filters()).toEqual({ show: 0, counts: { lime: 1 }, down: ['bird'], active: true });
+  expect(screen.queryByRole('button', { name: 'Voi: not sharing data right now' })).not.toBeInTheDocument();
+});
+
+it('names no provider as not sharing data while city totals are shown', async () => {
+  const body = response();
+  body.vehicles = [];
+  body.clusters = [{ id: 'city:ch:zurich', lat: 47.377, lng: 8.542, count: 100, providers: { lime: 100 }, city: 'Zürich' }];
+  body.meta = { ...body.meta, mode: 'clusters', zoom: 8, overview: true, refreshAfterSeconds: 3600, partial: true,
+    failedSources: ['national:bird_zurich', 'france:dott_fr_lyon', 'city-overview'] };
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(body)));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(screen.getByText('City totals · refreshed hourly')).toBeVisible();
+  expect(JSON.parse(screen.getByTestId('filters').textContent!)).toMatchObject({ counts: { lime: 100 }, down: [] });
+  expect(screen.queryByText(/sharing data right now/)).not.toBeInTheDocument();
+  expect(document.querySelector('.chip-down')).toBeNull();
+});
+
+it('names no provider as not sharing data from what was loaded for another view', async () => {
+  const body = response();
+  body.meta.failedSources = ['national:bird_zurich'];
+  const fetcher = vi.fn<() => Promise<Response>>(async () => Response.json(body));
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  const down = () => JSON.parse(screen.getByTestId('filters').textContent!).down;
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(down()).toEqual(['bird']);
+  // A refresh of the same view that fails leaves what is on screen as it was.
+  fetcher.mockRejectedValue(new Error('offline'));
+  await act(async () => vi.advanceTimersByTimeAsync(60_000));
+  expect(document.querySelector('.dock-retry, .sheet')).toHaveTextContent('Try again');
+  expect(down()).toEqual(['bird']);
+
+  // Another view is asked for and its answer does not come: nothing on screen speaks for it.
+  fireEvent.click(screen.getByRole('button', { name: 'Zoom to 15' }));
+  expect(down()).toEqual([]);
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(down()).toEqual([]);
+  expect(screen.queryByText('Bird isn’t sharing data right now.')).not.toBeInTheDocument();
+  expect(document.querySelector('.chip-down')).toBeNull();
 });
 
 it('promises no count in the filters while the answer for a new minimum is on its way', async () => {

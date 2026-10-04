@@ -28,7 +28,7 @@ import {
   type ThemeName,
 } from '@/lib/clientParams';
 import { nearestCoveredCities, type NearbyCoveredCity } from '@/lib/coveredCities';
-import { providerHealth } from '@/lib/dataHealth';
+import { providerHealth, providersInView } from '@/lib/dataHealth';
 import { dockIssue, dockModel, originInViewport, type DockInput } from '@/lib/dockModel';
 import { useI18n } from '@/lib/i18n';
 import { failureSurface } from '@/lib/loadFailure';
@@ -282,6 +282,7 @@ export default function Home() {
     lastUpdated,
     hasData,
     loading,
+    answersQuery,
     failure,
     outOfDate,
     refresh,
@@ -455,6 +456,13 @@ export default function Home() {
     [searchExpanded, viewportCenter]
   );
 
+  // Who has scooters here whatever the filters hide. Data loaded for another
+  // view says nothing about this one, so it names nobody as not sharing data.
+  const loadedProviders = useMemo(() => answersQuery
+    ? providersInView({ vehicles, clusters, viewport: viewportBounds, serverMinBattery: scooterQuery?.minBattery ?? 0 })
+    : null,
+  [answersQuery, clusters, scooterQuery?.minBattery, vehicles, viewportBounds]);
+
   const dockInput: DockInput = {
     count: viewportData.totalCount,
     originInViewport: originInViewport(walkOrigin?.point ?? null, viewportBounds),
@@ -469,6 +477,7 @@ export default function Home() {
     viewportProviders: availableProviders,
     viewportCenter,
     providerCounts: viewportData.providerCounts,
+    providersInView: loadedProviders,
     enabledProviders,
     minBattery,
     unfilteredCount: unfilteredCountInView({
@@ -705,7 +714,11 @@ export default function Home() {
         enabledProviders={enabledProviders}
         availableProviders={availableProviders}
         providerCounts={viewportData.providerCounts}
-        downProviders={providerHealth(responseMeta, availableProviders).down}
+        downProviders={providerHealth({
+          meta: responseMeta,
+          viewportProviders: availableProviders,
+          inView: loadedProviders,
+        }).down}
         hasActiveFilters={hasActiveFilters}
         // While the answer for a new view or minimum is on its way there is no count to promise.
         showCount={loading === 'load' ? null : viewportData.totalCount}

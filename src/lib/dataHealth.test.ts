@@ -3,6 +3,7 @@ import {
   providerForFailedSource,
   providerHealth,
   providersDownNotice,
+  providersInView,
   scooterDataHealthNotice,
 } from '@/lib/dataHealth';
 import { independentCollectableFeeds } from '@/lib/scooterFeeds';
@@ -35,29 +36,85 @@ describe('providerForFailedSource', () => {
   });
 });
 
+describe('providersInView', () => {
+  const VIEW = { south: 47.37, west: 8.53, north: 47.38, east: 8.55 };
+  const inside = { lat: 47.375, lng: 8.54 };
+  const outside = { lat: 47.5, lng: 8.72 };
+
+  it('lists who has a scooter or a share of a cluster inside the viewport', () => {
+    expect(providersInView({
+      vehicles: [{ provider: 'lime', ...inside }, { provider: 'lime', ...inside }, { provider: 'voi', ...outside }],
+      clusters: [
+        { ...inside, providers: { bolt: 3, dott: 0 } },
+        { ...outside, providers: { bird: 9 } },
+      ],
+      viewport: VIEW,
+      serverMinBattery: 0,
+    })).toEqual(new Set(['lime', 'bolt']));
+    expect(providersInView({ vehicles: [], clusters: [], viewport: VIEW, serverMinBattery: 0 })).toEqual(new Set());
+  });
+
+  it('cannot tell before the map has a viewport, or once the server filtered by battery', () => {
+    const vehicles = [{ provider: 'lime', ...inside }];
+    expect(providersInView({ vehicles, clusters: [], viewport: null, serverMinBattery: 0 })).toBeNull();
+    expect(providersInView({ vehicles, clusters: [], viewport: VIEW, serverMinBattery: 60 })).toBeNull();
+  });
+});
+
 describe('providerHealth', () => {
+  const NOBODY = { down: [], unknown: false };
+  const health = (
+    failedSources: string[],
+    inView: string[] | null = [],
+    { viewportProviders = ZURICH, overview = false } = {}
+  ) => providerHealth({
+    meta: { failedSources, ...(overview ? { overview } : {}) },
+    viewportProviders,
+    inView: inView && new Set(inView),
+  });
+
   it('reports nothing for a healthy or missing response', () => {
-    expect(providerHealth({ failedSources: [] }, ZURICH)).toEqual({ down: [], unknown: false });
-    expect(providerHealth(null, ZURICH)).toEqual({ down: [], unknown: false });
-    expect(providerHealth(undefined, ZURICH)).toEqual({ down: [], unknown: false });
+    expect(health([])).toEqual(NOBODY);
+    expect(providerHealth({ meta: null, viewportProviders: ZURICH, inView: new Set() })).toEqual(NOBODY);
+    expect(providerHealth({ meta: undefined, viewportProviders: ZURICH, inView: new Set() })).toEqual(NOBODY);
+  });
+
+  it('calls a provider down when a feed of its failed and none of its scooters is in view', () => {
+    expect(health(['national:bird_zurich'], ['lime', 'voi'])).toEqual({ down: ['bird'], unknown: false });
+  });
+
+  it('stays silent about a provider with a failed feed that still has scooters in view', () => {
+    // Uster's feed failed; Zürich's did not, and its scooters are on screen.
+    expect(health(['national:lime_uster'], ['lime', 'voi'])).toEqual(NOBODY);
+    expect(health(['national:lime_uster', 'national:bird_zurich', 'national:voi_winterthur'], ['lime', 'voi']))
+      .toEqual({ down: ['bird'], unknown: false });
+  });
+
+  it('names nobody while city totals are shown, whatever failed', () => {
+    expect(health(['national:bird_zurich', 'france:dott_fr_lyon', 'city-overview'], ['lime'], { overview: true }))
+      .toEqual(NOBODY);
+    expect(health(['city-overview'], [], { overview: true })).toEqual(NOBODY);
+  });
+
+  it('names nobody while what is on screen cannot tell who has scooters here', () => {
+    expect(health(['national:bird_zurich', 'city-overview'], null)).toEqual(NOBODY);
   });
 
   it('names each failed provider once, in catalogue order', () => {
-    expect(providerHealth({
-      failedSources: ['national:voi_zurich', 'national:bird_zurich', 'national:voi_winterthur', 'hopp'],
-    }, ZURICH)).toEqual({ down: ['bird', 'hopp', 'voi'], unknown: false });
+    expect(health(['national:voi_zurich', 'national:bird_zurich', 'national:voi_winterthur', 'hopp']))
+      .toEqual({ down: ['bird', 'hopp', 'voi'], unknown: false });
   });
 
   it('leaves out providers that do not operate in the viewport', () => {
-    expect(providerHealth({ failedSources: ['france:pony_fr_bordeaux', 'national:lime_zurich'] }, ZURICH))
-      .toEqual({ down: ['lime'], unknown: false });
-    expect(providerHealth({ failedSources: ['national:lime_zurich'] }, [])).toEqual({ down: [], unknown: false });
+    expect(health(['france:pony_fr_bordeaux', 'national:lime_zurich'])).toEqual({ down: ['lime'], unknown: false });
+    expect(health(['national:lime_zurich'], [], { viewportProviders: [] })).toEqual(NOBODY);
   });
 
   it('flags sources that belong to no provider', () => {
-    expect(providerHealth({ failedSources: ['city-overview'] }, ZURICH)).toEqual({ down: [], unknown: true });
-    expect(providerHealth({ failedSources: ['city-overview', 'national:dott_zurich'] }, ZURICH))
-      .toEqual({ down: ['dott'], unknown: true });
+    expect(health(['national'])).toEqual({ down: [], unknown: true });
+    expect(health(['national:tier_basel', 'national:dott_zurich'])).toEqual({ down: ['dott'], unknown: true });
+    // Also when the provider that failed beside it is not named.
+    expect(health(['national:tier_basel', 'national:dott_zurich'], ['dott'])).toEqual({ down: [], unknown: true });
   });
 });
 

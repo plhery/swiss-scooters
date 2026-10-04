@@ -382,6 +382,50 @@ test('a provider that is not sharing data comes first among the providers, dashe
   expect(await circle()).toBe('solid');
 });
 
+test('one failed feed does not make a provider look down beside its scooters, and city totals name nobody', async ({ page }) => {
+  await page.route('**/api/scooters?**', async route => {
+    const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
+    // A feed of Bird and one of Voi failed. Bird still has a scooter here; Voi operates here and has none.
+    const meta = { ...scooterResponse.meta, partial: true, zoom,
+      failedSources: ['national:bird_basel', 'national:voi_zurich', 'city-overview'] };
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(zoom <= 10
+      ? { ...scooterResponse, vehicles: [],
+          clusters: [{ id: 'city:ch:zurich', city: 'Zürich', lat: 47.3769, lng: 8.5417, count: 3,
+            providers: { lime: 1, bird: 1, bolt: 1 } }],
+          meta: { ...meta, mode: 'clusters', overview: true, refreshAfterSeconds: 3600 } }
+      : { ...scooterResponse, meta: { ...meta, mode: 'vehicles' } }) });
+  });
+  const providers = page.getByRole('group', { name: 'Filter scooters by provider' });
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+
+  // City totals: whatever failed, nobody is named, in the dock or in the filters.
+  await page.goto('/');
+  await expect(page.getByText('City totals · refreshed hourly')).toBeVisible();
+  await expect(providers.getByRole('button', { name: 'Voi, 0. Shown.' })).toBeVisible();
+  await expect(page.getByText(/sharing data right now/)).toHaveCount(0);
+  await expect(page.locator('.chip-down, .legend-down')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(filters.getByRole('button', { name: 'Voi, 0. Shown.' })).toBeVisible();
+  await expect(filters.locator('.provider-down')).toHaveCount(0);
+  await expect(filters.getByText('Not sharing data right now')).toHaveCount(0);
+
+  // In the street: Voi shows nothing and is named; Bird is counted like the others.
+  await page.goto('/?origin=47.3769,8.5417');
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await expect(page.getByText('Voi isn’t sharing data right now.')).toBeVisible();
+  await expect(providers.getByRole('button', { name: 'Voi: not sharing data right now' })).toBeVisible();
+  await expect(providers.getByRole('button', { name: 'Bird, 1. Shown.' })).toBeVisible();
+  await expect(page.locator('.chip-down, .legend-down')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(filters.getByRole('button', { name: 'Bird, 1. Shown.' })).toBeVisible();
+  await expect(filters.locator('.provider-down')).toHaveCount(1);
+
+  // Hiding Bird's scooter with a battery minimum is the rider's choice, not Bird's silence.
+  await filters.getByRole('button', { name: '80%+' }).click();
+  await expect(filters.getByRole('button', { name: 'Bird, 0. Shown.' })).toBeVisible();
+  await expect(filters.locator('.provider-down')).toHaveCount(1);
+});
+
 test('an area without scooter data offers the closest cities and flies to the one chosen', async ({ page }) => {
   await page.route('**/api/scooters?**', async route => {
     const url = new URL(route.request().url());

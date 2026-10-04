@@ -47,6 +47,7 @@ function input(overrides: Partial<DockInput> = {}): DockInput {
     viewportProviders: ZURICH,
     viewportCenter: [47.3769, 8.5417],
     providerCounts: { lime: 7, voi: 9, bolt: 2, dott: 4 },
+    providersInView: new Set(['lime', 'voi', 'bolt', 'dott']),
     enabledProviders: new Set(ALL),
     minBattery: 0,
     unfilteredCount: 22,
@@ -212,17 +213,73 @@ describe('dock notices', () => {
     expect(summary().notices).toEqual([]);
   });
 
-  it('names providers that are not sharing data', () => {
-    expect(summary({ meta: meta({ partial: true, failedSources: ['national:bird_zurich'] }) }).notices)
+  it('names providers that are not sharing data and have nothing in view', () => {
+    const failed = (...failedSources: string[]) => summary({
+      meta: meta({ partial: true, failedSources }),
+      providerCounts: { lime: 7, voi: 9 },
+      providersInView: new Set(['lime', 'voi']),
+    }).notices;
+    expect(failed('national:bird_zurich'))
       .toEqual([{ kind: 'providers', text: { key: 'dock.down.one', values: { name: 'Bird' } } }]);
-    expect(summary({ meta: meta({ failedSources: ['national:bird_zurich', 'national:dott_zurich'] }) }).notices[0].text)
+    expect(failed('national:bird_zurich', 'national:dott_zurich')[0].text)
       .toEqual({ key: 'dock.down.two', values: { first: 'Bird', second: 'Dott' } });
-    expect(summary({ meta: meta({ failedSources: ['national:bird_zurich', 'national:dott_zurich', 'hopp'] }) }).notices[0].text)
+    expect(failed('national:bird_zurich', 'national:dott_zurich', 'hopp')[0].text)
       .toEqual({ key: 'dock.down.many', numbers: { count: 3 } });
   });
 
+  it('says nothing about a provider with a failed feed whose scooters are in view', () => {
+    // One city feed failed; the provider's scooters on screen come from another.
+    const model = summary({ meta: meta({ partial: true, failedSources: ['national:lime_uster', 'national:voi_winterthur'] }) });
+    expect(model.notices).toEqual([]);
+    expect(model.chips?.providers.some(chip => chip.down)).toBe(false);
+    expect(model.chips?.providers.map(chip => chip.provider).slice(0, 2)).toEqual(['voi', 'lime']);
+  });
+
+  it('keeps calling a provider down whose scooters the filters would hide anyway', () => {
+    // Dott has scooters here, but none with the battery asked for: it is not down.
+    const filtered = summary({
+      meta: meta({ failedSources: ['national:dott_zurich', 'national:bird_zurich'] }),
+      minBattery: 60,
+      providerCounts: { lime: 7, voi: 9 },
+      enabledProviders: new Set(['lime']),
+      count: 7,
+    });
+    expect(filtered.notices).toEqual([{ kind: 'providers', text: { key: 'dock.down.one', values: { name: 'Bird' } } }]);
+    expect(filtered.chips?.providers.filter(chip => chip.down).map(chip => chip.provider)).toEqual(['bird']);
+    expect(filtered.chips?.providers.find(chip => chip.provider === 'dott')).toMatchObject({ count: 0, down: false });
+  });
+
+  it('names nobody while city totals are shown', () => {
+    const overview = summary({
+      meta: meta({
+        overview: true, mode: 'clusters', zoom: 8, partial: true,
+        failedSources: ['national:bird_zurich', 'france:dott_fr_lyon', 'city-overview'],
+      }),
+      count: 5727,
+      providerCounts: { lime: 3000, voi: 2727 },
+      providersInView: new Set(['lime', 'voi']),
+    });
+    expect(overview.status).toEqual({ kind: 'overview', text: { key: 'dock.cityTotals' } });
+    expect(overview.notices).toEqual([]);
+    expect(overview.chips?.providers.some(chip => chip.down)).toBe(false);
+    expect(overview.chips?.providers.find(chip => chip.provider === 'bird')).toMatchObject({ count: 0, down: false });
+  });
+
+  it('names nobody while the data on screen was loaded for another view', () => {
+    const elsewhere = { meta: meta({ failedSources: ['national:bird_zurich', 'national'] }), providersInView: null };
+    // Part of the old area is still on screen while the new one loads, or after it failed to.
+    for (const state of [{ loading: 'load' }, { failure: 'timeout' }] satisfies Partial<DockInput>[]) {
+      const model = summary({ ...elsewhere, ...state });
+      expect(model.notices).toEqual([]);
+      expect(model.chips?.providers.some(chip => chip.down)).toBe(false);
+    }
+    const finding = summary({ ...elsewhere, loading: 'load', count: 0, providerCounts: {} });
+    expect(finding.phase).toBe('finding');
+    expect(finding.chips?.providers.some(chip => chip.down)).toBe(false);
+  });
+
   it('stays vague about sources it cannot name and silent about providers elsewhere', () => {
-    expect(summary({ meta: meta({ failedSources: ['city-overview'] }) }).notices)
+    expect(summary({ meta: meta({ failedSources: ['national'] }) }).notices)
       .toEqual([{ kind: 'providers', text: { key: 'dock.down.some' } }]);
     expect(summary({ meta: meta({ failedSources: ['france:pony_fr_bordeaux'] }) }).notices).toEqual([]);
   });
@@ -268,18 +325,12 @@ describe('dock chips', () => {
     expect(providers[0].name).toBe('Voi');
   });
 
-  it('puts a provider that is down with nothing in view right after "All", dashed and unselected', () => {
+  it('puts a provider that is down right after "All", dashed and unselected', () => {
     const { providers } = chips({ down: ['bird', 'publibike'], enabledProviders: new Set(['bird', 'lime']) });
     expect(providers.map(chip => chip.provider))
       .toEqual(['bird', 'publibike', 'voi', 'dott', 'lime', 'bolt', 'hopp']);
     expect(providers[0]).toEqual({ provider: 'bird', name: 'Bird', count: 0, enabled: true, selected: false, down: true });
     expect(providers[1]).toMatchObject({ provider: 'publibike', enabled: false, selected: false, down: true });
-  });
-
-  it('treats a provider that is down but still has scooters in view like any other', () => {
-    const { providers } = chips({ down: ['lime'] });
-    expect(providers.find(chip => chip.provider === 'lime')).toMatchObject({ count: 7, down: false });
-    expect(providers.map(chip => chip.provider).slice(0, 3)).toEqual(['voi', 'dott', 'lime']);
   });
 
   it('marks the providers that are on as selected once another one here is off', () => {

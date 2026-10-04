@@ -43,7 +43,7 @@ interface ControlSheetProps {
   availableProviders: string[];
   /** Scooters per provider in the viewport with the battery choice, whether or not the provider is switched on. */
   providerCounts: Readonly<Record<string, number>>;
-  /** Providers that are not sharing data right now. */
+  /** Providers that are not sharing data right now and so have nothing in view, from providerHealth(). */
   downProviders: readonly string[];
   hasActiveFilters: boolean;
   /** What the map shows with the current choices; null while the answer is on its way. */
@@ -114,8 +114,8 @@ export default function ControlSheet({
       ...PROVIDERS[key],
       count,
       enabled: enabledProviders.has(key),
-      // Not sharing data and nothing in view, like the dashed chip in the dock.
-      down: count === 0 && downProviders.includes(key),
+      // Like the dashed chip in the dock.
+      down: downProviders.includes(key),
     };
   });
 

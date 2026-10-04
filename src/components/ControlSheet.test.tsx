@@ -114,8 +114,8 @@ describe('ControlSheet filters', () => {
   });
 
   it('says that a provider is not sharing data instead of counting it, and keeps it a choice', () => {
-    const { props } = renderSheet({ downProviders: ['bird', 'lime'] });
-    const [, bird, , lime] = providerRows();
+    const { props } = renderSheet({ downProviders: ['bird'] });
+    const [bolt, bird, dott, lime] = providerRows();
     expect(bird).toHaveAccessibleName('Bird: not sharing data right now');
     expect(bird).toHaveTextContent('Not sharing data right now');
     expect(bird.querySelector('.provider-count')).toBeNull();
@@ -123,9 +123,9 @@ describe('ControlSheet filters', () => {
     expect(bird).toHaveClass('provider-down');
     expect(bird).toHaveAttribute('aria-pressed', 'true');
     expect(bird.querySelector('.provider-check svg')).toBeNull();
-    // A provider with scooters in view is counted, whatever one of its feeds did.
+    // The others are counted as before.
+    for (const row of [bolt, dott, lime]) expect(row).not.toHaveClass('provider-down');
     expect(lime).toHaveAccessibleName(`Lime, ${grouped(1200)}. Shown.`);
-    expect(lime).not.toHaveClass('provider-down');
 
     fireEvent.click(bird);
     expect(props.onProviderToggle).toHaveBeenCalledExactlyOnceWith('bird');

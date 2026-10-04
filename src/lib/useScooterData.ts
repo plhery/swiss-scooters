@@ -41,6 +41,8 @@ export interface ScooterData {
   /** A response is on screen, even one without scooters. */
   hasData: boolean;
   loading: ScooterLoading | null;
+  /** The response on screen answers the current query, not an earlier area, zoom level or filter. */
+  answersQuery: boolean;
   /** Why the last request failed. Stays until a request succeeds, also while retrying. */
   failure: LoadFailure | null;
   /** The scooters were removed because they expired and could not be refreshed. */
@@ -244,7 +246,9 @@ export function useScooterData(query: ScooterDataQuery | null, options: ScooterD
     controller.setQuery(query);
   });
 
-  const loading = scooterLoading(state, query ? scooterQueryKey(query) : null);
+  const queryKey = query ? scooterQueryKey(query) : null;
+  const loading = scooterLoading(state, queryKey);
+  const answersQuery = state.hasData && state.dataKey === queryKey;
 
   return useMemo(() => ({
     vehicles: state.vehicles,
@@ -254,8 +258,9 @@ export function useScooterData(query: ScooterDataQuery | null, options: ScooterD
     lastUpdated: state.lastUpdated,
     hasData: state.hasData,
     loading,
+    answersQuery,
     failure: state.failure,
     outOfDate: state.outOfDate,
     refresh: controller.refresh,
-  }), [controller, loading, state]);
+  }), [answersQuery, controller, loading, state]);
 }

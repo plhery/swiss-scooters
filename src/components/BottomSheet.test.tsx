@@ -34,6 +34,7 @@ function input(overrides: Partial<DockInput> = {}): DockInput {
     viewportProviders: ZURICH,
     viewportCenter: [47.3769, 8.5417],
     providerCounts: { bolt: 2, lime: 3 },
+    providersInView: new Set(['bolt', 'lime']),
     enabledProviders: new Set(Object.keys(PROVIDERS)),
     minBattery: 0,
     unfilteredCount: 5,

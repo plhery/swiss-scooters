@@ -1,6 +1,6 @@
 import { PROVIDERS, PROVIDER_KEYS } from '@/generated/providers';
 import type { NearbyCoveredCity } from '@/lib/coveredCities';
-import { providerHealth, providersDownNotice } from '@/lib/dataHealth';
+import { providerHealth, providersDownNotice, type ProviderHealth } from '@/lib/dataHealth';
 import { boundsContainPoint } from '@/lib/geo';
 import { failureReasonKey, type LoadFailure } from '@/lib/loadFailure';
 import {
@@ -29,7 +29,7 @@ export interface DockChip {
   enabled: boolean;
   /** Drawn as selected: switched on while at least one other provider here is off. */
   selected: boolean;
-  /** Not sharing data and nothing in view: dashed, never selected, with a warning icon. */
+  /** Not sharing data, so nothing in view: dashed, never selected, with a warning icon. */
   down: boolean;
 }
 
@@ -60,7 +60,7 @@ export function dockChips({ viewportProviders, providerCounts, enabledProviders,
   const chips = keys.map((provider): DockChip => {
     const count = providerCounts[provider] ?? 0;
     const enabled = enabledProviders.has(provider);
-    const isDown = count === 0 && down.includes(provider);
+    const isDown = down.includes(provider);
     return {
       provider,
       name: PROVIDERS[provider].name,
@@ -164,6 +164,11 @@ export interface DockInput {
   viewportCenter: [number, number] | null;
   /** Scooters per provider in the viewport, before the provider filter. */
   providerCounts: Readonly<Record<string, number>>;
+  /**
+   * Providers with a scooter in the viewport before any filter, from
+   * providersInView(). Null while what is on screen cannot tell.
+   */
+  providersInView: ReadonlySet<string> | null;
   enabledProviders: ReadonlySet<string>;
   minBattery: number;
   /** From unfilteredCountInView(). */
@@ -217,7 +222,7 @@ export function dockIssue(input: StatusInput & Pick<DockInput, 'loading' | 'outO
   return { status, retry, busy: input.loading !== null };
 }
 
-function dockNotices(input: DockInput, health: ReturnType<typeof providerHealth>): DockNotice[] {
+function dockNotices(input: DockInput, health: ProviderHealth): DockNotice[] {
   const { meta } = input;
   const notices: DockNotice[] = [];
   const providers = providersDownNotice(health);
@@ -298,7 +303,11 @@ export function dockModel(input: DockInput): DockModel {
     };
   }
 
-  const health = providerHealth(input.meta, input.viewportProviders);
+  const health = providerHealth({
+    meta: input.meta,
+    viewportProviders: input.viewportProviders,
+    inView: input.providersInView,
+  });
   const providerChips = dockChips({ ...input, down: health.down });
   // "All" on its own filters nothing, so there are chips only where providers operate.
   const chips = providerChips.providers.length > 0 ? providerChips : null;

@@ -189,7 +189,8 @@ describe('useScooterData', () => {
 
     await advance(60_000);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(result.current).toMatchObject({ failure: 'failed', hasData: true, outOfDate: false, loading: null });
+    // What is on screen still answers the view; only the newer answer is missing.
+    expect(result.current).toMatchObject({ failure: 'failed', hasData: true, answersQuery: true, outOfDate: false, loading: null });
     expect(result.current.vehicles).toBe(vehicles);
     expect(result.current.lastUpdated).toBe(T0 + 180 - 20_000);
 
@@ -450,15 +451,17 @@ describe('useScooterData', () => {
   it('loads a new view at once, replaces the request for the old one and calls it a load', async () => {
     fetcher.mockImplementation(ok());
     const { result, rerender } = mount();
+    expect(result.current.answersQuery).toBe(false);
     await advance(180);
+    expect(result.current.answersQuery).toBe(true);
 
     fetcher.mockImplementation(stalled);
     rerender({ query: BERN });
-    expect(result.current.loading).toBe('load');
+    expect(result.current).toMatchObject({ loading: 'load', answersQuery: false });
     await advance(180);
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls[1][0]).toContain('south=46.93000');
-    expect(result.current).toMatchObject({ loading: 'load', hasData: true, failure: null });
+    expect(result.current).toMatchObject({ loading: 'load', hasData: true, answersQuery: false, failure: null });
 
     // Moving on aborts the stalled request instead of waiting for its timeout.
     const bernSignal = fetcher.mock.calls[1][1].signal!;
@@ -467,7 +470,7 @@ describe('useScooterData', () => {
     await advance(180);
     expect(bernSignal.aborted).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(result.current).toMatchObject({ loading: null, hasData: true, failure: null });
+    expect(result.current).toMatchObject({ loading: null, hasData: true, answersQuery: true, failure: null });
   });
 
   it('does not reload for a query object that asks for the same thing', async () => {
@@ -497,6 +500,8 @@ describe('useScooterData', () => {
     await advance(180);
     expect(result.current).toMatchObject({ failure: 'unavailable', hasData: true, outOfDate: false, loading: null });
     expect(result.current.vehicles).toHaveLength(1);
+    // The scooters of the previous view stay, but they are not an answer for this one.
+    expect(result.current.answersQuery).toBe(false);
   });
 
   it('refreshes at once on request, whatever the gap, and reports the outcome', async () => {
