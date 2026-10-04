@@ -9,6 +9,7 @@
     "check:europe": "node scripts/check-french-feeds.mjs --countries=DE,IT",
     "generate:api-contract": "node scripts/generate-api-contract.mjs",
     "check:api-contract": "node scripts/generate-api-contract.mjs --check",
+    "check:dependencies": "node scripts/check-dependency-audit.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -22,10 +23,10 @@
     "test:contract": "node scripts/check-live-contract.mjs"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.20.2",
+    "@opennextjs/cloudflare": "^1.20.8",
     "@tomickigrzegorz/leaflet-rotate": "0.2.4",
     "leaflet": "^1.9.4",
-    "next": "^16.3.0",
+    "next": "^16.3.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -43,16 +44,13 @@
     "@vitejs/plugin-react": "^6.0.5",
     "esbuild": "0.28.2",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.3.0",
+    "eslint-config-next": "^16.3.8",
     "jsdom": "^30.0.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
-    "wrangler": "4.119.0"
+    "vitest": "^4.1.11",
+    "wrangler": "4.147.0"
   },
   "overrides": {
-    "postcss": "^8.5.25",
-    "miniflare": {
-      "undici": "7.29.0"
-    }
+    "postcss": "^8.5.25"
   }
 }

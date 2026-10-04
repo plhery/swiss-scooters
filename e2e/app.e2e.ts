@@ -1021,7 +1021,8 @@ const paradeplatz = [
 async function expectTouchTargets(page: Page) {
   const island = page.locator('.search-island');
   // Measured once the content has settled in: it arrives slightly scaled down.
-  await island.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  // Results arriving can replace a transition, which rejects its finished promise.
+  await island.evaluate(element => Promise.allSettled(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
   for (const button of await island.getByRole('button').or(island.getByRole('option')).all()) {
     const target = await button.boundingBox();
     expect(target!.height).toBeGreaterThanOrEqual(44);
