@@ -175,6 +175,31 @@ it('explains a real load failure under the search bar and clears it when Try aga
   expect(screen.getByText('Live')).toBeVisible();
 });
 
+it('waits for the request that is running when Try again is tapped again', async () => {
+  let answer: (response: Response) => void = () => {};
+  const fetcher = vi.fn<() => Promise<Response>>().mockRejectedValueOnce(new Error('offline'))
+    .mockImplementation(() => new Promise<Response>(resolve => { answer = resolve; }));
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  const retry = () => within(screen.getByRole('alert')).getByRole('button', { name: 'Try again' });
+  track.mockClear();
+
+  // A slow connection: the spinner turns, and an impatient second and third tap follow.
+  await act(async () => { fireEvent.click(retry()); });
+  expect(retry()).toHaveAttribute('aria-busy', 'true');
+  await act(async () => { fireEvent.click(retry()); });
+  await act(async () => { fireEvent.click(retry()); });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(track.mock.calls).toEqual([['refresh']]);
+
+  // The one request answers; nothing was reported as failed on the way.
+  await act(async () => { answer(Response.json(response())); await vi.advanceTimersByTimeAsync(0); });
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
+  expect(track.mock.calls).toEqual([['refresh'], ['refresh_result', { result: 'success' }]]);
+});
+
 it('keeps the scooters and says so in the dock when a refresh fails, then shows the out-of-date card once they expire', async () => {
   const fetcher = vi.fn().mockResolvedValueOnce(Response.json(response())).mockRejectedValue(new Error('down'));
   vi.stubGlobal('fetch', fetcher);

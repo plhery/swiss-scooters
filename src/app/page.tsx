@@ -349,11 +349,14 @@ export default function Home() {
     startLocating(false);
   }, [startLocating]);
 
-  // The only manual refresh: "Try again" where a failure is shown.
+  // The only manual refresh: "Try again" where a failure is shown. A request
+  // that is already running is waited for: starting over would cancel it, and
+  // tapping faster than the network answers would never load anything.
   const retryLoad = useCallback(() => {
+    if (loading !== null) return;
     track('refresh');
     void refresh().then(succeeded => track('refresh_result', { result: succeeded ? 'success' : 'error' }));
-  }, [refresh]);
+  }, [loading, refresh]);
 
   const resetFilters = useCallback(() => {
     track('filters_reset');
