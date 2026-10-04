@@ -6,6 +6,7 @@ const rateLimitAllows = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/rateLimit', () => ({ rateLimitAllows }));
 
 import { GET, POST } from '@/app/api/geocode/route';
+import { RECORDED_ANSWERS } from '@/app/api/geocode/recordedAnswers';
 
 function request(query: string, language?: string): NextRequest {
   const url = new URL('https://example.com/api/geocode');
@@ -35,6 +36,20 @@ function stubGeoAdmin(rows: GeoAdminRow[]) {
   return fetchMock;
 }
 
+/** Answers as swisstopo did when the query was recorded. */
+function stubRecordedAnswer(query: string) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    void input;
+    return new Response(JSON.stringify({
+      results: RECORDED_ANSWERS[query].map(([origin, objectclass, label, lat, lon]) => ({
+        attrs: { origin, objectclass, label, lat, lon, x: lon, y: lat },
+      })),
+    }), { status: 200 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 // Inside the Zürich service area, and outside every service area.
 const ZURICH: [number, number] = [47.3695, 8.5389];
 const LAUSANNE: [number, number] = [46.5231, 6.6292];
@@ -51,6 +66,8 @@ describe('GET /api/geocode', () => {
   it.each([
     ['Munich', 'München, Germany', 'München', 'Germany'],
     ['Rome', 'Roma, Italy', 'Roma', 'Italy'],
+    ['Zürich', 'Zürich, Switzerland', 'Zürich', 'Switzerland'],
+    ['Bern', 'Bern, Switzerland', 'Bern', 'Switzerland'],
   ])('finds %s without a Swiss geocoding request', async (query, name, title, subtitle) => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -59,6 +76,25 @@ describe('GET /api/geocode', () => {
     expect(await result.json()).toEqual(expect.arrayContaining([
       expect.objectContaining({ display_name: name, title, subtitle, covered: true }),
     ]));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('answers a Swiss city with scooter data with the city itself, first and with a second line', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request('Biel'));
+
+    expect(response.headers.get('x-geocoding-data-source')).toBe('Verified European scooter city catalog');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    await expect(response.json()).resolves.toEqual([
+      { lat: 47.1368, lng: 7.2468, display_name: 'Biel/Bienne, Switzerland', title: 'Biel/Bienne', subtitle: 'Switzerland', covered: true },
+      { lat: 52.0224, lng: 8.535, display_name: 'Bielefeld, Germany', title: 'Bielefeld', subtitle: 'Germany', covered: true },
+    ]);
+    // The centre of the city, not of its canton or district as swisstopo also offers.
+    await expect((await GET(request('Zürich'))).json()).resolves.toEqual([
+      { lat: 47.3769, lng: 8.5417, display_name: 'Zürich, Switzerland', title: 'Zürich', subtitle: 'Switzerland', covered: true },
+    ]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it('includes French scooter cities in searches', async () => {
@@ -192,13 +228,13 @@ describe('address search results', () => {
   it('asks swisstopo for ten places and keeps its ranking within the five returned', async () => {
     const fetchMock = stubGeoAdmin([
       ['address', 'Rue A 1 <b>1003 Lausanne</b>', 46.5231, 6.6292],
-      ['address', 'Weg B 1 <b>8001 Zürich</b>', 47.3701, 8.5381],
+      ['address', 'Rue B 1 <b>8001 Zürich</b>', 47.3701, 8.5381],
       ['address', 'Rue C 1 <b>1003 Lausanne</b>', 46.5232, 6.6293],
-      ['address', 'Weg D 1 <b>8001 Zürich</b>', 47.3702, 8.5382],
+      ['address', 'Rue D 1 <b>8001 Zürich</b>', 47.3702, 8.5382],
       ['address', 'Rue E 1 <b>1003 Lausanne</b>', 46.5233, 6.6294],
-      ['address', 'Weg F 1 <b>8001 Zürich</b>', 47.3703, 8.5383],
+      ['address', 'Rue F 1 <b>8001 Zürich</b>', 47.3703, 8.5383],
       ['address', 'Rue G 1 <b>1003 Lausanne</b>', 46.5234, 6.6295],
-      ['address', 'Weg H 1 <b>8001 Zürich</b>', 47.3704, 8.5384],
+      ['address', 'Rue H 1 <b>8001 Zürich</b>', 47.3704, 8.5384],
       ['address', 'Rue I 1 <b>1003 Lausanne</b>', 46.5235, 6.6296],
       ['address', 'Rue J 1 <b>1003 Lausanne</b>', 46.5236, 6.6297],
     ]);
@@ -206,7 +242,7 @@ describe('address search results', () => {
     const results = await (await GET(request('rue'))).json() as { title: string; covered: boolean }[];
 
     expect((fetchMock.mock.calls[0][0] as URL).searchParams.get('limit')).toBe('10');
-    expect(results.map(result => result.title)).toEqual(['Weg B 1', 'Weg D 1', 'Weg F 1', 'Weg H 1', 'Rue A 1']);
+    expect(results.map(result => result.title)).toEqual(['Rue B 1', 'Rue D 1', 'Rue F 1', 'Rue H 1', 'Rue A 1']);
     expect(results.map(result => result.covered)).toEqual([true, true, true, true, false]);
   });
 
@@ -222,10 +258,11 @@ describe('address search results', () => {
     ['gazetteer', '<b>St. Gallen</b> (SG,AR) - Teufen (AR),Wittenbach,St. Gallen', 'St. Gallen', 'SG, AR'],
     ['gazetteer', '<i>Local name swisstopo</i> Paradeplatz (OW) - Lungern', 'Paradeplatz (OW) - Lungern', ''],
     ['gg25', '<b>Lausanne (VD)</b>', 'Lausanne', 'VD'],
-    ['kantone', '<b>Zürich</b>', 'Zürich', ''],
-    ['district', '<b>Bern-Mittelland</b>', 'Bern-Mittelland', ''],
+    ['gazetteer', '<b>Fribourg|Freiburg\n</b> (FR) - Fribourg,Düdingen,Tafers', 'Fribourg', 'FR'],
+    ['gazetteer', '<i>Local name swisstopo</i> <b>Chur</b> () - Triesenberg', 'Chur', 'Triesenberg'],
+    ['gazetteer', '<i>Island on a lake</i> <b>Lindau Insel (D)</b> () - ', 'Lindau Insel (D)', ''],
     ['zipcode', '<b>8001 - Zürich</b>', '8001 Zürich', ''],
-    ['parcel', '<b>Kerzers</b> 8001 (CH 9077 9455 1086)', 'Kerzers', '8001 (CH 9077 9455 1086)'],
+    ['somethingNew', '<b>Kerzers</b> 8001 (CH 9077 9455 1086)', 'Kerzers', '8001 (CH 9077 9455 1086)'],
     ['haltestellen', '<i>train</i> <b>Zürich HB</b>', 'Zürich HB', 'Train'],
     ['haltestellen', '<i><i>haltestellen_</i></i> <b>Zürich HB Löwenstrasse</b>', 'Zürich HB Löwenstrasse', ''],
     ['haltestellen', '<i><i>haltestellen_bus / tram</i></i> <b>Bern, Bahnhof</b>', 'Bern, Bahnhof', 'Bus / tram'],
@@ -273,20 +310,160 @@ describe('address search results', () => {
 
   it('lists a place once when swisstopo returns it several times', async () => {
     stubGeoAdmin([
-      ['gg25', '<b>Winterthur (ZH)</b>', 47.4991, 8.7202],
-      ['district', '<b>Winterthur</b>', 47.4979, 8.7746],
-      ['gazetteer', '<b>Winterthur\n</b> (ZH) - Wiesendangen,Neftenbach,Winterthur', 47.5002, 8.7327],
-      ['gazetteer', '<b>Winterthur</b> (ZH) - Wiesendangen,Neftenbach,Winterthur', 47.5002, 8.7327],
-      ['gazetteer', '<i>Interchange</i> <b>Winterthur-Ost</b> (ZH) - Wiesendangen', 47.532, 8.7896],
+      ['gg25', '<b>Thun (BE)</b>', 46.7405, 7.6076],
+      ['gazetteer', '<b>Thun\n</b> (BE) - Heimberg,Thierachern,Uetendorf,Thun', 46.7513, 7.6183],
+      ['gazetteer', '<b>Thun</b> (BE) - Heimberg,Thierachern,Uetendorf,Thun', 46.7513, 7.6183],
+      // The airfield in Thun, which would read "Thun / Thun BE" under the town itself.
+      ['gazetteer', '<i>Airfield</i> <b>Thun</b> (BE) - Thun', 46.7561, 7.6006],
+      ['gazetteer', '<i>Leisure park</i> <b>Thun-Panorama</b> (BE) - Thun', 46.7457, 7.6359],
     ]);
 
-    const results = await (await GET(request('Winterthur'))).json() as { title: string; subtitle: string; lat: number }[];
+    const results = await (await GET(request('Thun'))).json() as { title: string; subtitle: string; lat: number }[];
 
     expect(results.map(result => [result.title, result.subtitle, result.lat])).toEqual([
-      ['Winterthur', 'ZH', 47.4991],
-      ['Winterthur', '', 47.4979],
-      ['Winterthur-Ost', 'Wiesendangen ZH', 47.532],
+      ['Thun', 'BE', 46.7405],
+      ['Thun-Panorama', 'Thun BE', 46.7457],
     ]);
+  });
+
+  it('leaves out the centres of cantons and districts, land parcels and motorway exits', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ results: [
+      { attrs: { origin: 'kantone', label: '<b>Luzern</b>', lat: 47.031, lon: 8.192 } },
+      { attrs: { origin: 'district', label: '<b>Luzern-Stadt</b>', lat: 47.055, lon: 8.301 } },
+      { attrs: { origin: 'parcel', label: '<b>Luzern</b> 8001 (CH 9077 9455 1086)', lat: 47.05, lon: 8.3 } },
+      { attrs: { origin: 'gazetteer', objectclass: 'TLM_AUS_EINFAHRT', label: '<i>Exit</i> <b>Luzern-Zentrum</b> (LU) - Luzern', lat: 47.055, lon: 8.295 } },
+      { attrs: { origin: 'gazetteer', objectclass: 'tlm_aus_einfahrt', label: '<i>Interchange</i> <b>Luzern-Süd</b> (LU) - Luzern', lat: 47.03, lon: 8.3 } },
+      { attrs: { origin: 'gazetteer', objectclass: 'TLM_SIEDLUNGSNAME', label: '<i>Populated Place</i> <b>Luzernerhof</b> (LU) - Luzern', lat: 47.054, lon: 8.31 } },
+    ] }))));
+
+    const results = await (await GET(request('Luzern'))).json() as { title: string }[];
+
+    expect(results.map(result => result.title)).toEqual(['Luzernerhof']);
+  });
+
+  it('puts a town typed by its name first, with scooter data or without', async () => {
+    stubGeoAdmin([
+      ['address', 'Lausannegasse 1 <b>8001 Zürich</b>', ...ZURICH],
+      ['gg25', '<b>Lausanne (VD)</b>', ...LAUSANNE],
+      ['address', 'Lausannegasse 2 <b>8001 Zürich</b>', ...ZURICH],
+    ]);
+
+    const results = await (await GET(request('lausanne'))).json() as { title: string; covered: boolean }[];
+
+    expect(results.map(result => [result.title, result.covered])).toEqual([
+      ['Lausanne', false], ['Lausannegasse 1', true], ['Lausannegasse 2', true],
+    ]);
+  });
+
+  it('puts the place named as typed first among those with scooter data, in any word order and spelling', async () => {
+    stubGeoAdmin([
+      ['haltestellen', '<i>bus</i> <b>Zürich Flughafen, OPC</b>', ...ZURICH],
+      ['haltestellen', '<i>train</i> <b>Zürich Flughafen</b>', ...ZURICH],
+      ['haltestellen', '<i>bus</i> <b>Zürich Flughafen, Werft</b>', ...ZURICH],
+    ]);
+
+    const results = await (await GET(request('Flughafen Zuerich'))).json() as { title: string }[];
+
+    expect(results.map(result => result.title)).toEqual(['Zürich Flughafen', 'Zürich Flughafen, OPC', 'Zürich Flughafen, Werft']);
+  });
+
+  it('shows matches inside words only when nothing starts with what was typed', async () => {
+    const rows: GeoAdminRow[] = [
+      ['gazetteer', '<i>Populated Place</i> <b>Uettligenfeld</b> (BE) - Wohlen bei Bern', ...ZURICH],
+      ['gazetteer', '<i>School</i> <b>Deutsche Schule Genf</b> (GE) - Vernier', ...LAUSANNE],
+      ['address', 'Chemin des Fleurs 1 <b>1200 Genf</b>', ...LAUSANNE],
+    ];
+    stubGeoAdmin(rows);
+    const titles = async (query: string) =>
+      (await (await GET(request(query))).json() as { title: string }[]).map(result => result.title);
+
+    // "genf" starts a word of the title or of the second line.
+    expect(await titles('Genf')).toEqual(['Deutsche Schule Genf', 'Chemin des Fleurs 1']);
+    // A typing mistake that swisstopo forgave: better than nothing.
+    stubGeoAdmin(rows.slice(0, 1));
+    expect(await titles('Genf')).toEqual(['Uettligenfeld']);
+  });
+});
+
+// The rows a rider sees for real queries, answered as swisstopo answered them.
+describe('recorded swisstopo answers', () => {
+  const NO_DATA = false;
+  const DATA = true;
+
+  it.each<[query: string, rows: [title: string, subtitle: string, covered: boolean][]]>([
+    // A town without scooter data: itself, then what starts with its name. Not the
+    // hamlets that merely contain the letters, which swisstopo ranks above the lake.
+    ['Genf', [
+      ['Genf', 'GE', NO_DATA],
+      ['Genfersee', 'GE, VD, VS', NO_DATA],
+      ['Deutsche Schule Genf', 'Vernier GE', NO_DATA],
+    ]],
+    // Without the district, the town repeated twice and four motorway exits.
+    ['Lausanne', [
+      ['Lausanne', 'VD', NO_DATA],
+      ['Lausanne-La Blécherette', 'Lausanne VD', NO_DATA],
+      ['Lausanne Vernand 300/50m', 'Romanel-sur-Lausanne VD', NO_DATA],
+    ]],
+    // Without the canton and its two districts, which had no second line.
+    ['Luzern', [
+      ['Luzern', 'LU', NO_DATA],
+      ['Luzern-Horw', 'Horw LU', NO_DATA],
+    ]],
+    ['Baden', [
+      ['Baden', 'AG', NO_DATA],
+      ['Baden, Schlossbergplatz', 'Bus', NO_DATA],
+      ['Baden, Grosse Bäder', 'Bus', NO_DATA],
+      ['Baden, Römerstrasse', 'Bus', NO_DATA],
+      ['Baden, Historisches Museum', 'Bus', NO_DATA],
+    ]],
+    // The canton, "Fribourg|Freiburg", five exits and a treatment plant called Fribourg are gone.
+    ['Fribourg', [['Fribourg', 'FR', NO_DATA]]],
+    ['Chur', [
+      ['Chur', 'GR', NO_DATA],
+      ['Chur', 'Triesenberg', NO_DATA],
+      ['Chur (Brambrüeschbahn)', 'Chur GR', NO_DATA],
+      ['Chur Rossboden 100/50m', 'Chur GR', NO_DATA],
+    ]],
+    // The station itself is seventh in swisstopo's answer.
+    ['Zürich HB', [
+      ['Zürich HB', 'Train', DATA],
+      ['Zürich HB SZU', 'Train', DATA],
+      ['Zürich HB Museumstrasse', '', DATA],
+      ['Zürich HB Nord', '', DATA],
+      ['Zürich HB SZU Süd (Spw)', '', DATA],
+    ]],
+    ['Flughafen Zürich', [
+      ['Zürich Flughafen', 'Train', DATA],
+      ['Zürich Flughafen, OPC', 'Bus', DATA],
+      ['Zürich Flughafen, Fracht', 'Bus / tram', DATA],
+      ['Zürich Flughafen, Werft', 'Bus', DATA],
+      ['Zürich Flughafen, Fracht (Wds)', '', DATA],
+    ]],
+    ['Bahnhofstrasse 1 Zürich', [
+      ['Bahnhofstrasse 1', '8001 Zürich', DATA],
+      ['Bahnhofstrasse 10', '8001 Zürich', DATA],
+      ['Bahnhofstrasse 11', '8001 Zürich', DATA],
+      ['Bahnhofstrasse 12', '8001 Zürich', DATA],
+      ['Bahnhofstrasse 13', '8001 Zürich', DATA],
+    ]],
+    // Milan has no scooter data and swisstopo knows Switzerland only: one street, listed once.
+    ['Milano', [['Via Milano', '6830 Chiasso', NO_DATA]]],
+    // Without nine land parcels numbered 8001.
+    ['8001', [['8001 Zürich', '', DATA]]],
+    // Without Röthenbach, Rüthi and St. Margrethen, which have "eth" inside.
+    ['ETH', [
+      ['ETH / Universität', 'Zürich ZH', DATA],
+      ['ETH Hönggerberg', 'Zürich ZH', DATA],
+    ]],
+  ])('answers "%s" with the places a rider would choose', async (query, rows) => {
+    const fetchMock = stubRecordedAnswer(query);
+
+    const response = await GET(request(query));
+    const results = await response.json() as { title: string; subtitle: string; covered: boolean }[];
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(response.headers.get('x-geocoding-data-source')).toBe('swisstopo geo.admin.ch');
+    expect(results.map(result => [result.title, result.subtitle, result.covered])).toEqual(rows);
   });
 });
 

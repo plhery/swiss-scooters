@@ -1,8 +1,8 @@
 import { BodyTooLargeError, readJsonBody } from '@/lib/readJsonBody';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimitAllows } from '@/lib/rateLimit';
-import { searchRegionalScooterCities } from '@/lib/regionalScooterSystems';
 import { isPointCovered } from '@/lib/coveredCities';
+import { searchCoveredCities } from './cities';
 
 const MAX_QUERY_LENGTH = 160;
 // Twice what is returned, so places with scooter data can be ranked first.
@@ -11,6 +11,10 @@ const MAX_RESULTS = 5;
 const GEOCODE_TIMEOUT_MS = 10_000;
 const GEOADMIN_SEARCH_URL = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
 const SUPPORTED_LANGUAGES = new Set(['de', 'fr', 'it', 'en']);
+// Not places to ride from: the centres of whole cantons and districts, and land parcels.
+const SKIPPED_ORIGINS = new Set(['kantone', 'district', 'parcel']);
+// Motorway exits and interchanges, which read like quarters ("Zürich-West") once their class is dropped.
+const MOTORWAY_CLASS = 'TLM_AUS_EINFAHRT';
 
 interface GeoAdminResult {
   attrs?: {
@@ -20,6 +24,7 @@ interface GeoAdminResult {
     y?: number;
     label?: string;
     origin?: string;
+    objectclass?: string;
   };
 }
 
@@ -75,6 +80,8 @@ function tidyRemainder(text: string): string {
     return place ? `${place[1]} ${place[2]}` : `${located[2]} ${cantons}`;
   }
   return text
+    // Places across the border have no canton: "() - Triesenberg".
+    .replace(/\(\s*\)/g, '')
     .replace(BRACKETED_CANTONS, '$1')
     .replace(/^[\s,;:·–—-]+|[\s,;:·–—-]+$/g, '');
 }
@@ -87,7 +94,8 @@ function placeLines(label: string, origin: string | undefined, displayName: stri
     .replace(/<i\b[^>]*>([\s\S]*?)<\/i>/gi, (_, text: string) => { category += ` ${text}`; return ' '; })
     .replace(/<b\b[^>]*>([\s\S]*?)<\/b>/gi, (_, text: string) => { bold += ` ${text}`; return ' '; }));
   category = plainText(category);
-  bold = plainText(bold);
+  // Bilingual towns are named twice: "Fribourg|Freiburg".
+  bold = plainText(origin === 'gazetteer' ? bold.split('|')[0] : bold);
 
   if (!bold) return { title: outside || category || displayName.replace(/\s+/g, ' '), subtitle: '' };
 
@@ -114,6 +122,28 @@ function placeLines(label: string, origin: string | undefined, displayName: stri
   return { title, subtitle: subtitle === title ? '' : subtitle };
 }
 
+/** The words of a text in one spelling: "Zuerich" and "Zürich" are both "zurich". */
+function searchWords(text: string): string[] {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/([aou])e/g, '$1').split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+// From this rank on, a place has what was typed only somewhere inside its words.
+const INSIDE_WORDS_RANK = 5;
+
+/** How a place ranks for what was typed; lower comes first. */
+function placeRank(typed: string[], place: { title: string; subtitle: string; covered: boolean }, origin: string | undefined): number {
+  const title = searchWords(place.title);
+  // In any order: "Flughafen Zürich" names "Zürich Flughafen".
+  const named = title.length === typed.length && [...title].sort().join(' ') === [...typed].sort().join(' ');
+  // A town typed by its name is what was asked for, with scooter data or without.
+  if (named && origin === 'gg25') return 0;
+  // swisstopo also matches inside words: "Genf" finds "Uettligenfeld".
+  const words = [...title, ...searchWords(place.subtitle)];
+  const atWordStart = typed.every(word => words.some(candidate => candidate.startsWith(word)));
+  return (atWordStart ? 1 : INSIDE_WORDS_RANK) + (place.covered ? 0 : 2) + (named ? 0 : 1);
+}
+
 function errorResponse(message: string, status: number, retryAfter?: string) {
   return NextResponse.json(
     { error: message },
@@ -135,24 +165,16 @@ async function geocode(input: GeocodeInput) {
 
   const requestedLanguage = input.requestedLanguage.toLowerCase();
   const language = SUPPORTED_LANGUAGES.has(requestedLanguage) ? requestedLanguage : 'en';
-  const cities = searchRegionalScooterCities(query).map(city => {
-    // The catalogue names its cities "City, Country".
-    const separator = city.display_name.lastIndexOf(', ');
-    return {
-      ...city,
-      title: separator < 0 ? city.display_name : city.display_name.slice(0, separator),
-      subtitle: separator < 0 ? '' : city.display_name.slice(separator + 2),
-      covered: isPointCovered(city.lat, city.lng),
-    };
-  });
-  const cityResponse = () => NextResponse.json(cities, {
-    headers: {
-      'Cache-Control': 'private, no-store',
-      'X-Geocoding-Data-Source': 'Verified European scooter city catalog',
-    },
-  });
-
-  if (cities.length) return cityResponse();
+  // A city with scooter data is found by its name alone, before and without swisstopo.
+  const cities = searchCoveredCities(query);
+  if (cities.length) {
+    return NextResponse.json(cities, {
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'X-Geocoding-Data-Source': 'Verified European scooter city catalog',
+      },
+    });
+  }
 
   const url = new URL(GEOADMIN_SEARCH_URL);
   url.search = new URLSearchParams({
@@ -185,25 +207,36 @@ async function geocode(input: GeocodeInput) {
       return errorResponse('Address search returned an invalid response.', 502);
     }
 
+    const typed = searchWords(query);
     const seen = new Set<string>();
-    const results = raw.results.flatMap(result => {
+    const places = raw.results.flatMap(result => {
+      const origin = result.attrs?.origin;
+      // Rows a rider would not choose.
+      if (SKIPPED_ORIGINS.has(origin ?? '') || result.attrs?.objectclass?.toUpperCase() === MOTORWAY_CLASS) return [];
       const lat = Number(result.attrs?.lat ?? result.attrs?.y);
       const lng = Number(result.attrs?.lon ?? result.attrs?.x);
       const label = typeof result.attrs?.label === 'string' ? result.attrs.label : '';
       const displayName = plainTextLabel(label);
       if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180 || !displayName) return [];
-      const { title, subtitle } = placeLines(label, result.attrs?.origin, displayName);
+      const { title, subtitle } = placeLines(label, origin, displayName);
       // swisstopo lists some places more than once (a town as municipality and as
       // place name, for instance); rows that read the same would look like a bug.
       const key = JSON.stringify([title, subtitle]);
       if (seen.has(key)) return [];
       seen.add(key);
-      return [{ lat, lng, display_name: displayName, title, subtitle, covered: isPointCovered(lat, lng) }];
+      // After the town "Baden / AG", a feature in it that is also just called
+      // "Baden / Baden AG" (its airfield, its treatment plant) reads like the town again.
+      if (origin === 'gg25' && subtitle) seen.add(JSON.stringify([title, `${title} ${subtitle}`]));
+      const place = { lat, lng, display_name: displayName, title, subtitle, covered: isPointCovered(lat, lng) };
+      return [{ place, rank: placeRank(typed, place, origin) }];
     });
-    // Stable: swisstopo's ranking is kept among covered and among uncovered places.
-    results.sort((a, b) => Number(b.covered) - Number(a.covered));
+    // Places with scooter data first. Stable: swisstopo's ranking is kept among the places of one rank.
+    places.sort((a, b) => a.rank - b.rank);
+    // Matches inside words are a last resort, for a typing mistake that found nothing better.
+    const better = places.filter(({ rank }) => rank < INSIDE_WORDS_RANK);
+    const shown = better.length > 0 ? better : places;
 
-    return NextResponse.json(results.slice(0, MAX_RESULTS), {
+    return NextResponse.json(shown.slice(0, MAX_RESULTS).map(({ place }) => place), {
       headers: {
         'Cache-Control': 'private, no-store',
         'X-Geocoding-Data-Source': 'swisstopo geo.admin.ch',
