@@ -1534,11 +1534,12 @@ extension ScooterMapModelTests {
         XCTAssertEqual(cities.map { Int(($0.distanceMeters / 1_000).rounded()) }, [52, 57, 73])
         XCTAssertEqual(cities, model.closestCities)
 
-        // A chip flies to the city; it does not become the chosen place.
+        // A chip flies to the city and makes it the place, so walking times
+        // start there and not at the place without scooter data.
         model.focusOnCity(cities[1].city)
         XCTAssertEqual(model.focusRequest?.point, cities[1].city.center)
-        XCTAssertNil(model.searchedDestination)
-        XCTAssertTrue(model.recentPlaces.isEmpty)
+        XCTAssertEqual(model.searchedDestination, cities[1].city.destination)
+        XCTAssertEqual(model.recentPlaces, [cities[1].city.destination])
     }
 
     func testFiltersThatHideEverythingReportWhatIsHidden() async {
@@ -2030,7 +2031,7 @@ extension ScooterMapModelTests {
 
             XCTAssertEqual(model.focusRequest, chosenFocus, "city: \(choosesCity)")
             XCTAssertEqual(model.viewport, viewport)
-            XCTAssertEqual(model.searchBarState, choosesCity ? .nearYou : .place(place))
+            XCTAssertEqual(model.searchBarState, .place(choosesCity ? bern.destination : place))
             XCTAssertNil(model.locationIssue)
             XCTAssertTrue(model.hasLocatedOnce)
 

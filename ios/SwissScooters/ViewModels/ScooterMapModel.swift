@@ -819,10 +819,14 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         requestLocationAccess()
     }
 
-    /// Chooses a place: it becomes the origin for walking times, is remembered
-    /// for this session and the map moves there.
+    /// Chooses a place found in the search: it becomes the origin for walking
+    /// times, is remembered for this session and the map moves there.
     func focusOnAddress(_ destination: MapDestination) {
         ScooterAnalytics.shared.track("search_select")
+        choosePlace(destination)
+    }
+
+    private func choosePlace(_ destination: MapDestination) {
         selectedScooterID = nil
         selectedParkingID = nil
         placeChoices += 1
@@ -839,13 +843,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         focusOnAddress(city.destination)
     }
 
-    /// A closest-city chip: the map flies to the city, the place stays as it is.
+    /// A closest-city chip: the city becomes the place, like its chip in the
+    /// search, so walking times start there and not at the place without data.
     func focusOnCity(_ city: ScooterCity) {
-        selectedScooterID = nil
-        selectedParkingID = nil
-        placeChoices += 1
-        focusToken += 1
-        focusRequest = .city(city.center, token: focusToken)
+        choosePlace(city.destination)
     }
 
     private func rememberPlace(_ destination: MapDestination) {
