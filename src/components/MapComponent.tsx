@@ -172,7 +172,6 @@ interface MapComponentProps {
   origin: [number, number];
   initialZoom: number;
   distanceOrigin: [number, number] | null;
-  tileLayer: 'dark' | 'light' | 'osm';
   userLocation: [number, number] | null;
   headingEnabled: boolean;
   focusLocation: [number, number] | null;
@@ -195,7 +194,6 @@ export default function MapComponent({
   origin,
   initialZoom,
   distanceOrigin,
-  tileLayer,
   userLocation,
   headingEnabled,
   focusLocation,
@@ -377,7 +375,8 @@ export default function MapComponent({
     tileLayerRef.current?.remove();
     const layer = L.tileLayer(TILE_URL, {
       attribution: OSM_ATTRIBUTION,
-      className: `map-basemap-${tileLayer}`,
+      // Calm or detailed, light or dark: the stylesheet filters this one layer.
+      className: 'map-basemap',
       // Identify the site without sending a shared link's coordinates in Referer.
       referrerPolicy: 'origin',
       maxNativeZoom: 19,
@@ -391,7 +390,7 @@ export default function MapComponent({
       layer.remove();
       if (tileLayerRef.current === layer) tileLayerRef.current = null;
     };
-  }, [readyMap, tileLayer]);
+  }, [readyMap]);
 
   useEffect(() => {
     const map = mapRef.current;

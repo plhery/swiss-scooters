@@ -18,13 +18,14 @@
   transition: opacity 0.22s ease;
 }
 
-.map-basemap-light {
-  /* Keep geography in the background while street labels stay legible. */
-  filter: saturate(0.18) contrast(0.68) brightness(1.22);
+/* The tiles are the same in every setting; what they go through differs with
+   the map style and the appearance (the --tiles tokens in globals.css). */
+.map-basemap {
+  filter: var(--tiles-calm);
 }
 
-.map-basemap-dark {
-  filter: invert(1) hue-rotate(180deg) saturate(0.65) brightness(0.85);
+.app-shell[data-map='detailed'] .map-basemap {
+  filter: var(--tiles-detailed);
 }
 
 .parking-marker-wrap {

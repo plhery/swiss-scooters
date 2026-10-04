@@ -40,13 +40,19 @@ vi.mock('@/components/SearchIsland', () => ({ default: ({
   <span data-testid="recent">{recentPlaces.map(recent => recent.title).join(', ')}</span>
   <span data-testid="cities">{nearbyCities.map(city => city.city).join(', ')}</span></> }));
 vi.mock('@/components/ControlSheet', () => ({ default: ({
-  showCount, providerCounts, downProviders, hasActiveFilters, onProviderToggle, onMinBatteryChange,
+  showCount, providerCounts, downProviders, hasActiveFilters, theme, mapStyle,
+  onProviderToggle, onMinBatteryChange, onThemeChange, onMapStyleChange,
 }: {
   showCount: number | null; providerCounts: Record<string, number>; downProviders: string[]; hasActiveFilters: boolean;
+  theme: string; mapStyle: string;
   onProviderToggle: (provider: string) => void; onMinBatteryChange: (value: number) => void;
+  onThemeChange: (theme: string) => void; onMapStyleChange: (style: string) => void;
 }) => <><button onClick={() => onProviderToggle('lime')}>Lime in the filters</button>
   <button onClick={() => onMinBatteryChange(60)}>At least 60% in the filters</button>
-  <span data-testid="filters">{JSON.stringify({ show: showCount, counts: providerCounts, down: downProviders, active: hasActiveFilters })}</span></> }));
+  <span data-testid="filters">{JSON.stringify({ show: showCount, counts: providerCounts, down: downProviders, active: hasActiveFilters })}</span>
+  {['auto', 'light', 'dark'].map(name => <button key={name} onClick={() => onThemeChange(name)}>Appearance {name}</button>)}
+  {['calm', 'detailed'].map(name => <button key={name} onClick={() => onMapStyleChange(name)}>Map {name}</button>)}
+  <span data-testid="settings">{theme} {mapStyle}</span></> }));
 vi.mock('@/components/MapCredits', () => ({ default: () => null }));
 
 const response = (): ScooterResponse => ({ vehicles: [{ provider: 'lime', vehicle_id: 'one', lat: 47.377, lng: 8.542,
@@ -609,14 +615,25 @@ it('renders on the server in the loading state without requesting scooters', () 
   expect(html).toContain('data-testid="vehicles"');
   expect(html).not.toContain('role="alert"');
   expect(fetcher).not.toHaveBeenCalled();
+  // Before any script runs the appearance is the system's.
+  expect(html).toContain('data-theme="auto"');
+  expect(html).toContain('<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c1e"/>');
+  expect(html).toContain('<meta name="theme-color" media="(prefers-color-scheme: light)" content="#e0ddd8"/>');
 });
+
+const shell = () => document.querySelector('.app-shell')!;
+/** The colour the browser gives its bars while the system is light or dark. */
+const themeColors = () => ['light', 'dark'].map(scheme => document.head
+  .querySelector(`meta[name="theme-color"][media="(prefers-color-scheme: ${scheme})"]`)?.getAttribute('content'));
 
 it('carries settings from the old tile parameter over to theme and map', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
   window.history.replaceState(null, '', '/?tile=dark&minBattery=45');
   const first = mount();
   await act(async () => vi.advanceTimersByTimeAsync(180));
-  expect(first.container.querySelector('.app-shell')).toHaveAttribute('data-map-theme', 'dark');
+  expect(shell()).toHaveAttribute('data-theme', 'dark');
+  expect(shell()).toHaveAttribute('data-map', 'calm');
+  expect(screen.getByTestId('settings')).toHaveTextContent('dark calm');
   expect(window.location.search).toBe('?minBattery=30&theme=dark');
   first.unmount();
 
@@ -625,9 +642,70 @@ it('carries settings from the old tile parameter over to theme and map', async (
   window.history.replaceState(null, '', '/');
   const second = mount();
   await act(async () => vi.advanceTimersByTimeAsync(180));
-  expect(second.container.querySelector('.app-shell')).toHaveAttribute('data-map-theme', 'osm');
+  // "OSM" was a map style of the light appearance; the appearance is now the system's.
+  expect(shell()).toHaveAttribute('data-theme', 'auto');
+  expect(shell()).toHaveAttribute('data-map', 'detailed');
   expect(window.location.search).toBe('?map=detailed');
   expect(JSON.parse(localStorage.getItem('scooters-params')!)).toEqual({ map: 'detailed' });
+  second.unmount();
+
+  // The old light style is what nothing chosen means today.
+  window.history.replaceState(null, '', '/?tile=light');
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(screen.getByTestId('settings')).toHaveTextContent('auto calm');
+  expect(window.location.search).toBe('');
+});
+
+it('leaves Automatic to the system, and keeps a chosen appearance and map style in the link and on the device', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  const view = mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  // Automatic and calm are what nothing chosen means: the stylesheet follows the system.
+  expect(shell()).toHaveAttribute('data-theme', 'auto');
+  expect(shell()).toHaveAttribute('data-map', 'calm');
+  expect(themeColors()).toEqual(['#e0ddd8', '#1c1c1e']);
+  expect(window.location.search).toBe('');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Appearance dark' }));
+  expect(shell()).toHaveAttribute('data-theme', 'dark');
+  // A chosen appearance holds whatever the system says.
+  expect(themeColors()).toEqual(['#1c1c1e', '#1c1c1e']);
+  expect(window.location.search).toBe('?theme=dark');
+  expect(JSON.parse(localStorage.getItem('scooters-params')!)).toEqual({ theme: 'dark' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Map detailed' }));
+  expect(shell()).toHaveAttribute('data-theme', 'dark');
+  expect(shell()).toHaveAttribute('data-map', 'detailed');
+  expect(window.location.search).toBe('?theme=dark&map=detailed');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Appearance light' }));
+  expect(shell()).toHaveAttribute('data-theme', 'light');
+  expect(themeColors()).toEqual(['#e0ddd8', '#e0ddd8']);
+  expect(window.location.search).toBe('?theme=light&map=detailed');
+  expect(JSON.parse(localStorage.getItem('scooters-params')!)).toEqual({ theme: 'light', map: 'detailed' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Appearance auto' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Map calm' }));
+  expect(themeColors()).toEqual(['#e0ddd8', '#1c1c1e']);
+  expect(window.location.search).toBe('');
+  expect(JSON.parse(localStorage.getItem('scooters-params')!)).toEqual({});
+  // Nothing is forced on the page from a script, and nothing is left behind.
+  expect(document.documentElement.style.colorScheme).toBe('');
+  expect(document.head.querySelectorAll('meta[name="theme-color"]')).toHaveLength(2);
+  view.unmount();
+  expect(document.head.querySelectorAll('meta[name="theme-color"]')).toHaveLength(0);
+});
+
+it('restores a chosen appearance and map style from the link', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  window.history.replaceState(null, '', '/?theme=light&map=detailed');
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(shell()).toHaveAttribute('data-theme', 'light');
+  expect(shell()).toHaveAttribute('data-map', 'detailed');
+  expect(themeColors()).toEqual(['#e0ddd8', '#e0ddd8']);
+  expect(window.location.search).toBe('?theme=light&map=detailed');
 });
 
 it('restores and saves provider preferences without overwriting them during hydration', async () => {

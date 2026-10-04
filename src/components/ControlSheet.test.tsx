@@ -19,12 +19,14 @@ function sheetProps(overrides: Partial<Props> = {}): Props {
     downProviders: [],
     hasActiveFilters: false,
     showCount: 14,
-    tileLayer: 'light',
+    theme: 'auto',
+    mapStyle: 'calm',
     onClose: vi.fn(),
     onMinBatteryChange: vi.fn(),
     onProviderToggle: vi.fn(),
     onResetFilters: vi.fn(),
-    onTileLayerChange: vi.fn(),
+    onThemeChange: vi.fn(),
+    onMapStyleChange: vi.fn(),
     ...overrides,
   };
 }
@@ -172,6 +174,116 @@ describe('ControlSheet filters', () => {
   it('closes with Escape', () => {
     const { props } = renderSheet();
     fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+});
+
+describe('ControlSheet settings', () => {
+  const settings = (overrides: Partial<Props> = {}) => renderSheet({ panel: 'settings', ...overrides });
+  const pressed = (group: HTMLElement) =>
+    within(group).getAllByRole('button').map(button => `${button.textContent}:${button.getAttribute('aria-pressed')}`);
+
+  it('is a dialog named Settings with appearance, map, language and About, in that order', () => {
+    settings();
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    expect(within(dialog).getAllByRole('heading', { level: 3 }).map(heading => heading.textContent))
+      .toEqual(['Appearance', 'Map', 'Language', 'About']);
+    // The sources live in the credits; nothing is left of the English-only footer.
+    expect(within(dialog).queryByRole('link', { name: 'MobiData BW' })).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Reset' })).toBeNull();
+  });
+
+  it('offers the appearance as Automatic, Light or Dark', () => {
+    const { props, rerender } = settings();
+    const appearance = screen.getByRole('group', { name: 'Appearance' });
+    expect(pressed(appearance)).toEqual(['Automatic:true', 'Light:false', 'Dark:false']);
+
+    fireEvent.click(within(appearance).getByRole('button', { name: 'Dark' }));
+    expect(props.onThemeChange).toHaveBeenCalledExactlyOnceWith('dark');
+    // The appearance already chosen is not chosen again.
+    fireEvent.click(within(appearance).getByRole('button', { name: 'Automatic' }));
+    expect(props.onThemeChange).toHaveBeenCalledOnce();
+
+    rerender({ panel: 'settings', theme: 'dark' });
+    expect(pressed(appearance)).toEqual(['Automatic:false', 'Light:false', 'Dark:true']);
+  });
+
+  it('offers the map as Calm or Detailed, each with a picture', () => {
+    const { props, rerender } = settings();
+    const map = screen.getByRole('group', { name: 'Map' });
+    expect(pressed(map)).toEqual(['Calm:true', 'Detailed:false']);
+    expect(map.querySelector('.map-style-calm')).not.toBeNull();
+    expect(map.querySelector('.map-style-detailed')).not.toBeNull();
+
+    fireEvent.click(within(map).getByRole('button', { name: 'Detailed' }));
+    expect(props.onMapStyleChange).toHaveBeenCalledExactlyOnceWith('detailed');
+    fireEvent.click(within(map).getByRole('button', { name: 'Calm' }));
+    expect(props.onMapStyleChange).toHaveBeenCalledOnce();
+
+    rerender({ panel: 'settings', mapStyle: 'detailed' });
+    expect(pressed(map)).toEqual(['Calm:false', 'Detailed:true']);
+  });
+
+  it('names the languages in their own language and switches at once', () => {
+    settings();
+    const language = screen.getByRole('group', { name: 'Language' });
+    expect(pressed(language)).toEqual(['Deutsch:false', 'Français:false', 'Italiano:false', 'English:true']);
+    expect(within(language).getAllByRole('button').map(button => button.lang))
+      .toEqual(['de-CH', 'fr-CH', 'it-CH', 'en-CH']);
+
+    fireEvent.click(within(language).getByRole('button', { name: 'Deutsch' }));
+    expect(screen.getByRole('dialog', { name: 'Einstellungen' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Darstellung' })).toBeInTheDocument();
+    expect(pressed(screen.getByRole('group', { name: 'Sprache' })))
+      .toEqual(['Deutsch:true', 'Français:false', 'Italiano:false', 'English:false']);
+    expect(localStorage.getItem('scooters-locale')).toBe('de');
+  });
+
+  it('leads from About to the privacy notice and to the source code', () => {
+    settings();
+    expect(screen.getByRole('link', { name: 'Privacy notice' })).toHaveAttribute('href', '/privacy');
+    const source = screen.getByRole('link', { name: 'Source code on GitHub' });
+    expect(source).toHaveAttribute('href', 'https://github.com/plhery/swiss-scooters');
+    expect(source).toHaveAttribute('target', '_blank');
+    expect(source).toHaveAttribute('rel', 'noreferrer');
+  });
+
+  it('opens the credits list from About, and leads back to where it was opened', () => {
+    const { rerender } = settings();
+    fireEvent.click(screen.getByRole('button', { name: 'Map & data credits' }));
+    const credits = screen.getByRole('dialog', { name: 'Map & data credits' });
+    // The view starts at its heading; the settings themselves are out of the way.
+    expect(within(credits).getByRole('heading', { name: 'Map & data credits', level: 2 })).toHaveFocus();
+    expect(within(credits).queryByRole('group', { name: 'Appearance' })).toBeNull();
+    const links = within(credits).getAllByRole('link');
+    expect(links.map(link => link.textContent)).toEqual([
+      '© OpenStreetMap contributors',
+      'Mobility data CH',
+      'France: Dott, Bird, Lime, Voi, Pony',
+      'MobiData BW',
+      'DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird',
+      '© swisstopo',
+      'Parking · Métropole Européenne de Lille',
+    ]);
+    // Sources open beside the map instead of taking its place.
+    expect(links.every(link => link.getAttribute('target') === '_blank' && link.getAttribute('rel') === 'noreferrer')).toBe(true);
+    expect(within(credits).getByRole('button', { name: 'Done' })).toBeInTheDocument();
+
+    fireEvent.click(within(credits).getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Map & data credits' })).toHaveFocus();
+
+    // Closed on the credits, the settings open on their first view again.
+    fireEvent.click(screen.getByRole('button', { name: 'Map & data credits' }));
+    rerender({ panel: 'settings', open: false });
+    rerender({ panel: 'settings', open: true });
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Appearance' })).toBeInTheDocument();
+  });
+
+  it('closes with Done', () => {
+    const { props } = settings();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(props.onClose).toHaveBeenCalledOnce();
   });
 });

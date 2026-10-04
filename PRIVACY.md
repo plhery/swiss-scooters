@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 8 September 2026
+Last updated: 4 October 2026
 
 Scooters has no accounts or advertising. It does not intentionally retain precise user locations or address
 searches.
@@ -11,8 +11,8 @@ searches.
 - Address text is proxied in a non-cacheable request body to the Swiss federal
   geo.admin.ch service.
 - OpenStreetMap receives normal tile requests from the user's device, with the website origin as the referrer (no page path or query string).
-- Language, filters, and map style are stored locally. Precise map origins are
-  not persisted.
+- Language, filters, appearance and map style are stored locally. Precise map
+  origins are not persisted.
 - Cloudflare hosts and protects the service. Persisted Worker invocation logs
   are disabled so full coordinate-bearing request URLs are not retained in the
   application's log stream.
@@ -35,6 +35,7 @@ vehicle IDs, URL queries/fragments, advertising IDs, or session recordings.
 Umami processes IP/user-agent information to derive approximate geography,
 device information and short-lived sessions; it does not store raw IPs. No
 analytics cookies or persistent user IDs are used. Session cache stays in memory.
-Disable analytics on the web privacy page or in native Settings. Web collection
-also respects Do Not Track and Global Privacy Control. Development/preview web
-hosts and iOS simulators/tests are excluded by default.
+Disable analytics on the web privacy page or in the iOS app under
+Settings › About › Privacy. Web collection also respects Do Not Track and
+Global Privacy Control. Development/preview web hosts and iOS simulators/tests
+are excluded by default.

@@ -1,5 +1,5 @@
 import AnalyticsPreference from '@/components/AnalyticsPreference';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
@@ -8,13 +8,18 @@ export const metadata: Metadata = {
   alternates: { canonical: '/privacy' },
 };
 
+// This page is light whatever the appearance of the app.
+export const viewport: Viewport = {
+  themeColor: '#f5f4f1',
+};
+
 export default function PrivacyPage() {
   return (
     <main className="legal-page">
       <article className="legal-content">
         <Link className="legal-back" href="/">← Back to Scooters</Link>
         <h1>Privacy</h1>
-        <p>Last updated: 8 September 2026</p>
+        <p>Last updated: 4 October 2026</p>
 
         <h2>Overview</h2>
         <p>
@@ -64,7 +69,7 @@ export default function PrivacyPage() {
           and do not record your screen or replay sessions.
         </p>
         <p>
-          You can disable usage analytics below, or in the iOS app&apos;s Settings.
+          You can disable usage analytics below, or in the iOS app under Settings › About › Privacy.
           The website also respects Do Not Track and Global Privacy Control. This browser
           preference is saved locally and does not affect your iOS setting.
         </p>
@@ -72,7 +77,7 @@ export default function PrivacyPage() {
 
         <h2>Local storage and service worker</h2>
         <p>
-          Map style, language, and battery filter are stored locally on your device. Precise map
+          Appearance, map style, language, and filters are stored locally on your device. Precise map
           origins are not persisted. A service worker caches the application shell and static
           assets for faster and offline launches. You can remove this data through your browser
           or by deleting the app.

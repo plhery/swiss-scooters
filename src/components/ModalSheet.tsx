@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type Ref } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { prefersReducedMotion, selectionFeedback } from '@/lib/feedback';
+import Icon from './Icon';
 
 interface ModalSheetProps {
   open: boolean;
   /** The heading, which also names the dialog. */
   title: string;
+  /** For moving the focus to the heading when the sheet shows another view. */
+  titleRef?: Ref<HTMLHeadingElement>;
+  /** Above the heading of a view that was opened from within the sheet: the way back, named after where it leads. */
+  back?: { label: string; onClick: () => void };
   /** Beside the heading, in place of "Done". */
   action?: ReactNode;
   /** Stays in view under the content, which scrolls. */
@@ -17,7 +22,7 @@ interface ModalSheetProps {
 }
 
 /** A sheet over the map: it closes with its button, Escape, a tap beside it or a pull on the grabber. */
-export default function ModalSheet({ open, title, action, footer, onClose, children }: ModalSheetProps) {
+export default function ModalSheet({ open, title, titleRef, back, action, footer, onClose, children }: ModalSheetProps) {
   const { t } = useI18n();
   const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -126,15 +131,22 @@ export default function ModalSheet({ open, title, action, footer, onClose, child
         >
           <span className="grabber" />
         </div>
-        <header className="control-sheet-heading">
-          <h2 id={titleId}>{title}</h2>
+        <header className={`control-sheet-heading ${back ? 'control-sheet-heading-pushed' : ''}`}>
+          {back && (
+            <button type="button" className="sheet-back" onClick={back.onClick}>
+              <Icon name="chevron" size={16} strokeWidth={2.2} />
+              {back.label}
+            </button>
+          )}
+          <h2 id={titleId} ref={titleRef} tabIndex={-1}>{title}</h2>
           {action ?? (
             <button type="button" className="done-button" onClick={close}>
               {t('common.done')}
             </button>
           )}
         </header>
-        <div ref={bodyRef} className="control-sheet-body">
+        {/* Another view is another scroller: it starts at its top. */}
+        <div ref={bodyRef} key={back ? 'pushed' : 'first'} className="control-sheet-body">
           {children}
         </div>
         {footer && <div className="control-sheet-footer">{footer}</div>}

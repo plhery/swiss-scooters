@@ -4,6 +4,29 @@ import Icon from './Icon';
 import { useI18n } from '@/lib/i18n';
 import { selectionFeedback } from '@/lib/feedback';
 
+const SOURCES = [
+  { href: 'https://www.openstreetmap.org/copyright', label: '© OpenStreetMap contributors' },
+  { href: 'https://opentransportdata.swiss/en/cookbook/shared-mobility/', label: 'Mobility data CH' },
+  { href: 'https://transport.data.gouv.fr/datasets?type=vehicles-sharing', label: 'France: Dott, Bird, Lime, Voi, Pony' },
+  { href: 'https://www.mobidata-bw.de/', label: 'MobiData BW' },
+  { href: 'https://github.com/MobilityData/gbfs', label: 'DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird' },
+  { href: 'https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api', label: '© swisstopo' },
+  { href: 'https://data.lillemetropole.fr/', label: 'Parking · Métropole Européenne de Lille' },
+];
+
+/** Where the map and the data come from: listed over the map and in the settings. */
+export function CreditsList() {
+  return (
+    <ul className="credits-list">
+      {SOURCES.map(source => (
+        <li key={source.href}>
+          <a href={source.href} target="_blank" rel="noreferrer">{source.label}</a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function MapCredits() {
   const { t } = useI18n();
 
@@ -30,15 +53,7 @@ export default function MapCredits() {
             {t('common.done')}
           </button>
         </header>
-        <ul>
-          <li><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a></li>
-          <li><a href="https://opentransportdata.swiss/en/cookbook/shared-mobility/">Mobility data CH</a></li>
-          <li><a href="https://transport.data.gouv.fr/datasets?type=vehicles-sharing">France: Dott, Bird, Lime, Voi, Pony</a></li>
-          <li><a href="https://www.mobidata-bw.de/">MobiData BW</a></li>
-          <li><a href="https://github.com/MobilityData/gbfs">DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird</a></li>
-          <li><a href="https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api">© swisstopo</a></li>
-          <li><a href="https://data.lillemetropole.fr/">Parking · Métropole Européenne de Lille</a></li>
-        </ul>
+        <CreditsList />
       </section>
     </div>
   );

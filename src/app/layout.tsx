@@ -60,7 +60,6 @@ export default async function RootLayout({
     <html lang="en-CH" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
-        <meta name="theme-color" content="#e0ddd8" />
       </head>
       <body className={geistSans.variable}>
         <I18nProvider>{children}</I18nProvider>

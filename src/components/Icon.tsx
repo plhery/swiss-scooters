@@ -72,6 +72,7 @@ const paths = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  chevron: <path d="m9 6 6 6-6 6" />,
   warning: (
     <>
       <path d="M12 4 2.5 20h19L12 4Z" />

@@ -30,6 +30,10 @@
   /* Blue text that keeps 4.5:1 on a blue tint and on glass. */
   --blue-ink: #0058b8;
   --focus-ring: rgba(0, 122, 255, 0.5);
+  /* What the map tiles go through. Calm keeps geography in the background
+     while street labels stay legible; detailed leaves OpenStreetMap's colours. */
+  --tiles-calm: saturate(0.18) contrast(0.68) brightness(1.22);
+  --tiles-detailed: none;
   --sab: env(safe-area-inset-bottom, 0px);
   --sat: env(safe-area-inset-top, 0px);
   --sheet-peek-h: 124px;
@@ -68,8 +72,10 @@ body {
   height: 100dvh;
   overflow: hidden;
   isolation: isolate;
+  background-color: var(--page-bg);
 }
-.app-shell[data-map-theme='dark'] {
+/* The dark appearance: chosen in the settings... */
+.app-shell[data-theme='dark'] {
   color-scheme: dark;
   color: #f2f2f7;
   --blue: #409cff;
@@ -101,6 +107,63 @@ body {
   --danger-bg: rgba(255, 69, 58, 0.18);
   --blue-ink: #62b0ff;
   --focus-ring: rgba(64, 156, 255, 0.58);
+  --tiles-calm: invert(1) hue-rotate(180deg) saturate(0.65) brightness(0.85);
+  --tiles-detailed: invert(1) hue-rotate(180deg);
+  /* Bird's near-black disappears on dark glass: there it takes the colour of the text. */
+  --provider-bird: #f2f2f7;
+}
+/* ...or the system's while the settings say Automatic. The same declarations:
+   src/app/theme.test.ts keeps the two blocks identical. */
+@media (prefers-color-scheme: dark) {
+  .app-shell[data-theme='auto'] {
+    color-scheme: dark;
+    color: #f2f2f7;
+    --blue: #409cff;
+    --ink: #f2f2f7;
+    --ink-2: #b5b5bd;
+    --ink-3: #9898a1;
+    --fill-quaternary: rgba(160, 160, 174, 0.12);
+    --fill-tertiary: rgba(160, 160, 174, 0.22);
+    --hairline: rgba(235, 235, 245, 0.15);
+    --page-bg: #1c1c1e;
+    --top-scrim: rgba(0, 0, 0, 0.28);
+    --glass-bg: rgba(32, 32, 36, 0.86);
+    --glass-edge: rgba(255, 255, 255, 0.13);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.12);
+    --sheet-bg: rgba(32, 32, 36, 0.92);
+    --grabber-bg: rgba(235, 235, 245, 0.25);
+    --raised-bg: #38383d;
+    --focus-bg: rgba(58, 58, 64, 0.94);
+    --map-bg: #1c1c1e;
+    --attribution-bg: rgba(28, 28, 30, 0.85);
+    --attribution-ink: #c0c0c8;
+    --map-control-bg: rgba(32, 32, 36, 0.86);
+    --map-control-disabled-bg: rgba(44, 44, 46, 0.8);
+    --warning-ink: #ffd60a;
+    --warning-bg: rgba(255, 214, 10, 0.14);
+    --success-ink: #45d66b;
+    --success-bg: rgba(48, 209, 88, 0.14);
+    --danger-ink: #ff6961;
+    --danger-bg: rgba(255, 69, 58, 0.18);
+    --blue-ink: #62b0ff;
+    --focus-ring: rgba(64, 156, 255, 0.58);
+    --tiles-calm: invert(1) hue-rotate(180deg) saturate(0.65) brightness(0.85);
+    --tiles-detailed: invert(1) hue-rotate(180deg);
+    /* Bird's near-black disappears on dark glass: there it takes the colour of the text. */
+    --provider-bird: #f2f2f7;
+  }
+}
+/* The page behind the app follows it: the browser's own controls, and the
+   colour that shows past the edges of the app. */
+html:has(.app-shell[data-theme='dark']) {
+  color-scheme: dark;
+  --page-bg: #1c1c1e;
+}
+@media (prefers-color-scheme: dark) {
+  html:has(.app-shell[data-theme='auto']) {
+    color-scheme: dark;
+    --page-bg: #1c1c1e;
+  }
 }
 .app-shell::after {
   content: '';
@@ -1056,13 +1119,46 @@ svg {
   letter-spacing: -0.035em;
   font-weight: 750;
 }
+.control-sheet-heading h2:focus {
+  outline: none;
+}
+/* A view opened from within the sheet: the way back above its heading. */
+.control-sheet-heading-pushed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 12px;
+}
+.control-sheet-heading-pushed h2 {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  padding-bottom: 4px;
+}
+.sheet-back {
+  display: flex;
+  align-items: center;
+  justify-self: start;
+  gap: 3px;
+  min-height: 44px;
+  margin-left: -6px;
+  padding: 0 10px 0 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--blue-ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+.sheet-back > svg {
+  transform: rotate(180deg);
+}
 .done-button {
+  flex-shrink: 0;
   border: 0;
   border-radius: 999px;
   min-height: 44px;
   padding: 8px 16px;
   background: color-mix(in srgb, var(--blue) 10%, transparent);
-  color: var(--blue);
+  color: var(--blue-ink);
   font-size: 14px;
   font-weight: 650;
 }
@@ -1233,27 +1329,29 @@ svg {
 .map-style-options > button {
   flex: 1;
   min-width: 0;
-  position: relative;
   border: 1.5px solid var(--hairline);
   border-radius: 17px;
   background: var(--fill-quaternary);
-  padding: 4px 4px 11px;
+  padding: 4px 4px 10px;
   font-size: 13px;
   font-weight: 600;
 }
 .map-style-options > button[aria-pressed='true'] {
   border-color: var(--blue);
   background: color-mix(in srgb, var(--blue) 8%, transparent);
-  color: var(--blue);
+  color: var(--blue-ink);
 }
+/* A park, a river and a road in the colours of each map style. In the dark
+   appearance the drawing is inverted, as the map itself is. */
 .map-style-preview {
   display: block;
   position: relative;
   overflow: hidden;
-  height: 80px;
+  height: 64px;
   border-radius: 12px;
   background: #eceee7;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  filter: var(--tiles-detailed);
 }
 .map-style-preview::before {
   content: '';
@@ -1273,8 +1371,7 @@ svg {
   background: #bbd9e4;
   transform: rotate(25deg);
 }
-.map-style-preview > span,
-.map-style-preview > i {
+.map-style-preview > span {
   position: absolute;
   left: -10px;
   width: 150%;
@@ -1284,48 +1381,84 @@ svg {
   transform: rotate(-25deg);
   z-index: 1;
 }
-.map-style-preview > i {
-  top: 22%;
-  height: 5px;
-  transform: rotate(44deg);
-}
-.map-style-preview > svg {
-  position: absolute;
-  top: 31px;
-  left: 49%;
-  z-index: 2;
-  color: #0064d2;
-  fill: #fff;
-}
-.map-style-dark {
-  background: #24262e;
-}
-.map-style-dark::before {
-  background: #2b3935;
-}
-.map-style-dark::after {
-  background: #233b4f;
-}
-.map-style-dark > span,
-.map-style-dark > i {
-  background: #4a4c55;
-}
-.map-style-osm {
+.map-style-detailed {
   background: #efe6d5;
 }
-.map-style-osm::before {
+.map-style-detailed::before {
   background: #bfdbad;
 }
-.map-style-osm > span {
-  background: #ffd783;
-  box-shadow: 0 0 0 2px #fff;
+.map-style-detailed::after {
+  background: #aad3df;
 }
-.style-check {
-  position: absolute;
-  right: 9px;
-  bottom: 10px;
+.map-style-detailed > span {
+  background: #ffd783;
+}
+.language-options {
   display: grid;
-  place-items: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.language-options button {
+  min-height: 44px;
+  padding: 8px;
+  border: 1.5px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--fill-quaternary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.language-options button[aria-pressed='true'] {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  color: var(--blue-ink);
+  font-weight: 650;
+}
+/* Rows that lead somewhere: About, and the sources behind its credits. */
+.about-rows > :where(a, button),
+.credits-rows a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  text-decoration: none;
+}
+.about-rows > * + *,
+.credits-rows li + li {
+  border-top: 1px solid var(--hairline);
+}
+.about-rows > :first-child,
+.credits-rows li:first-child a {
+  border-radius: 18px 18px 0 0;
+}
+.about-rows > :last-child,
+.credits-rows li:last-child a {
+  border-radius: 0 0 18px 18px;
+}
+.about-rows > :where(a, button):focus-visible,
+.credits-rows a:focus-visible {
+  outline-offset: -3px;
+}
+.about-rows svg {
+  color: var(--ink-3);
+}
+.credits-rows {
+  margin-top: 14px;
+}
+.credits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 .seg {
   display: flex;
@@ -1362,21 +1495,6 @@ svg {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   transform: translateX(calc(var(--segment-index) * 100%));
   transition: transform 260ms var(--spring);
-}
-.sheet-footer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 24px;
-  color: var(--ink-2);
-  font-size: 11px;
-  line-height: 1.7;
-}
-.sheet-footer a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 /* Floating actions and status */
@@ -1504,12 +1622,10 @@ svg {
   font-size: 16px;
   letter-spacing: -0.025em;
 }
-.map-credits ul {
+.map-credits .credits-list {
   display: grid;
   gap: 2px;
-  list-style: none;
-  padding: 0;
-  margin: 8px 0 0;
+  margin-top: 8px;
 }
 .map-credits li a {
   display: block;
@@ -1653,7 +1769,9 @@ svg {
   .load-banner button,
   .location-card button,
   .card-actions > *,
-  .map-style-options > button
+  .map-style-options > button,
+  .language-options button,
+  .sheet-back
 ) {
   transition:
     transform 220ms var(--spring),
@@ -1678,6 +1796,8 @@ svg {
     .location-card button,
     .card-actions > *,
     .map-style-options > button,
+    .language-options button,
+    .sheet-back,
     .chip
   ):active:not(:disabled) {
   transform: scale(0.96);
@@ -1688,10 +1808,13 @@ svg {
     .bar-button,
     .text-button,
     .sheet-reset:not(:disabled),
+    .sheet-back,
     .field-btn,
     .search-cancel,
     .search-retry,
-    .provider-options button
+    .provider-options button,
+    .about-rows > *,
+    .credits-rows a
   ):hover {
     background: var(--fill-tertiary);
   }
@@ -1806,6 +1929,10 @@ svg {
   }
   .map-style-options {
     gap: 6px;
+  }
+  /* Room around "Automatisch" and "Automatique" in a third of the sheet. */
+  .seg button {
+    font-size: 12px;
   }
 }
 @media (max-height: 500px) {

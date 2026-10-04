@@ -5,6 +5,7 @@ import { track } from '@/lib/analytics';
 import { batteryLevel } from '@/lib/battery';
 import { selectionFeedback } from '@/lib/feedback';
 import { useI18n } from '@/lib/i18n';
+import { providerSurfaceColor } from '@/lib/providerColor';
 import { browserRentalLink } from '@/lib/rentalLinks';
 import { RIDE_DURATIONS, formatRidePrice, ridePriceQuote } from '@/lib/ridePrice';
 import { PROVIDERS, type Vehicle } from '@/lib/types';
@@ -45,7 +46,7 @@ export default function ScooterCard({ selection, onClose, onLocate }: ScooterCar
       <div className="card-head">
         <span
           className="card-symbol"
-          style={{ '--provider-color': provider?.color ?? '#8e8e93' } as CSSProperties}
+          style={{ '--provider-color': providerSurfaceColor(vehicle.provider, '#8e8e93') } as CSSProperties}
         >
           <Icon name="scooter" size={26} />
         </span>

@@ -187,13 +187,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('normalizes malformed URL settings without breaking the app', async ({ page }) => {
-  await page.goto('/?origin=not-a-coordinate&minBattery=wat&tile=sepia');
+  await page.goto('/?origin=not-a-coordinate&minBattery=wat&tile=sepia&theme=neon&map=3d');
   await expect(page.locator('.leaflet-container')).toBeVisible();
 
   await expect.poll(() => new URL(page.url()).searchParams.has('origin')).toBe(false);
-  const params = new URL(page.url()).searchParams;
-  expect(params.has('minBattery')).toBe(false);
-  expect(params.has('tile')).toBe(false);
+  expect(new URL(page.url()).search).toBe('');
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'auto');
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-map', 'calm');
 });
 
 test('does not invent a distance without location and offers walking directions', async ({ page }) => {
@@ -476,6 +476,40 @@ test('installs the production service worker and reloads offline', async ({
   await expect(page.locator('.sheet')).toBeVisible();
   await expect(page.locator('.leaflet-container')).toBeVisible();
   await context.setOffline(false);
+});
+
+test('every link gets the same page, without the parameters of the link in it', async ({ request }) => {
+  const shell = async (path: string) => {
+    const response = await request.get(path);
+    const nonce = response.headers()['content-security-policy'].match(/'nonce-([^']+)'/)![1];
+    return (await response.text()).replaceAll(nonce, '');
+  };
+  const plain = await shell('/');
+  expect(plain).toContain('class="app-shell"');
+  // Requests that arrive together share one render on the server: a visitor must
+  // never be handed the page of someone else's link, with its coordinates.
+  const shells = await Promise.all(Array.from({ length: 8 }, (_, index) => shell(
+    index % 2 ? '/' : `/?origin=47.3769,8.5417&theme=dark&run=${index}`
+  )));
+  expect(shells.filter(html => html !== plain)).toHaveLength(0);
+  expect(plain).not.toContain('47.3769');
+});
+
+test('opening a link under the service worker does not look like a new version and reload', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName === 'webkit', 'service workers are blocked in the WebKit project');
+  await page.goto('/');
+  await page.waitForFunction(() => navigator.serviceWorker.controller);
+  let loads = 0;
+  page.on('request', sent => { if (sent.isNavigationRequest()) loads += 1; });
+  await page.goto('/?theme=dark&map=detailed');
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'dark');
+  // The worker compares the page it is given with the one it kept; a difference reloads at once.
+  await page.waitForTimeout(1500);
+  expect(loads).toBe(1);
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-map', 'detailed');
 });
 
 test('says that location is off under the search bar, stays dismissed and leads to search', async ({ page }) => {
@@ -1020,19 +1054,232 @@ test('the open search ends above the bottom of a short window and scrolls to wha
   expect(await island.evaluate(element => element.scrollTop)).toBe(0);
 });
 
-test('settings sheet traps focus, changes the map and restores its trigger', async ({ page }) => {
+/** What the appearance and the map style come to on screen. */
+const look = (page: Page) => page.evaluate(() => {
+  const value = (element: Element, property: string) => getComputedStyle(element).getPropertyValue(property).trim();
+  const themeColor = [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')]
+    .find(meta => !meta.media || matchMedia(meta.media).matches);
+  return {
+    ink: value(document.querySelector('.app-shell')!, '--ink'),
+    controls: value(document.documentElement, 'color-scheme'),
+    page: value(document.body, 'background-color'),
+    tiles: value(document.querySelector('.map-basemap')!, 'filter'),
+    bars: themeColor?.content,
+  };
+});
+const LIGHT = { ink: '#1c1c1e', controls: 'normal', page: 'rgb(232, 230, 225)', bars: '#e0ddd8' };
+const DARK = { ink: '#f2f2f7', controls: 'dark', page: 'rgb(28, 28, 30)', bars: '#1c1c1e' };
+const TILES = {
+  calm: 'saturate(0.18) contrast(0.68) brightness(1.22)',
+  calmDark: 'invert(1) hue-rotate(180deg) saturate(0.65) brightness(0.85)',
+  detailed: 'none',
+  detailedDark: 'invert(1) hue-rotate(180deg)',
+};
+
+test('the appearance follows the system until one is chosen, and the map is calm or detailed in both', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/');
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  await expect(page.locator('.map-basemap')).toHaveCount(1);
+  expect(await look(page)).toEqual({ ...LIGHT, tiles: TILES.calm });
+
+  // Automatic: the system decides, also while the page is open.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await look(page)).toEqual({ ...DARK, tiles: TILES.calmDark });
+  expect(new URL(page.url()).search).toBe('');
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  const appearance = settings.getByRole('group', { name: 'Appearance' });
+  await expect(appearance.getByRole('button')).toHaveText(['Automatic', 'Light', 'Dark']);
+  await expect(appearance.getByRole('button', { name: 'Automatic' })).toHaveAttribute('aria-pressed', 'true');
+  const darkAccessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(darkAccessibility.violations).toEqual([]);
+
+  // Light on a dark system.
+  await appearance.getByRole('button', { name: 'Light' }).click();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'light');
+  expect(await look(page)).toEqual({ ...LIGHT, tiles: TILES.calm });
+  await expect.poll(() => new URL(page.url()).search).toBe('?theme=light');
+
+  const map = settings.getByRole('group', { name: 'Map' });
+  await expect(map.getByRole('button')).toHaveText(['Calm', 'Detailed']);
+  await expect(map.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
+  await map.getByRole('button', { name: 'Detailed' }).click();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-map', 'detailed');
+  expect(await look(page)).toEqual({ ...LIGHT, tiles: TILES.detailed });
+  await expect.poll(() => new URL(page.url()).search).toBe('?theme=light&map=detailed');
+
+  // Dark on a light system.
+  await page.emulateMedia({ colorScheme: 'light' });
+  await appearance.getByRole('button', { name: 'Dark' }).click();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'dark');
+  expect(await look(page)).toEqual({ ...DARK, tiles: TILES.detailedDark });
+  await map.getByRole('button', { name: 'Calm' }).click();
+  expect(await look(page)).toEqual({ ...DARK, tiles: TILES.calmDark });
+  await expect.poll(() => new URL(page.url()).search).toBe('?theme=dark');
+  // The pictures of the two map styles are inverted with the map.
+  expect(await map.locator('.map-style-preview').first().evaluate(element => getComputedStyle(element).filter)).toBe(TILES.detailedDark);
+
+  // The choice comes back with the page, and Automatic leaves nothing in the link.
+  await page.reload();
+  await expect(page.locator('.map-basemap')).toHaveCount(1);
+  expect(await look(page)).toEqual({ ...DARK, tiles: TILES.calmDark });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(appearance.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
+  await appearance.getByRole('button', { name: 'Automatic' }).click();
+  expect(await look(page)).toEqual({ ...LIGHT, tiles: TILES.calm });
+  await expect.poll(() => new URL(page.url()).search).toBe('');
+  expect(await map.locator('.map-style-preview').first().evaluate(element => getComputedStyle(element).filter)).toBe('none');
+});
+
+test.describe('before any script runs', () => {
+  test.use({ javaScriptEnabled: false, colorScheme: 'dark' });
+
+  test('a dark system gets the dark appearance with the first paint', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'auto');
+    await expect(page.locator('.sheet')).toBeVisible();
+    expect(await page.evaluate(() => {
+      const value = (element: Element, property: string) => getComputedStyle(element).getPropertyValue(property).trim();
+      const themeColor = [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')]
+        .find(meta => matchMedia(meta.media).matches);
+      return {
+        ink: value(document.querySelector('.app-shell')!, '--ink'),
+        controls: value(document.documentElement, 'color-scheme'),
+        page: value(document.body, 'background-color'),
+        shell: value(document.querySelector('.app-shell')!, 'background-color'),
+        bars: themeColor?.content,
+      };
+    })).toEqual({ ...DARK, shell: DARK.page });
+  });
+});
+
+test('the tiles are not loaded again when the appearance or the map style changes', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  // The same layer throughout: only what the stylesheet does to it differs.
+  await page.locator('.map-basemap').evaluate(element => { element.setAttribute('data-first', 'true'); });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await settings.getByRole('button', { name: 'Dark', exact: true }).click();
+  await settings.getByRole('button', { name: 'Detailed', exact: true }).click();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-map', 'detailed');
+  await expect(page.locator('.map-basemap')).toHaveAttribute('data-first', 'true');
+});
+
+test('links and settings saved with the old map style carry over', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/?tile=dark');
+  await expect(page.locator('.map-basemap')).toHaveCount(1);
+  await expect.poll(() => new URL(page.url()).search).toBe('?theme=dark');
+  expect(await look(page)).toEqual({ ...DARK, tiles: TILES.calmDark });
+
+  // "OSM" is the detailed map; its appearance is now the system's.
+  await page.goto('/?tile=osm');
+  await expect(page.locator('.map-basemap')).toHaveCount(1);
+  await expect.poll(() => new URL(page.url()).search).toBe('?map=detailed');
+  expect(await look(page)).toEqual({ ...LIGHT, tiles: TILES.detailed });
+
+  // A home-screen launch has no link: the settings come from the device, here as an older release left them.
+  await page.evaluate(() => localStorage.setItem('scooters-params', JSON.stringify({ tile: 'dark', minBattery: '45' })));
+  await page.goto('/');
+  await expect(page.locator('.map-basemap')).toHaveCount(1);
+  await expect.poll(() => new URL(page.url()).search).toBe('?minBattery=30&theme=dark');
+  expect(await page.evaluate(() => localStorage.getItem('scooters-params'))).toBe('{"minBattery":"30","theme":"dark"}');
+});
+
+test('the settings name the languages, and About leads to the credits, the privacy notice and the source code', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   const trigger = page.getByRole('button', { name: 'Settings', exact: true });
   await trigger.click();
-  const dialog = page.getByRole('dialog', { name: 'Settings & map' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Dark', exact: true }).click();
-  await expect(page.locator('.app-shell')).toHaveAttribute('data-map-theme', 'dark');
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await expect(settings).toBeVisible();
+  expect(await settings.getByRole('heading', { level: 3 }).allTextContents()).toEqual(['Appearance', 'Map', 'Language', 'About']);
+
+  const language = settings.getByRole('group', { name: 'Language' });
+  await expect(language.getByRole('button')).toHaveText(['Deutsch', 'Français', 'Italiano', 'English']);
+  await expect(language.getByRole('button', { name: 'English' })).toHaveAttribute('aria-pressed', 'true');
+  await language.getByRole('button', { name: 'Deutsch' }).click();
+  const einstellungen = page.getByRole('dialog', { name: 'Einstellungen', exact: true });
+  await expect(einstellungen.getByRole('group', { name: 'Darstellung' }).getByRole('button')).toHaveText(['Automatisch', 'Hell', 'Dunkel']);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'de-CH');
+  await einstellungen.getByRole('button', { name: 'English' }).click();
+  await expect(settings).toBeVisible();
+
+  // Everything can be tapped, and nothing reaches past the sheet.
+  await settings.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  const sheet = (await settings.boundingBox())!;
+  for (const control of await settings.getByRole('button').or(settings.getByRole('link')).all()) {
+    const target = (await control.boundingBox())!;
+    expect(target.height).toBeGreaterThanOrEqual(44);
+    expect(target.width).toBeGreaterThanOrEqual(44);
+    expect(target.x).toBeGreaterThanOrEqual(sheet.x);
+    expect(target.x + target.width).toBeLessThanOrEqual(sheet.x + sheet.width);
+  }
   const accessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
+
+  // The sources that the footer used to list in English live in the credits.
+  await expect(settings.getByRole('link')).toHaveText(['Privacy notice', 'Source code on GitHub']);
+  await settings.getByRole('button', { name: 'Map & data credits' }).click();
+  const credits = page.getByRole('dialog', { name: 'Map & data credits', exact: true });
+  await expect(credits.getByRole('heading', { name: 'Map & data credits', level: 2 })).toBeFocused();
+  await expect(credits.getByRole('link')).toHaveCount(7);
+  await expect(credits.getByRole('link', { name: '© OpenStreetMap contributors' })).toHaveAttribute('href', 'https://www.openstreetmap.org/copyright');
+  await expect(credits.getByRole('link', { name: '© swisstopo' })).toHaveAttribute('target', '_blank');
+  await expect(credits.getByRole('link', { name: 'Parking · Métropole Européenne de Lille' })).toBeVisible();
+  for (const control of await credits.getByRole('button').or(credits.getByRole('link')).all()) {
+    expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  const creditsAccessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(creditsAccessibility.violations).toEqual([]);
+  await credits.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(settings.getByRole('button', { name: 'Map & data credits' })).toBeFocused();
+
+  const source = settings.getByRole('link', { name: 'Source code on GitHub' });
+  await expect(source).toHaveAttribute('href', 'https://github.com/plhery/swiss-scooters');
+  await expect(source).toHaveAttribute('target', '_blank');
+
+  // Escape closes the sheet and the keyboard is back where it left.
   await page.keyboard.press('Escape');
-  await expect(dialog).not.toBeVisible();
+  await expect(settings).not.toBeVisible();
   await expect(trigger).toBeFocused();
+
+  // Opened again, the settings start on their first view, and lead to the privacy notice.
+  await trigger.click();
+  await settings.getByRole('button', { name: 'Map & data credits' }).click();
+  await credits.getByRole('button', { name: 'Done' }).click();
+  await expect(credits).not.toBeVisible();
+  await trigger.click();
+  await expect(settings.getByRole('group', { name: 'Appearance' })).toBeVisible();
+  await settings.getByRole('link', { name: 'Privacy notice' }).click();
+  await expect(page).toHaveURL(/\/privacy$/);
+  await expect(page.getByRole('heading', { name: 'Privacy', exact: true })).toBeVisible();
+});
+
+test('the settings fit a small screen and scroll to their last row', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('scooters-locale', 'fr'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Réglages', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Réglages', exact: true });
+  await settings.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  const box = (await settings.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(320);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(568);
+  // The longest labels stay inside their buttons.
+  for (const button of await settings.getByRole('group', { name: 'Apparence' }).getByRole('button').all()) {
+    expect(await button.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
+  const last = settings.getByRole('link', { name: 'Code source sur GitHub' });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport({ ratio: 1 });
+  await expect(settings.getByRole('button', { name: 'Terminé' })).toBeInViewport({ ratio: 1 });
 });
 
 test('primary controls have no WCAG A/AA accessibility violations', async ({ page }) => {
@@ -1214,10 +1461,18 @@ test('zoom buttons and the compass show only where they are needed', async ({ pa
 });
 
 test('publishes a standalone privacy notice', async ({ page }) => {
+  // The notice is a light page whatever the appearance of the app or of the system.
+  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/privacy');
 
   await expect(page.getByRole('heading', { name: 'Privacy' })).toBeVisible();
   await expect(page.getByText(/has no user accounts/)).toBeVisible();
+  await expect(page.getByText('in the iOS app under Settings › About › Privacy')).toBeVisible();
+  expect(await page.evaluate(() => ({
+    controls: getComputedStyle(document.documentElement).colorScheme,
+    page: getComputedStyle(document.body).backgroundColor,
+    bars: [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map(meta => meta.content),
+  }))).toEqual({ controls: 'normal', page: 'rgb(245, 244, 241)', bars: ['#f5f4f1'] });
 });
 
 test('compass rotates the map, preserves marker interaction and resets north', async ({ page }) => {

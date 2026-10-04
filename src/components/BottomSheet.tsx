@@ -12,6 +12,7 @@ import {
 import { selectionFeedback } from '@/lib/feedback';
 import { useI18n } from '@/lib/i18n';
 import { formatFilterSummary } from '@/lib/nothingToShow';
+import { providerSurfaceColor } from '@/lib/providerColor';
 import { PROVIDERS } from '@/lib/types';
 import { formatUiText } from '@/lib/uiText';
 import Icon from './Icon';
@@ -108,7 +109,7 @@ function ProviderChips({ chips, onShowAll, onToggle }: {
         >
           <span
             className="chip-dot"
-            style={{ background: PROVIDERS[chip.provider].color }}
+            style={{ background: providerSurfaceColor(chip.provider, PROVIDERS[chip.provider].color) }}
             aria-hidden="true"
           />
           {chip.name}

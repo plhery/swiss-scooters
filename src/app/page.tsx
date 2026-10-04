@@ -56,6 +56,9 @@ const SEARCH_CITY_COUNT = 6;
 const CLOCK_TICK_MS = 30_000;
 const VIEWPORT_FETCH_PADDING = 0.25;
 
+// The colour the browser gives its own bars in each appearance.
+const THEME_COLOR = { light: '#e0ddd8', dark: '#1c1c1e' };
+
 const STORAGE_KEY = 'scooters-params';
 const PROVIDERS_STORAGE_KEY = 'scooters-providers';
 // Only the fact that locating has worked once on this device; never a position.
@@ -72,15 +75,6 @@ function saveParamsToStorage(params: Record<string, string>) {
 
 function loadParamsFromStorage(): ClientParams | null {
   try { return parseStoredClientParams(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
-}
-
-// Until the settings sheet offers appearance and map detail separately, the
-// two settings are shown through its single three-way map style.
-type LegacyTileLayer = 'light' | 'dark' | 'osm';
-
-function legacyTileLayer(theme: ThemeName, mapStyle: MapStyleName): LegacyTileLayer {
-  if (mapStyle === 'detailed') return 'osm';
-  return theme === 'dark' ? 'dark' : 'light';
 }
 
 function readUrlParams(): ClientParams {
@@ -139,7 +133,6 @@ export default function Home() {
   const [minBattery, setMinBattery] = useState(0);
   const [theme, setTheme] = useState<ThemeName>('auto');
   const [mapStyle, setMapStyle] = useState<MapStyleName>('calm');
-  const tileLayer = legacyTileLayer(theme, mapStyle);
   const [enabledProviders, setEnabledProviders] = useState<Set<string>>(
     new Set(Object.keys(PROVIDERS))
   );
@@ -238,18 +231,6 @@ export default function Home() {
     p.forEach((v, k) => { stored[k] = v; });
     saveParamsToStorage(stored);
   }, [minBattery, theme, mapStyle, preferencesReady]);
-
-  useEffect(() => {
-    const darkMap = tileLayer === 'dark';
-    document.documentElement.style.colorScheme = darkMap ? 'dark' : 'light';
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', darkMap ? '#1c1c1e' : '#e0ddd8');
-
-    return () => {
-      document.documentElement.style.colorScheme = '';
-    };
-  }, [tileLayer]);
 
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -511,7 +492,20 @@ export default function Home() {
   };
 
   return (
-    <div className="app-shell" data-map-theme={tileLayer} data-searching={searchExpanded}>
+    // The stylesheet reads the appearance and the map style from here. Automatic
+    // is left to it, so the system's appearance applies before any script runs.
+    <div className="app-shell" data-theme={theme} data-map={mapStyle} data-searching={searchExpanded}>
+      {/* One colour per system appearance; a chosen appearance holds in both. */}
+      <meta
+        name="theme-color"
+        media="(prefers-color-scheme: light)"
+        content={theme === 'dark' ? THEME_COLOR.dark : THEME_COLOR.light}
+      />
+      <meta
+        name="theme-color"
+        media="(prefers-color-scheme: dark)"
+        content={theme === 'light' ? THEME_COLOR.light : THEME_COLOR.dark}
+      />
       <MapWrapper
         parking={visibleParking}
         vehicles={viewportData.visibleVehicles}
@@ -520,7 +514,6 @@ export default function Home() {
         origin={initialCenter}
         initialZoom={INITIAL_ZOOM}
         distanceOrigin={walkOrigin?.point ?? null}
-        tileLayer={tileLayer}
         userLocation={userLocation}
         headingEnabled={headingPermission === 'granted' && locationError !== 'denied'}
         focusLocation={focusRequest.location}
@@ -615,15 +608,13 @@ export default function Home() {
         hasActiveFilters={hasActiveFilters}
         // While the answer for a new view or minimum is on its way there is no count to promise.
         showCount={loading === 'load' ? null : viewportData.totalCount}
-        tileLayer={tileLayer}
+        theme={theme}
+        mapStyle={mapStyle}
         onMinBatteryChange={value => { track('battery_filter', { value }); setMinBattery(value); }}
         onProviderToggle={handleProviderToggle}
         onResetFilters={resetFilters}
-        onTileLayerChange={style => {
-          track('map_style', { style });
-          setMapStyle(style === 'osm' ? 'detailed' : 'calm');
-          if (style !== 'osm') setTheme(style);
-        }}
+        onThemeChange={next => { track('map_style', { style: next }); setTheme(next); }}
+        onMapStyleChange={next => { track('map_style', { style: next }); setMapStyle(next); }}
       />
     </div>
   );

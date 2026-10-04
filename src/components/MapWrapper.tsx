@@ -14,7 +14,6 @@ interface MapWrapperProps {
   origin: [number, number];
   initialZoom: number;
   distanceOrigin: [number, number] | null;
-  tileLayer: 'dark' | 'light' | 'osm';
   userLocation: [number, number] | null;
   headingEnabled: boolean;
   focusLocation: [number, number] | null;
