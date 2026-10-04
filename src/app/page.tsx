@@ -686,7 +686,8 @@ export default function Home() {
 
       <SearchIsland
         place={searchedPlace}
-        placeHasData={searchedPlace?.covered !== false && dock.kind !== 'outsideCoverage'}
+        // Decided by the place, as in the iOS app: the map may since have been moved elsewhere.
+        placeHasData={searchedPlace?.covered !== false}
         hasLocation={Boolean(userLocation)}
         locating={locating}
         expanded={searchExpanded}

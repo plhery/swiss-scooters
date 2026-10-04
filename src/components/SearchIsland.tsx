@@ -12,7 +12,7 @@ import type { Place } from '@/lib/places';
 interface SearchIslandProps {
   /** The searched place: the origin for walking times until it is cleared. */
   place: Place | null;
-  /** False while the dock says there is no scooter data around the searched place. */
+  /** False for a searched place outside every service area: there are no scooters to promise near it. */
   placeHasData: boolean;
   hasLocation: boolean;
   locating: boolean;

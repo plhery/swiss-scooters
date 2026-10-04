@@ -561,7 +561,13 @@ it('explains an area without scooter data and flies to the closest city', async 
   await act(async () => vi.advanceTimersByTimeAsync(180));
   expect(screen.getByRole('heading', { name: 'No scooter data here yet' })).toBeVisible();
   expect(dockCount()).toBeNull();
-  // The search bar must not promise scooters near a place while the dock says this.
+  // The second line of the search bar describes the place, not where the map is now:
+  // a place with scooter data keeps its line when the map is moved to an area without.
+  fireEvent.click(screen.getByRole('button', { name: 'Search Zürich HB' }));
+  expect(screen.getByRole('heading', { name: 'No scooter data here yet' })).toBeVisible();
+  expect(screen.getByTestId('place-has-data')).toHaveTextContent('true');
+  // A place without scooter data does not promise scooters near it.
+  fireEvent.click(screen.getByRole('button', { name: 'Search Lungern' }));
   expect(screen.getByTestId('place-has-data')).toHaveTextContent('false');
   const cities = within(screen.getByRole('group', { name: 'Closest cities' })).getAllByRole('button');
   expect(cities.map(city => city.textContent)).toEqual([
