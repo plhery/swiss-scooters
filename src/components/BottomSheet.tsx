@@ -33,6 +33,8 @@ interface BottomSheetProps {
    * the card of a selected scooter or bay opens beside its marker instead of here.
    */
   desktop?: boolean;
+  /** The marker of the selection; it gets the focus back when the card in the dock closes. */
+  selectionAnchor: () => HTMLElement | null;
   hidden: boolean;
   onShowAllProviders: () => void;
   onProviderToggle: (provider: string) => void;
@@ -184,6 +186,37 @@ function CardIssue({ issue, onRetry }: { issue: DockIssue; onRetry: () => void }
   );
 }
 
+/**
+ * The card of a selected scooter or parking bay in the dock. The dock is the
+ * far end of the page from the markers, so the focus moves into the card when
+ * it opens, and back to its marker when it closes with the focus inside, as
+ * the card beside a marker does on a desktop.
+ */
+function DockSelection({ label, selectionKey, anchor, children }: {
+  /** Names the card: "Lime scooter", "Dott parking bay". */
+  label: string;
+  /** Changes with the scooter or bay shown. */
+  selectionKey: string;
+  anchor: () => HTMLElement | null;
+  children: ReactNode;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    card.focus({ preventScroll: true });
+    return () => {
+      if (card.contains(document.activeElement)) anchor()?.focus({ preventScroll: true });
+    };
+  }, [anchor, selectionKey]);
+
+  return (
+    <div ref={cardRef} className="dock-selection" role="group" aria-label={label} tabIndex={-1}>
+      {children}
+    </div>
+  );
+}
+
 /** The head of a card that replaces the count and the chips: a tinted symbol, a title, a sentence. */
 function StateHead({ icon, tone, title, body, alert = false }: {
   icon: 'clock' | 'map' | 'filters';
@@ -211,6 +244,7 @@ export default function BottomSheet({
   selectedVehicle,
   selectedParking,
   desktop = false,
+  selectionAnchor,
   hidden,
   onShowAllProviders,
   onProviderToggle,
@@ -250,23 +284,28 @@ export default function BottomSheet({
   let content: ReactNode;
   if (selectedVehicle && !desktop) {
     const { vehicle } = selectedVehicle;
+    const key = `${vehicle.provider}:${vehicle.vehicle_id ?? `${vehicle.lat}:${vehicle.lng}`}`;
     content = (
-      <>
+      <DockSelection
+        label={t('marker.scooter', { name: PROVIDERS[vehicle.provider]?.name ?? vehicle.provider })}
+        selectionKey={key}
+        anchor={selectionAnchor}
+      >
         {issue && <CardIssue issue={issue} onRetry={onRetry} />}
-        <ScooterCard
-          key={`${vehicle.provider}:${vehicle.vehicle_id ?? `${vehicle.lat}:${vehicle.lng}`}`}
-          selection={selectedVehicle}
-          onClose={onClearSelection}
-          onLocate={onLocate}
-        />
-      </>
+        <ScooterCard key={key} selection={selectedVehicle} onClose={onClearSelection} onLocate={onLocate} />
+      </DockSelection>
     );
   } else if (selectedParking && !desktop) {
+    const { parking } = selectedParking;
     content = (
-      <>
+      <DockSelection
+        label={t('bay.title', { name: PROVIDERS[parking.provider]?.name ?? parking.provider })}
+        selectionKey={parking.id}
+        anchor={selectionAnchor}
+      >
         {issue && <CardIssue issue={issue} onRetry={onRetry} />}
-        <ParkingCard key={selectedParking.parking.id} selection={selectedParking} onClose={onClearSelection} />
-      </>
+        <ParkingCard key={parking.id} selection={selectedParking} onClose={onClearSelection} />
+      </DockSelection>
     );
   } else if (dock.kind === 'outOfDate') {
     content = (

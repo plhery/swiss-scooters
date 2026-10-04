@@ -5,7 +5,7 @@ import { track } from '@/lib/analytics';
 import { useState, useEffect, useEffectEvent, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import MapWrapper from '@/components/MapWrapper';
-import type { MapPopover } from '@/components/MapComponent';
+import type { MapPopover, MarkerLookup } from '@/components/MapComponent';
 import BottomSheet from '@/components/BottomSheet';
 import KeyHints from '@/components/KeyHints';
 import ParkingCard, { type SelectedParking } from '@/components/ParkingCard';
@@ -117,6 +117,11 @@ async function locationAlreadyGranted(): Promise<boolean> {
   }
 }
 
+// A control that removes itself when it is pressed hands the keyboard to the search bar.
+function focusSearchBar() {
+  document.querySelector<HTMLElement>('.bar-button')?.focus({ preventScroll: true });
+}
+
 // The list of sources over the map closes itself with Escape.
 function creditsOpen(): boolean {
   try {
@@ -181,6 +186,7 @@ export default function Home() {
   const initializedRef = useRef(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const mapQueryRef = useRef<ScooterMapQuery | null>(null);
+  const markerLookupRef = useRef<MarkerLookup | null>(null);
 
   const startLocating = useCallback((moveMap = true) => {
     setLocationNoticeDismissed(false);
@@ -519,6 +525,12 @@ export default function Home() {
     clearSelection();
   };
 
+  // The marker of the selection: the card in the dock hands the focus back to it when it closes.
+  const selectionAnchor = useCallback(
+    () => markerLookupRef.current?.(selectedVehicleKey, selectedParkingId) ?? null,
+    [selectedParkingId, selectedVehicleKey]
+  );
+
   // On a desktop the card of the selection opens beside its marker; the dock keeps the count.
   const popover: MapPopover | null = !desktop
     ? null
@@ -652,6 +664,7 @@ export default function Home() {
         hoverTips={desktop}
         popover={popover}
         zoomStep={zoomStep}
+        markerLookupRef={markerLookupRef}
       />
 
       <SearchIsland
@@ -680,7 +693,7 @@ export default function Home() {
         onRetryLocate={handleLocateMe}
         onSeeHow={() => setLocationHelpOpen(true)}
         onSearchPlace={openSearch}
-        onDismissLocation={() => setLocationNoticeDismissed(true)}
+        onDismissLocation={() => { setLocationNoticeDismissed(true); focusSearchBar(); }}
       />
 
       {/* One row in the corner of a desktop; on a phone each of the two places itself. */}
@@ -703,14 +716,16 @@ export default function Home() {
         selectedVehicle={selectedVehicle}
         selectedParking={selectedParking}
         desktop={desktop}
+        selectionAnchor={selectionAnchor}
         hidden={searchExpanded}
         onShowAllProviders={handleShowAllProviders}
         onProviderToggle={handleQuickProviderToggle}
         onClearSelection={closeCard}
-        onResetFilters={resetFilters}
+        // "Show all" and a closest city leave with their card.
+        onResetFilters={() => { resetFilters(); focusSearchBar(); }}
         onEditFilters={() => openPanel('filters')}
         onRetry={retryLoad}
-        onCitySelect={handleCitySelect}
+        onCitySelect={city => { handleCitySelect(city); focusSearchBar(); }}
         onLocate={handleLocateFromCard}
       />
 

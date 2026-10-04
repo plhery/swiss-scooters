@@ -15,8 +15,9 @@ const track = vi.mocked(sendEvent);
 const viewport = vi.hoisted(() => ({ bounds: { south: 47.36, west: 8.52, north: 47.39, east: 8.57 } }));
 vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
   onViewportChange, onVehicleSelect, onParkingSelect, selectedParkingId, vehicles, parking, focusLocation, focusZoom, destination,
-  hoverTips, popover, zoomStep, selectedVehicleKey, onMapClick,
+  hoverTips, popover, zoomStep, selectedVehicleKey, onMapClick, markerLookupRef,
 }: {
+  markerLookupRef: { current: ((vehicleKey: string | null, parkingId: string | null) => HTMLElement | null) | null };
   hoverTips: boolean; popover: { label: string; content: React.ReactNode } | null; zoomStep: { direction: number; version: number };
   onViewportChange: (bounds: MapBounds, zoom: number) => void; onVehicleSelect: (vehicle: Vehicle) => void;
   onParkingSelect: (location: ParkingLocation) => void; selectedParkingId: string | null;
@@ -25,14 +26,17 @@ vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
   destination: { display_name: string } | null;
 }) {
   useEffect(() => onViewportChange(viewport.bounds, 16), [onViewportChange]);
+  useEffect(() => {
+    markerLookupRef.current = (vehicleKey, parkingId) => document.querySelector(`[data-marker="${vehicleKey ?? parkingId}"]`);
+  }, [markerLookupRef]);
   return <><span data-testid="vehicles">{vehicles.length}</span><span data-testid="parking">{parking.length}</span>
     <span data-testid="focus">{focusLocation ? `${focusLocation.join(',')} zoom ${focusZoom}` : 'none'}</span>
     <span data-testid="pin">{destination ? destination.display_name : 'none'}</span>
     <span data-testid="tips">{String(hoverTips)}</span><span data-testid="zoom-steps">{zoomStep.version}:{zoomStep.direction}</span>
     <span data-testid="selected">{selectedVehicleKey ?? selectedParkingId ?? 'none'}</span><button onClick={onMapClick}>Tap the map</button>
     {popover && <div role="dialog" aria-label={popover.label}>{popover.content}</div>}
-    {vehicles.map(vehicle => <button key={vehicle.vehicle_id} onClick={() => onVehicleSelect(vehicle)}>Marker {vehicle.vehicle_id}</button>)}
-    {parking.map(location => <button key={location.id} aria-pressed={location.id === selectedParkingId} onClick={() => onParkingSelect(location)}>Parking {location.id}</button>)}
+    {vehicles.map(vehicle => <button key={vehicle.vehicle_id} data-marker={`${vehicle.provider}:${vehicle.vehicle_id}`} onClick={() => onVehicleSelect(vehicle)}>Marker {vehicle.vehicle_id}</button>)}
+    {parking.map(location => <button key={location.id} data-marker={location.id} aria-pressed={location.id === selectedParkingId} onClick={() => onParkingSelect(location)}>Parking {location.id}</button>)}
     {[15, 16].map(zoom => <button key={zoom} onClick={() => onViewportChange(viewport.bounds, zoom)}>Zoom to {zoom}</button>)}</>;
 } }));
 vi.mock('@/components/SearchIsland', () => ({ default: ({
@@ -46,7 +50,7 @@ vi.mock('@/components/SearchIsland', () => ({ default: ({
 }) => <><button onClick={() => onSelect({ lat: 47.3779, lng: 8.5403, display_name: 'Zürich HB, Train', title: 'Zürich HB', subtitle: 'Train', covered: true })}>Search Zürich HB</button>
   <button onClick={() => onSelect({ lat: 46.7741, lng: 8.1558, display_name: 'Lungern, OW', title: 'Lungern', subtitle: 'OW', covered: false })}>Search Lungern</button>
   <button onClick={() => onSelect({ lat: 47.1662, lng: 8.5155, display_name: 'Zug, Switzerland', title: 'Zug', subtitle: 'Switzerland', covered: true, city: true })}>Choose the city of Zug</button>
-  <button onClick={() => onExpandedChange(true)}>Open the search</button><button onClick={() => onExpandedChange(false)}>Close the search</button>
+  <button className="bar-button" onClick={() => onExpandedChange(true)}>Open the search</button><button onClick={() => onExpandedChange(false)}>Close the search</button>
   <button onClick={onClear}>Clear the place</button><span data-testid="place-has-data">{String(placeHasData)}</span>
   <button onClick={onShowFilters}>Open the filters</button><span data-testid="search">{expanded ? 'open' : 'closed'}</span>
   <span data-testid="bar">{place ? place.title : locating ? 'locating' : hasLocation ? 'near you' : 'nothing chosen'}</span>
@@ -538,8 +542,11 @@ it('explains an area without scooter data and flies to the closest city', async 
   expect(cities.map(city => city.textContent)).toEqual([
     expect.stringMatching(/^Zug · \d+ km$/), expect.stringMatching(/ km$/), expect.stringMatching(/ km$/),
   ]);
+  cities[0].focus();
   fireEvent.click(cities[0]);
   expect(screen.getByTestId('focus')).toHaveTextContent(/^47\.\d+,8\.\d+ zoom 13$/);
+  // The chip leaves with its card once the map has arrived: the focus is handed on before it does.
+  expect(screen.getByRole('button', { name: 'Open the search' })).toHaveFocus();
 });
 
 it('says how many scooters the filters hide and brings them back', async () => {
@@ -550,9 +557,12 @@ it('says how many scooters the filters hide and brings them back', async () => {
   expect(screen.getByTestId('vehicles')).toHaveTextContent('0');
   expect(screen.getByRole('heading', { name: '1 scooter hidden by your filters' })).toBeVisible();
   expect(screen.getByText('Hopp only')).toBeVisible();
+  screen.getByRole('button', { name: 'Show all' }).focus();
   fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
   expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
   expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+  // The button went with its card; the focus is not left on nothing.
+  expect(screen.getByRole('button', { name: 'Open the search' })).toHaveFocus();
 });
 
 it('tells the filters what the map will show, what each provider has in view and who is not sharing data', async () => {
@@ -720,8 +730,11 @@ it('says that location is off, and keeps the card dismissed until the next attem
   // The button keeps its label: locating has not worked yet.
   expect(screen.getByRole('button', { name: 'Near me' })).toBeEnabled();
   expect(localStorage.getItem('scooters-located-once')).toBeNull();
+  within(card).getByRole('button', { name: 'Dismiss' }).focus();
   fireEvent.click(within(card).getByRole('button', { name: 'Dismiss' }));
   expect(screen.queryByText('Location is off')).toBeNull();
+  // The button went with the card; the focus moves to the search bar, which the card pointed to.
+  expect(screen.getByRole('button', { name: 'Open the search' })).toHaveFocus();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
   expect(screen.getByText('Location is off')).toBeVisible();
 });
@@ -1010,6 +1023,32 @@ it('on a desktop leaves the keys alone while typing and while a sheet is open', 
   fireEvent.click(screen.getByRole('button', { name: 'Close the sheet' }));
   await press('Escape');
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('on a phone moves the focus into the card that opens in the dock, and back to its marker when it closes', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  const marker = screen.getByRole('button', { name: 'Marker one' });
+  marker.focus();
+  fireEvent.click(marker);
+  // Named, so that a screen reader says what opened at the far end of the page.
+  const card = screen.getByRole('group', { name: 'Lime scooter' });
+  expect(card).toHaveFocus();
+  expect(within(card).getByRole('heading', { name: 'Lime' })).toBeVisible();
+  const close = within(card).getByRole('button', { name: 'Close scooter details' });
+  close.focus();
+  fireEvent.click(close);
+  expect(screen.queryByRole('group', { name: 'Lime scooter' })).toBeNull();
+  expect(marker).toHaveFocus();
+
+  const bay = screen.getByRole('button', { name: 'Parking bay' });
+  bay.focus();
+  fireEvent.click(bay);
+  expect(screen.getByRole('group', { name: 'Lime parking bay' })).toHaveFocus();
+  screen.getByRole('button', { name: 'Close parking details' }).focus();
+  fireEvent.click(screen.getByRole('button', { name: 'Close parking details' }));
+  expect(bay).toHaveFocus();
 });
 
 it('on a phone keeps the card in the dock, the chips, and no keys', async () => {

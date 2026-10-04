@@ -3,7 +3,8 @@
 import dynamic from 'next/dynamic';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import type { AddressResult } from '@/components/AddressSearch';
-import type { MapPopover } from './MapComponent';
+import type { RefObject } from 'react';
+import type { MapPopover, MarkerLookup } from './MapComponent';
 
 const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
@@ -31,6 +32,7 @@ interface MapWrapperProps {
   hoverTips?: boolean;
   popover?: MapPopover | null;
   zoomStep?: { direction: 1 | -1; version: number };
+  markerLookupRef?: RefObject<MarkerLookup | null>;
 }
 
 export default function MapWrapper(props: MapWrapperProps) {

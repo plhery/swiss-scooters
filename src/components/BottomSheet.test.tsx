@@ -60,6 +60,7 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>
     ...data(),
     selectedVehicle: null,
     selectedParking: null,
+    selectionAnchor: () => null,
     hidden: false,
     onShowAllProviders: vi.fn(),
     onProviderToggle: vi.fn(),
@@ -72,8 +73,13 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>
     ...overrides,
   };
 
-  render(<I18nProvider><BottomSheet {...props} /></I18nProvider>);
-  return props;
+  const view = render(<I18nProvider><BottomSheet {...props} /></I18nProvider>);
+  return {
+    ...props,
+    /** Renders again with some props changed. */
+    update: (changes: Partial<React.ComponentProps<typeof BottomSheet>>) =>
+      view.rerender(<I18nProvider><BottomSheet {...props} {...changes} /></I18nProvider>),
+  };
 }
 
 const count = () => document.querySelector('.sheet-count');
@@ -313,7 +319,7 @@ describe('BottomSheet', () => {
 
     expect(screen.getByRole('heading', { name: 'Lime' })).toBeVisible();
     expect(count()).not.toBeInTheDocument();
-    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Filter scooters by provider' })).not.toBeInTheDocument();
     expect(document.querySelector('.dock-issue')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close scooter details' }));
     expect(props.onClearSelection).toHaveBeenCalledOnce();
@@ -355,7 +361,7 @@ describe('BottomSheet', () => {
     expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
     expect(document.querySelector('.card-title p')).toHaveTextContent(/^Bahnhofplatz · ≈2 min walk$/);
     expect(count()).not.toBeInTheDocument();
-    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Filter scooters by provider' })).not.toBeInTheDocument();
     expect(document.querySelector('.dock-issue')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close parking details' }));
     expect(props.onClearSelection).toHaveBeenCalledOnce();
@@ -383,6 +389,44 @@ describe('BottomSheet', () => {
     fireEvent.click(within(issue).getByRole('button', { name: 'Try again' }));
     expect(props.onRetry).toHaveBeenCalledOnce();
     expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+  });
+
+  it('moves the focus into the card when it opens, and back to the marker when it closes with the focus inside', () => {
+    const marker = document.body.appendChild(document.createElement('button'));
+    const other = document.body.appendChild(document.createElement('button'));
+    const selectionAnchor = () => marker;
+    marker.focus();
+    const sheet = renderSheet({ selectionAnchor });
+    expect(marker).toHaveFocus();
+
+    // Named like the card beside a marker on a desktop, and announced when the focus arrives.
+    sheet.update({ selectedVehicle: { vehicle: lime, walk: null } });
+    const card = screen.getByRole('group', { name: 'Lime scooter' });
+    expect(card).toHaveFocus();
+    expect(within(card).getByRole('heading', { name: 'Lime' })).toBeVisible();
+
+    // Closed from inside, with the close button: back to where the visitor was on the map.
+    screen.getByRole('button', { name: 'Close scooter details' }).focus();
+    sheet.update({ selectedVehicle: null });
+    expect(marker).toHaveFocus();
+
+    // A bay is named as a bay. Closed while the focus is elsewhere, the focus stays there.
+    sheet.update({ selectedParking: { parking: bay, walk: null } });
+    expect(screen.getByRole('group', { name: 'Lime parking bay' })).toHaveFocus();
+    other.focus();
+    sheet.update({ selectedParking: null });
+    expect(other).toHaveFocus();
+    marker.remove();
+    other.remove();
+  });
+
+  it('does not take the focus again while the same card stays open', () => {
+    const sheet = renderSheet({ selectedVehicle: { vehicle: lime, walk: null } });
+    const close = screen.getByRole('button', { name: 'Close scooter details' });
+    close.focus();
+    // New data for the same scooter, a walking time that arrives: the card is drawn again.
+    sheet.update({ selectedVehicle: { vehicle: { ...lime, battery: 81 }, walk: { distanceM: 80, place: null } } });
+    expect(screen.getByRole('button', { name: 'Close scooter details' })).toHaveFocus();
   });
 
   it('makes the dock inert while searching', () => {

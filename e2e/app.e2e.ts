@@ -2236,6 +2236,25 @@ test.describe('on a small phone, or one held on its side', () => {
     expect((await marker.boundingBox())!.y).toBe(before.y);
   });
 
+  test('a card opened from the keyboard takes the focus, and hands it back to its scooter when it closes', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
+    const marker = page.getByRole('button', { name: 'Bird scooter', exact: true });
+    await marker.focus();
+    await page.keyboard.press('Enter');
+    // The dock is the far end of the page from the markers: the card is named and gets the focus.
+    const card = page.getByRole('group', { name: 'Bird scooter', exact: true });
+    await expect(card).toBeFocused();
+    await expect(card.getByRole('heading', { name: 'Bird' })).toBeVisible();
+
+    await card.getByRole('button', { name: 'Close scooter details' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(card).toHaveCount(0);
+    await expect(marker).toBeFocused();
+  });
+
   test('a phone on its side shows a card whole, keeps its scooter in view and gives the open search the corner of the credits', async ({ page }) => {
     await page.setViewportSize({ width: 844, height: 390 });
     await page.goto('/?origin=47.3769,8.5417');

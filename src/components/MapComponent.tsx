@@ -4,7 +4,7 @@ import { track } from '@/lib/analytics';
 
 import { prefersReducedMotion, selectionFeedback } from '@/lib/feedback';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import L from 'leaflet';
 import '@tomickigrzegorz/leaflet-rotate';
 import 'leaflet/dist/leaflet.css';
@@ -212,7 +212,12 @@ interface MapComponentProps {
   popover?: MapPopover | null;
   /** A step in or out asked for from the keyboard; each new version is one step. */
   zoomStep?: { direction: 1 | -1; version: number };
+  /** Receives the way to find a marker while the map is there, for the card in the dock. */
+  markerLookupRef?: RefObject<MarkerLookup | null>;
 }
+
+/** The marker of a scooter, by its key, or of a parking bay, by its id, as it is drawn on the map; null when it is not. */
+export type MarkerLookup = (vehicleKey: string | null, parkingId: string | null) => HTMLElement | null;
 
 export interface MapPopover {
   /** Names the card for screen readers: "Lime scooter", "Dott parking bay". */
@@ -244,6 +249,7 @@ export default function MapComponent({
   hoverTips = false,
   popover = null,
   zoomStep,
+  markerLookupRef,
 }: MapComponentProps) {
   const { t, formatNumber } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -632,13 +638,24 @@ export default function MapComponent({
     };
   }, [distanceOrigin, formatNumber, hoverTips, readyMap, selectedVehicleKey, t]);
 
-  const popoverAnchor = useCallback(() => {
-    const marker = selectedVehicleKey !== null
-      ? vehicleMarkersRef.current.get(selectedVehicleKey)
-      : selectedParkingId !== null ? parkingMarkersRef.current.get(selectedParkingId)?.marker : undefined;
+  const markerElement = useCallback<MarkerLookup>((vehicleKey, parkingId) => {
+    const marker = vehicleKey !== null
+      ? vehicleMarkersRef.current.get(vehicleKey)
+      : parkingId !== null ? parkingMarkersRef.current.get(parkingId)?.marker : undefined;
     return marker?.getElement() ?? null;
-  }, [selectedParkingId, selectedVehicleKey]);
+  }, []);
+  const popoverAnchor = useCallback(
+    () => markerElement(selectedVehicleKey, selectedParkingId),
+    [markerElement, selectedParkingId, selectedVehicleKey]
+  );
   const hasPopover = popover !== null;
+
+  // On a phone the card is in the dock, far from the map: it asks for its marker to hand the focus back.
+  useEffect(() => {
+    if (!markerLookupRef) return;
+    markerLookupRef.current = markerElement;
+    return () => { markerLookupRef.current = null; };
+  }, [markerElement, markerLookupRef]);
 
   // On a phone a card opens in the dock, which grows and lifts the controls that
   // sit on it. What the visitor picked, a scooter, a bay or a searched place, must

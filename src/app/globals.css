@@ -670,6 +670,15 @@ svg {
   padding: 2px 0;
   animation: content-in 260ms var(--spring);
 }
+/* The card of a selected scooter or bay takes the focus when it opens. */
+.dock-selection:focus {
+  outline: none;
+}
+.dock-selection:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 18px;
+}
 /* Trouble with the data, above the card of a selected scooter or bay. */
 .dock-issue {
   display: flex;
