@@ -60,9 +60,9 @@ struct ScooterSearchIsland: View {
                 .onTapGesture { }
                 .accessibilityHidden(true)
         }
-        .glassEffect(
-            .regular.interactive(!isSearching),
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        .chromeGlass(
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous),
+            isInteractive: !isSearching
         )
         .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
         .animation(

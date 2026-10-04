@@ -30,6 +30,8 @@ enum ScooterPalette {
     /// Grey for small text and its icons. The system's secondary label is
     /// about 3.5:1 on the light dock and on a light sheet; this is 5:1 there.
     /// In dark appearance it is the system's colour, which is light enough.
+    /// How much black the glass over the map gets in dark appearance.
+    static let darkGlassTint = 0.4
     static let secondaryText = adaptive(
         light: UIColor(red: 0.38, green: 0.39, blue: 0.42, alpha: 1),
         dark: UIColor.secondaryLabel.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
@@ -39,6 +41,28 @@ enum ScooterPalette {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark ? dark : light
         })
+    }
+}
+
+/// Liquid Glass for the dock and for what floats at the top of the map. In
+/// dark appearance the map shows through too brightly for small text, so the
+/// glass is tinted darker there.
+private struct ChromeGlass<S: Shape>: ViewModifier {
+    let shape: S
+    let isInteractive: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        let glass = colorScheme == .dark
+            ? Glass.regular.tint(Color.black.opacity(ScooterPalette.darkGlassTint))
+            : Glass.regular
+        content.glassEffect(glass.interactive(isInteractive), in: shape)
+    }
+}
+
+extension View {
+    func chromeGlass(in shape: some Shape, isInteractive: Bool = false) -> some View {
+        modifier(ChromeGlass(shape: shape, isInteractive: isInteractive))
     }
 }
 
@@ -78,7 +102,7 @@ struct ScooterControlDock: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: 560)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .chromeGlass(in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
         .contentShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -1888,10 +1912,7 @@ struct MapStatusBanner: View {
         .background {
             TopChromeTapShield(cornerRadius: bannerCornerRadius)
         }
-        .glassEffect(
-            .regular,
-            in: RoundedRectangle(cornerRadius: bannerCornerRadius, style: .continuous)
-        )
+        .chromeGlass(in: RoundedRectangle(cornerRadius: bannerCornerRadius, style: .continuous))
         .shadow(color: .black.opacity(0.07), radius: 9, y: 4)
         .task(id: message) {
             guard UIAccessibility.isVoiceOverRunning else { return }
@@ -2011,7 +2032,7 @@ struct LocationIssueCard: View {
         .background {
             TopChromeTapShield(cornerRadius: 24)
         }
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .chromeGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
         .task(id: issue) {
             guard UIAccessibility.isVoiceOverRunning else { return }
