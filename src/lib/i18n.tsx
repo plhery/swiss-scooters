@@ -8,7 +8,6 @@ export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
 const en = {
     "common.done": "Done",
     "parking.label": "{name} parking: {place}",
-  'controls.locate': 'Go to my location',
   'controls.zoomGroup': 'Map zoom',
   'controls.zoomIn': 'Zoom in',
   'controls.zoomOut': 'Zoom out',
@@ -177,7 +176,6 @@ const dictionaries: Record<AppLocale, Dictionary> = {
   de: {
     "common.done": "Fertig",
     "parking.label": "{name}-Parkplatz: {place}",
-    'controls.locate': 'Zu meinem Standort',
     'controls.zoomGroup': 'Kartenzoom',
     'controls.zoomIn': 'Vergrössern',
     'controls.zoomOut': 'Verkleinern',
@@ -340,7 +338,6 @@ const dictionaries: Record<AppLocale, Dictionary> = {
   fr: {
     "common.done": "Terminé",
     "parking.label": "Stationnement {name} : {place}",
-    'controls.locate': 'Aller à ma position',
     'controls.zoomGroup': 'Zoom de la carte',
     'controls.zoomIn': 'Zoomer',
     'controls.zoomOut': 'Dézoomer',
@@ -503,7 +500,6 @@ const dictionaries: Record<AppLocale, Dictionary> = {
   it: {
     "common.done": "Fine",
     "parking.label": "Parcheggio {name}: {place}",
-    'controls.locate': 'Vai alla mia posizione',
     'controls.zoomGroup': 'Zoom della mappa',
     'controls.zoomIn': 'Ingrandisci',
     'controls.zoomOut': 'Riduci',

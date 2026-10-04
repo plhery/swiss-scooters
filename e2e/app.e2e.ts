@@ -1609,9 +1609,11 @@ test('locating once zooms to the street, turns Near me into the icon button and 
   await expect(page.getByRole('img', { name: 'Your live location' })).toBeVisible();
   // About 350 m across on a phone, as on iOS.
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
-  const locate = page.getByRole('button', { name: 'Go to my location', exact: true });
+  // The icon alone from now on, under the name the location help uses for it.
+  const locate = page.getByRole('button', { name: 'Near me', exact: true });
   await expect(locate).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Near me', exact: true })).toHaveCount(0);
+  await expect(locate).toHaveClass(/\bfab\b/);
+  await expect(page.locator('.near-me')).toHaveCount(0);
   const box = await locate.boundingBox();
   expect(box!.width).toBe(50);
   expect(box!.height).toBe(50);
@@ -1622,7 +1624,8 @@ test('locating once zooms to the street, turns Near me into the icon button and 
 
   await page.reload();
   await expect(locate).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Near me', exact: true })).toHaveCount(0);
+  await expect(locate).toHaveClass(/\bfab\b/);
+  await expect(page.locator('.near-me')).toHaveCount(0);
 });
 
 test('locates by itself when location is already granted, without a tap', async ({ page }) => {
@@ -1648,7 +1651,8 @@ test('locates by itself when location is already granted, without a tap', async 
   await page.goto('/');
   await expect(page.getByRole('img', { name: 'Your live location' })).toBeVisible();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
-  await expect(page.getByRole('button', { name: 'Go to my location', exact: true })).toBeEnabled();
+  await expect(page.locator('.fab')).toBeEnabled();
+  await expect(page.locator('.fab')).toHaveAccessibleName('Near me');
 });
 
 test('a visitor who has not granted location is never located without a tap', async ({ page }) => {
@@ -1844,7 +1848,7 @@ test('denying motion permission keeps location usable without inventing a direct
   await expect(page.locator('.user-heading-beam')).toBeHidden();
   await expect(page.getByText(/motion access/i)).toHaveCount(0);
   await expect(page.locator('.map-notices')).toBeEmpty();
-  await expect(page.getByRole('button', { name: 'Go to my location' })).toBeEnabled();
+  await expect(page.locator('.fab')).toBeEnabled();
 });
 
 test('two-finger rotation updates the compass and can be reset', async ({ page, isMobile }) => {
@@ -2303,6 +2307,36 @@ test.describe('on a small phone, or one held on its side', () => {
     await expect(credits).toBeHidden();
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(credits).toBeVisible();
+  });
+
+  test('a phone on its side shows Near me as its icon alone, clear of the location card and the credits', async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.goto('/');
+    // The longest of the four labels.
+    await page.evaluate(() => localStorage.setItem('scooters-locale', 'de'));
+    await page.reload();
+    const nearMe = page.getByRole('button', { name: 'In meiner Nähe', exact: true });
+    await expect(nearMe).toBeVisible();
+    // Still the filled button of a device that has not located yet, with its name; only the label is left out.
+    await expect(nearMe).toHaveClass(/near-me/);
+    await expect(page.locator('.near-me-label')).toBeHidden();
+    const size = (await nearMe.boundingBox())!;
+    expect([Math.round(size.width), Math.round(size.height)]).toEqual([52, 52]);
+
+    // Location is refused here: the card that says so is not under the button, and neither are the credits.
+    await nearMe.click();
+    const card = page.locator('.location-card');
+    await expect(card).toBeVisible();
+    await expect(nearMe).toBeEnabled();
+    await expect.poll(async () => {
+      const button = (await nearMe.boundingBox())!;
+      return overlap(button, (await card.boundingBox())!) || overlap(button, (await page.locator('.map-attribution').boundingBox())!);
+    }).toBe(false);
+
+    // Held upright again, the label is back.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('.near-me-label')).toBeVisible();
+    await expect(nearMe).toHaveText('In meiner Nähe');
   });
 
   test('a narrow phone keeps the two buttons of a card on one line each, and the search field is 44 px high', async ({ page }) => {

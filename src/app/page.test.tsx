@@ -291,7 +291,7 @@ it('clears the place as soon as locating starts, also when the location turns ou
 
   stubGeolocation(null);
   fireEvent.click(screen.getByRole('button', { name: 'Search Zürich HB' }));
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Go to my location' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
   expect(screen.getByText('Location is off')).toBeVisible();
   expect(screen.getByTestId('bar')).not.toHaveTextContent('Zürich HB');
   // The place is still one tap away.
@@ -377,7 +377,7 @@ it('locates from the scooter card without moving the map away from the scooter',
   expect(localStorage.getItem('scooters-located-once')).toBe('1');
 
   // The locate button still brings the map to you.
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Go to my location' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
   expect(screen.getByTestId('focus')).toHaveTextContent('47.3769,8.5417 zoom 17');
 });
 
@@ -678,8 +678,10 @@ it('labels the locate button until locating has worked once, and remembers only 
   expect(getCurrentPosition).toHaveBeenCalledOnce();
   // About 350 m across, as on iOS.
   expect(screen.getByTestId('focus')).toHaveTextContent('47.3769,8.5417 zoom 17');
-  expect(screen.queryByRole('button', { name: 'Near me' })).toBeNull();
-  expect(screen.getByRole('button', { name: 'Go to my location' })).toBeEnabled();
+  // The icon alone from now on, under the same name.
+  expect(document.querySelector('.near-me')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Near me' })).toHaveClass('fab');
+  expect(screen.getByRole('button', { name: 'Near me' })).toBeEnabled();
   expect(localStorage.getItem('scooters-located-once')).toBe('1');
   const stored = Array.from({ length: localStorage.length }, (_, index) => localStorage.getItem(localStorage.key(index)!));
   expect(stored.join(' ')).not.toContain('47.37');
@@ -687,8 +689,8 @@ it('labels the locate button until locating has worked once, and remembers only 
 
   mount();
   await act(async () => vi.advanceTimersByTimeAsync(180));
-  expect(screen.getByRole('button', { name: 'Go to my location' })).toBeEnabled();
-  expect(screen.queryByRole('button', { name: 'Near me' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Near me' })).toHaveClass('fab');
+  expect(document.querySelector('.near-me')).toBeNull();
 });
 
 it('locates by itself when the browser has already granted location, and never otherwise', async () => {

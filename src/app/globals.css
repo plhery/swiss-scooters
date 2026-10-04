@@ -2026,6 +2026,15 @@ svg {
   .sheet-content {
     max-height: calc(100dvh - var(--sat) - var(--dock-bottom) - 82px - var(--notices-h, 0px));
   }
+  /* The label of the locate button would cover the location card or the credits: the icon alone. */
+  .near-me {
+    justify-content: center;
+    width: 52px;
+    padding: 0;
+  }
+  .near-me-label {
+    display: none;
+  }
   /* The open search reaches down to the corner of the credits: they wait until it closes. */
   .app-shell[data-searching='true'] .map-attribution {
     visibility: hidden;

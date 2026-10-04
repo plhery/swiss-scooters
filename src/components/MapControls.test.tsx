@@ -34,11 +34,32 @@ describe('MapControls', () => {
     const { props } = renderControls({ locatedOnce: true });
 
     expect(screen.queryByText('Near me')).not.toBeInTheDocument();
-    const button = screen.getByRole('button', { name: 'Go to my location' });
+    // Still found by the name the location help uses: "Then come back and tap Near me."
+    const button = screen.getByRole('button', { name: 'Near me' });
     expect(button).toHaveClass('fab');
+    expect(button).toHaveAttribute('title', 'Near me');
     fireEvent.click(button);
     expect(props.onLocateMe).toHaveBeenCalledOnce();
   });
+
+  it('keeps its name where a short screen leaves the label out', () => {
+    renderControls({ locatedOnce: false });
+
+    // The stylesheet hides the label under 500 px of height; the name does not depend on it.
+    const button = screen.getByRole('button', { name: 'Near me' });
+    expect(button).toHaveAttribute('aria-label', 'Near me');
+    expect(button.querySelector('.near-me-label')).toHaveTextContent('Near me');
+  });
+
+  it.each([['de', 'In meiner Nähe'], ['fr', 'Près de moi'], ['it', 'Vicino a me']])(
+    'is named as the location help names it in %s, also as the icon alone',
+    async (locale, name) => {
+      localStorage.setItem('scooters-locale', locale);
+      renderControls({ locatedOnce: true });
+
+      expect(await screen.findByRole('button', { name })).toHaveClass('fab');
+    }
+  );
 
   it('waits for the stored answer before it shows either button', () => {
     renderControls({ locatedOnce: null });
