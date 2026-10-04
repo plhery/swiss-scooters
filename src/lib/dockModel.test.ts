@@ -278,6 +278,22 @@ describe('dock notices', () => {
     expect(finding.chips?.providers.some(chip => chip.down)).toBe(false);
   });
 
+  it('keeps the provider that is down while a neighbouring view loads with what was known just before', () => {
+    // The page hands on who had scooters in the view before the move; Bird had none.
+    const nearby = {
+      meta: meta({ failedSources: ['national:bird_zurich'] }),
+      providersInView: new Set(['lime', 'voi']),
+      loading: 'load',
+    } satisfies Partial<DockInput>;
+    const model = summary(nearby);
+    expect(model.notices).toEqual([{ kind: 'providers', text: { key: 'dock.down.one', values: { name: 'Bird' } } }]);
+    expect(model.chips?.providers[0]).toMatchObject({ provider: 'bird', down: true });
+    // With nothing left on screen the count is on its way, and the chip stays dashed and first.
+    const finding = summary({ ...nearby, count: 0, providerCounts: {} });
+    expect(finding.phase).toBe('finding');
+    expect(finding.chips?.providers[0]).toMatchObject({ provider: 'bird', down: true });
+  });
+
   it('stays vague about sources it cannot name and silent about providers elsewhere', () => {
     expect(summary({ meta: meta({ failedSources: ['national'] }) }).notices)
       .toEqual([{ kind: 'providers', text: { key: 'dock.down.some' } }]);

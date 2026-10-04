@@ -42,6 +42,7 @@ import { mapRepresentationsMatch, providersForViewport } from '@/lib/mapCoverage
 import {
   boundsContainBounds,
   boundsContainPoint,
+  boundsIntersect,
   expandBounds,
 } from '@/lib/geo';
 import { useLiveLocation } from '@/lib/useLiveLocation';
@@ -470,10 +471,23 @@ export default function Home() {
 
   // Who has scooters here whatever the filters hide. Data loaded for another
   // view says nothing about this one, so it names nobody as not sharing data.
-  const loadedProviders = useMemo(() => answersQuery
+  const providersHere = useMemo(() => answersQuery
     ? providersInView({ vehicles, clusters, viewport: viewportBounds, serverMinBattery: scooterQuery?.minBattery ?? 0 })
     : null,
   [answersQuery, clusters, scooterQuery?.minBattery, vehicles, viewportBounds]);
+  // The exception is the load that follows a move within the same area: what
+  // was known just before holds until the answer, so that the notice and the
+  // dashed chip do not leave and come back with every move of the map.
+  const [answered, setAnswered] = useState<{ providers: ReadonlySet<string> | null; viewport: MapBounds | null }>(
+    { providers: null, viewport: null }
+  );
+  if (answersQuery && (answered.providers !== providersHere || answered.viewport !== viewportBounds)) {
+    setAnswered({ providers: providersHere, viewport: viewportBounds });
+  }
+  const loadingNearby = !answersQuery && loading === 'load' && !failure &&
+    (scooterQuery?.minBattery ?? 0) === 0 &&
+    viewportBounds !== null && answered.viewport !== null && boundsIntersect(answered.viewport, viewportBounds);
+  const loadedProviders = answersQuery ? providersHere : loadingNearby ? answered.providers : null;
 
   const dockInput: DockInput = {
     count: viewportData.totalCount,

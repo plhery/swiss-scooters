@@ -627,6 +627,64 @@ it('names no provider as not sharing data from what was loaded for another view'
   expect(document.querySelector('.chip-down')).toBeNull();
 });
 
+it('keeps naming a provider that is not sharing data while a move within the same area loads', async () => {
+  const body = response();
+  body.meta.failedSources = ['national:bird_zurich'];
+  let answer: (response: Response) => void = () => {};
+  const fetcher = vi.fn<() => Promise<Response>>(async () => Response.json(body));
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  const down = () => JSON.parse(screen.getByTestId('filters').textContent!).down;
+  const moveTo = (bounds: MapBounds) => {
+    viewport.bounds = bounds;
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom to 16' }));
+  };
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(down()).toEqual(['bird']);
+  const notice = screen.getByText('Bird isn’t sharing data right now.');
+  const chip = document.querySelector('.chip-down');
+  expect(chip).toHaveAccessibleName('Bird: not sharing data right now');
+
+  // Dragged north by half a screen: past what was loaded, so a load starts, and its answer takes a while.
+  fetcher.mockImplementation(() => new Promise<Response>(resolve => { answer = resolve; }));
+  moveTo({ south: 47.375, west: 8.52, north: 47.405, east: 8.57 });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  // Nothing in the dock moved: the same line and the same dashed chip, not new ones.
+  expect(down()).toEqual(['bird']);
+  expect(screen.getByText('Bird isn’t sharing data right now.')).toBe(notice);
+  expect(document.querySelector('.chip-down')).toBe(chip);
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(down()).toEqual(['bird']);
+  expect(screen.getByText('Bird isn’t sharing data right now.')).toBe(notice);
+  // The answer decides: here Bird is sharing again.
+  await act(async () => { answer(Response.json(response())); await vi.advanceTimersByTimeAsync(0); });
+  expect(down()).toEqual([]);
+  expect(screen.queryByText('Bird isn’t sharing data right now.')).toBeNull();
+  expect(document.querySelector('.chip-down')).toBeNull();
+});
+
+it('names no provider as not sharing data during the load that follows a jump to another area', async () => {
+  const body = response();
+  body.meta.failedSources = ['national:bird_zurich'];
+  const fetcher = vi.fn<() => Promise<Response>>(async () => Response.json(body));
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  const down = () => JSON.parse(screen.getByTestId('filters').textContent!).down;
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(down()).toEqual(['bird']);
+
+  // Winterthur, where Bird operates too: what Zürich showed says nothing about it.
+  fetcher.mockImplementation(() => new Promise<Response>(() => {}));
+  viewport.bounds = { south: 47.48, west: 8.70, north: 47.51, east: 8.75 };
+  fireEvent.click(screen.getByRole('button', { name: 'Zoom to 16' }));
+  expect(down()).toEqual([]);
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(down()).toEqual([]);
+  expect(screen.queryByText('Bird isn’t sharing data right now.')).toBeNull();
+  expect(document.querySelector('.chip-down')).toBeNull();
+});
+
 it('promises no count in the filters while the answer for a new minimum is on its way', async () => {
   const fetcher = vi.fn<(input: string) => Promise<Response>>(async () => Response.json(response()));
   vi.stubGlobal('fetch', fetcher);
