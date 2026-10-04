@@ -1284,6 +1284,33 @@ extension ScooterMapModelTests {
         XCTAssertEqual(model.filterProviders.filter(\.isEnabled).map(\.provider), [.bird, .lime])
     }
 
+    /// Where one provider is the only one, the server answers its outage with an
+    /// empty list and the failed feed, not with an error of its own.
+    func testTheOnlyProviderOfACityBeingDownIsNamedInsteadOfBlamingScooters() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [],
+            meta: ScooterResponseMetadata(partial: true, failedSources: ["france:dott_fr_lyon"])
+        ))
+        let model = makeModel(api: api)
+        let lyon = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 45.7578, longitude: 4.832),
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
+        model.updateViewport(lyon, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        XCTAssertEqual(model.availableProviders, [.dott])
+        XCTAssertNil(model.loadIssue)
+        guard case let .summary(summary) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(summary.count, 0)
+        XCTAssertNil(summary.refreshFailure)
+        XCTAssertEqual(summary.notices, [.providersDown([.dott])])
+        XCTAssertEqual(summary.chips.map(\.provider), [.dott])
+        XCTAssertEqual(summary.chips.map(\.isDown), [true])
+        XCTAssertEqual(model.filterProviders.map(\.isDown), [true])
+    }
+
     func testProviderWithAFailedFeedAndScootersInViewIsNotReportedAsDown() async {
         let api = StubScooterAPI(response: ScooterResponse(
             vehicles: [scooter(id: "lime", provider: "lime", battery: 40)],
