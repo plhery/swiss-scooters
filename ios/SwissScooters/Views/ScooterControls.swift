@@ -27,6 +27,13 @@ enum ScooterPalette {
     )
     /// Red under white text.
     static let criticalFill = Color(red: 0.76, green: 0.15, blue: 0.14)
+    /// Grey for small text and its icons. The system's secondary label is
+    /// about 3.5:1 on the light dock and on a light sheet; this is 5:1 there.
+    /// In dark appearance it is the system's colour, which is light enough.
+    static let secondaryText = adaptive(
+        light: UIColor(red: 0.38, green: 0.39, blue: 0.42, alpha: 1),
+        dark: UIColor.secondaryLabel.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+    )
 
     private static func adaptive(light: UIColor, dark: UIColor) -> Color {
         Color(uiColor: UIColor { traits in
@@ -283,7 +290,7 @@ struct ScooterControlDock: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Closest cities")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ScooterPalette.secondaryText)
                     .accessibilityAddTraits(.isHeader)
 
                 FlowLayout(spacing: 8, lineSpacing: 8) {
@@ -444,7 +451,7 @@ private struct DockStatusLabel: View {
                 .monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundStyle(status.isWarning ? ScooterPalette.warning : Color.secondary)
+        .foregroundStyle(status.isWarning ? ScooterPalette.warning : ScooterPalette.secondaryText)
     }
 }
 
@@ -463,7 +470,7 @@ private struct DockNoteRow: View {
                 .monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(ScooterPalette.secondaryText)
         .padding(.leading, 2)
     }
 }
@@ -512,7 +519,7 @@ private struct DockCardHeader: View {
                 if !message.isEmpty {
                     Text(message)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ScooterPalette.secondaryText)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -646,7 +653,7 @@ private struct DockCloseButton: View {
         Button(action: action) {
             Image(systemName: "xmark")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ScooterPalette.secondaryText)
                 .frame(width: 44, height: 44)
                 .background(.quaternary, in: Circle())
                 .contentShape(Circle())
@@ -765,7 +772,7 @@ private struct QuickProviderFilterChip: View {
     }
 
     private var foreground: Color {
-        if isDown { return .secondary }
+        if isDown { return ScooterPalette.secondaryText }
         return isSelected ? ScooterPalette.actionText : .primary
     }
 
@@ -848,7 +855,7 @@ private struct ScooterCard: View {
                 providerName
             ))
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ScooterPalette.secondaryText)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
@@ -865,7 +872,7 @@ private struct ScooterCard: View {
                         tile
                         titleBlock {
                             Text(walk)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(ScooterPalette.secondaryText)
                                 .monospacedDigit()
                         }
                     }
@@ -891,7 +898,7 @@ private struct ScooterCard: View {
                                 .accessibilityHidden(true)
                             Text("Finding your location…")
                         }
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ScooterPalette.secondaryText)
                     }
                     .accessibilityElement(children: .combine)
                 } else {
@@ -1076,7 +1083,7 @@ private struct ParkingBayCard: View {
                         if !subtitle.isEmpty {
                             Text(subtitle)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(ScooterPalette.secondaryText)
                                 .monospacedDigit()
                         }
                     }
@@ -1123,7 +1130,7 @@ private struct ParkingBayCard: View {
 
             Text(parking.footnote)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ScooterPalette.secondaryText)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
@@ -1222,7 +1229,7 @@ struct ScooterFilterSheet: View {
             if model.minimumBattery > 0 {
                 Text("Scooters without battery info are hidden while a minimum is set.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ScooterPalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
@@ -1279,7 +1286,7 @@ struct ScooterFilterSheet: View {
                     // No provider operates in this part of the map.
                     Text("No scooter data here yet")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ScooterPalette.secondaryText)
                         .padding(.horizontal, 14)
                         .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                 }
@@ -1306,7 +1313,7 @@ struct ScooterFilterSheet: View {
                 // Dark initials on a tint of the provider's colour, never white on the colour itself.
                 Text(verbatim: entry.provider.shortName)
                     .font(.footnote.weight(.bold))
-                    .foregroundStyle(entry.isDown ? Color.secondary : Color.primary)
+                    .foregroundStyle(entry.isDown ? ScooterPalette.secondaryText : Color.primary)
                     .frame(width: 36, height: 36)
                     .background(
                         entry.isDown
@@ -1318,7 +1325,7 @@ struct ScooterFilterSheet: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.provider.name)
                         .font(.body.weight(.medium))
-                        .foregroundStyle(entry.isDown ? Color.secondary : Color.primary)
+                        .foregroundStyle(entry.isDown ? ScooterPalette.secondaryText : Color.primary)
                     if entry.isDown {
                         Text("Not sharing data right now")
                             .font(.caption)
@@ -1333,7 +1340,7 @@ struct ScooterFilterSheet: View {
                 if !entry.isDown {
                     Text(entry.count, format: .number)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ScooterPalette.secondaryText)
                         .monospacedDigit()
                         .contentTransition(.numericText())
                 }
@@ -1358,10 +1365,10 @@ struct ScooterFilterSheet: View {
         if !entry.isEnabled {
             Image(systemName: "circle")
                 .font(.system(size: 22))
-                .foregroundStyle(Color.secondary.opacity(0.7))
+                .foregroundStyle(ScooterPalette.secondaryText)
         } else if entry.isDown {
             Circle()
-                .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3.5, 3]))
+                .strokeBorder(ScooterPalette.secondaryText, style: StrokeStyle(lineWidth: 1.5, dash: [3.5, 3]))
                 .padding(2)
         } else {
             Image(systemName: "checkmark.circle.fill")
@@ -1416,7 +1423,7 @@ struct ScooterFilterSheet: View {
     private func sectionHeader(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ScooterPalette.secondaryText)
             .padding(.horizontal, 4)
             .accessibilityAddTraits(.isHeader)
     }
@@ -1709,7 +1716,7 @@ private struct ProviderRidePassEditor: View {
                         if !pass.isActive(on: .now) {
                             Label("This pass has expired", systemImage: "exclamationmark.circle.fill")
                                 .font(.subheadline)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(ScooterPalette.warning)
                         }
                     }
                 } header: {
@@ -1961,7 +1968,7 @@ struct LocationIssueCard: View {
                             .font(.subheadline.weight(.semibold))
                         Text(issue.message)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(ScooterPalette.secondaryText)
                     } else {
                         Text(issue.message)
                             .font(.subheadline.weight(.medium))
@@ -1989,7 +1996,7 @@ struct LocationIssueCard: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ScooterPalette.secondaryText)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }

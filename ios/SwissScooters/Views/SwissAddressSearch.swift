@@ -147,7 +147,7 @@ struct ScooterSearchIsland: View {
         case .empty:
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ScooterPalette.secondaryText)
                 .frame(width: 34, height: 34)
         case .nearYou:
             SearchSymbolTile(systemImage: "location.fill")
@@ -165,7 +165,7 @@ struct ScooterSearchIsland: View {
             Text(state.title)
                 // With nothing chosen the bar reads like an empty search field.
                 .font(.subheadline.weight(state == .empty ? .medium : .semibold))
-                .foregroundStyle(state == .empty ? Color.secondary : Color.primary)
+                .foregroundStyle(state == .empty ? ScooterPalette.secondaryText : Color.primary)
                 .lineLimit(usesAccessibilityLayout ? 2 : 1)
                 // A long place name is cut short. The bar's own sentences shrink
                 // further instead: "Recherche de votre position…" on a narrow phone.
@@ -175,7 +175,7 @@ struct ScooterSearchIsland: View {
                 // phones and for Italian, so it may take a second line.
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ScooterPalette.secondaryText)
                     .lineLimit(2)
             }
         }
@@ -480,7 +480,7 @@ struct ScooterSearchPanel: View {
     private func sectionHeader(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ScooterPalette.secondaryText)
             .padding(.horizontal, 6)
             .padding(.top, 12)
             .padding(.bottom, 6)
@@ -538,7 +538,7 @@ private extension View {
     /// "Searching…" and the sentences that stand in for results.
     func searchStatusStyle() -> some View {
         font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ScooterPalette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 6)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -570,7 +570,7 @@ struct SearchPlaceRow: View {
                 if !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ScooterPalette.secondaryText)
                         .lineLimit(usesAccessibilityLayout ? nil : 2)
                 }
                 // Beside large text there is no room left for the tag.
@@ -596,7 +596,7 @@ struct SearchPlaceRow: View {
     private var noDataTag: some View {
         Text("No data")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ScooterPalette.secondaryText)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Color.primary.opacity(0.06), in: Capsule())
