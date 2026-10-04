@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { nextRefreshAt } from '@/lib/autoRefresh';
+import { isExpired } from '@/lib/dataExpiry';
 import {
   INITIAL_SCOOTER_DATA_STATE,
   scooterDataReducer,
@@ -107,6 +109,37 @@ describe('scooterDataReducer', () => {
     const invalid = scooterDataReducer(loaded, { type: 'succeeded', key: 'a', response: response({ generatedAt: 'now' }), now: T0 });
     expect(ahead.lastUpdated).toBe(T0);
     expect(invalid.lastUpdated).toBe(T0);
+  });
+
+  it('reads the server\'s times on a device clock that is six minutes fast', () => {
+    const SKEW = 360_000;
+    // The device reads T0 + 6 min while the server, at T0, sends data seen 30 s ago that lasts 270 s more.
+    const state = run([
+      { type: 'started', key: 'a' },
+      { type: 'succeeded', key: 'a', response: response(), now: T0 + SKEW, clockOffsetMs: SKEW },
+    ]);
+    expect(state).toMatchObject({
+      lastUpdated: T0 + SKEW - 30_000,
+      expiresAt: T0 + SKEW + 270_000,
+      parkingExpiresAt: T0 + SKEW + 200_000,
+      lastSuccessAt: T0 + SKEW,
+    });
+    // Not expired on arrival, fresh enough to read "Live", and due again at the server's interval.
+    expect(isExpired(state.expiresAt, T0 + SKEW)).toBe(false);
+    expect(T0 + SKEW - state.lastUpdated!).toBeLessThan(90_000);
+    expect(nextRefreshAt(state)).toBe(T0 + SKEW + 60_000);
+    expect(state.parking).toHaveLength(1);
+    // One failed request does not empty the map either.
+    expect(scooterDataReducer(state, { type: 'failed', failure: 'busy', now: T0 + SKEW + 60_000 }))
+      .toMatchObject({ hasData: true, outOfDate: false });
+  });
+
+  it('reads the server\'s times on a device clock that is behind', () => {
+    const SKEW = -120_000;
+    const state = scooterDataReducer(INITIAL_SCOOTER_DATA_STATE, {
+      type: 'succeeded', key: 'a', response: response(), now: T0 + SKEW, clockOffsetMs: SKEW,
+    });
+    expect(state).toMatchObject({ lastUpdated: T0 + SKEW - 30_000, expiresAt: T0 + SKEW + 270_000 });
   });
 
   it('tolerates a response without clusters or parking', () => {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { track } from '@/lib/analytics';
 import { refreshDecision } from '@/lib/autoRefresh';
+import { clockOffset } from '@/lib/dataExpiry';
 import { classifyLoadFailure, type LoadFailure } from '@/lib/loadFailure';
 import { requestDeadline } from '@/lib/requestDeadline';
 import {
@@ -127,6 +128,7 @@ function createScooterDataController() {
     apply({ type: 'started', key });
 
     let response: ScooterResponse | null = null;
+    let clockOffsetMs = 0;
     let failure: LoadFailure = 'failed';
     let cause: unknown;
     try {
@@ -137,6 +139,8 @@ function createScooterDataController() {
         signal: deadline.signal,
       });
       if (res.ok) {
+        // The server's times are compared with this device's clock, which may be wrong.
+        clockOffsetMs = clockOffset(res.headers.get('Date'), Date.now());
         const data = await res.json() as ScooterResponse;
         if (!Array.isArray(data.vehicles) || !data.meta) throw new Error('Invalid scooter response');
         response = data;
@@ -155,7 +159,7 @@ function createScooterDataController() {
     request = null;
 
     if (response) {
-      apply({ type: 'succeeded', key, response, now: Date.now() });
+      apply({ type: 'succeeded', key, response, now: Date.now(), clockOffsetMs });
     } else {
       const previous = state;
       apply({ type: 'failed', failure, now: Date.now() });

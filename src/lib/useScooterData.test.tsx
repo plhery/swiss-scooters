@@ -182,6 +182,29 @@ describe('useScooterData', () => {
     expect(fetcher.mock.calls[1][1].cache).toBe('no-store');
   });
 
+  it('keeps to the server\'s interval and keeps the scooters on a device whose clock is six minutes fast', async () => {
+    // The server's clock is six minutes behind this device's; its Date header says so.
+    const serverNow = () => Date.now() - 360_000;
+    fetcher.mockImplementationOnce(async () => Response.json(
+      body({ generatedAt: iso(serverNow() - 20_000), expiresAt: iso(serverNow() + 280_000) }),
+      { headers: { Date: new Date(serverNow()).toUTCString() } }
+    )).mockImplementation(status(429));
+    const { result } = mount();
+    await advance(180);
+    // Twenty seconds old on this device's clock too; the header counts whole seconds.
+    expect(result.current.hasData).toBe(true);
+    expect(Math.abs(result.current.lastUpdated! - (T0 + 180 - 20_000))).toBeLessThan(1_000);
+
+    // Not every ten seconds, as for data that has expired.
+    await advance(59_999);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // And one refused request does not empty the map.
+    expect(result.current).toMatchObject({ hasData: true, failure: 'busy', outOfDate: false });
+    expect(result.current.vehicles).toHaveLength(1);
+  });
+
   it('refreshes five seconds before the expiry when that is sooner than the interval', async () => {
     fetcher.mockImplementation(async () => Response.json(body({ expiresAt: iso(Date.now() + 40_000) })));
     mount();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { failedRequestOutcome, isExpired, responseExpiry } from '@/lib/dataExpiry';
+import { clockOffset, failedRequestOutcome, isExpired, responseExpiry } from '@/lib/dataExpiry';
 import type { ScooterResponseMeta } from '@/lib/types';
 
 const T0 = Date.parse('2026-10-03T12:00:00.000Z');
@@ -40,6 +40,37 @@ describe('responseExpiry', () => {
     expect(responseExpiry(meta({ expiresAt: iso(T0 + 86_400_000) }), T0 + 5_000).vehicles).toBe(T0 + 300_000);
     expect(responseExpiry(meta({ generatedAt: iso(T0 + 600_000) }), T0).vehicles).toBe(T0 + 300_000);
     expect(responseExpiry(meta({ generatedAt: 'yesterday', expiresAt: 'soon' }), T0).vehicles).toBe(T0 + 300_000);
+  });
+});
+
+describe('clockOffset', () => {
+  it('is how far the device is ahead of the time the response was sent', () => {
+    expect(clockOffset('Sat, 03 Oct 2026 12:00:00 GMT', T0 + 360_000)).toBe(360_000);
+    expect(clockOffset('Sat, 03 Oct 2026 12:00:00 GMT', T0 - 120_000)).toBe(-120_000);
+    expect(clockOffset('Sat, 03 Oct 2026 12:00:00 GMT', T0 + 800)).toBe(800);
+  });
+
+  it('is nothing without a header that can be read', () => {
+    expect(clockOffset(null, T0)).toBe(0);
+    expect(clockOffset('', T0)).toBe(0);
+    expect(clockOffset('soon', T0)).toBe(0);
+  });
+});
+
+describe('responseExpiry on a wrong device clock', () => {
+  const fresh = meta({ generatedAt: iso(T0 - 20_000), expiresAt: iso(T0 + 280_000), parkingExpiresAt: iso(T0 + 100_000) });
+
+  it('finds a fresh response expired on arrival when the clock is six minutes fast and nothing corrects it', () => {
+    expect(isExpired(responseExpiry(fresh, T0 + 360_000).vehicles, T0 + 360_000)).toBe(true);
+  });
+
+  it('moves the server\'s times onto the device\'s clock', () => {
+    expect(responseExpiry(fresh, T0 + 360_000, 360_000)).toEqual({ vehicles: T0 + 640_000, parking: T0 + 460_000 });
+    expect(responseExpiry(fresh, T0 - 120_000, -120_000)).toEqual({ vehicles: T0 + 160_000, parking: T0 - 20_000 });
+  });
+
+  it('still caps the expiry at the fallback', () => {
+    expect(responseExpiry(meta({ expiresAt: iso(T0 + 86_400_000) }), T0 + 360_000, 360_000).vehicles).toBe(T0 + 660_000);
   });
 });
 

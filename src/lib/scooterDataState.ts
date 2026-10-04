@@ -1,5 +1,5 @@
 import { DEFAULT_REFRESH_AFTER_MS } from '@/lib/autoRefresh';
-import { failedRequestOutcome, isExpired, responseExpiry } from '@/lib/dataExpiry';
+import { deviceTime, failedRequestOutcome, isExpired, responseExpiry } from '@/lib/dataExpiry';
 import type { LoadFailure } from '@/lib/loadFailure';
 import type {
   MapBounds,
@@ -39,7 +39,7 @@ export interface ScooterDataState {
   parking: ParkingLocation[];
   /** Of the last successful response. Kept when the scooters go out of date. */
   meta: ScooterResponseMeta | null;
-  /** When the last successful response was observed (meta.generatedAt), in epoch milliseconds. */
+  /** When the last successful response was observed (meta.generatedAt), in epoch milliseconds on this device's clock. */
   lastUpdated: number | null;
   /** A response is on screen, even one without scooters. */
   hasData: boolean;
@@ -81,7 +81,8 @@ export const INITIAL_SCOOTER_DATA_STATE: ScooterDataState = {
 
 export type ScooterDataEvent =
   | { type: 'started'; key: string }
-  | { type: 'succeeded'; key: string; response: ScooterResponse; now: number }
+  /** clockOffsetMs: how far this device's clock is ahead of the server's, from clockOffset(). */
+  | { type: 'succeeded'; key: string; response: ScooterResponse; now: number; clockOffsetMs?: number }
   | { type: 'failed'; failure: LoadFailure; now: number }
   /** The running request was cancelled without a replacement. */
   | { type: 'aborted' }
@@ -95,9 +96,9 @@ export function scooterDataReducer(state: ScooterDataState, event: ScooterDataEv
     case 'succeeded': {
       // Accepted whatever its timestamps say: a response that is close to its
       // expiry, or already past it, is still the newest data there is.
-      const { response, now } = event;
-      const expiry = responseExpiry(response.meta, now);
-      const generated = Date.parse(response.meta.generatedAt);
+      const { response, now, clockOffsetMs = 0 } = event;
+      const expiry = responseExpiry(response.meta, now, clockOffsetMs);
+      const generated = deviceTime(response.meta.generatedAt, clockOffsetMs);
       const refreshAfter = response.meta.refreshAfterSeconds;
       return {
         vehicles: response.vehicles,
