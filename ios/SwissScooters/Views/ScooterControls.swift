@@ -1337,6 +1337,9 @@ struct ScooterFilterSheet: View {
                 // Dark initials on a tint of the provider's colour, never white on the colour itself.
                 Text(verbatim: entry.provider.shortName)
                     .font(.footnote.weight(.bold))
+                    // The tile keeps its size, so with very large text the initials shrink to fit.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
                     .foregroundStyle(entry.isDown ? ScooterPalette.secondaryText : Color.primary)
                     .frame(width: 36, height: 36)
                     .background(
