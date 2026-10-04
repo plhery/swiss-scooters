@@ -1987,6 +1987,37 @@ test.describe('on a desktop', () => {
     await expect(card).toHaveCount(0);
   });
 
+  test('a window made narrower takes the card into the dock, and gives it back when it is wide again', async ({ page }) => {
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
+    const bird = page.getByRole('button', { name: 'Bird scooter', exact: true });
+    await bird.click();
+    const popover = page.getByRole('dialog', { name: 'Bird scooter' });
+    await expect(popover.getByRole('heading', { name: 'Bird' })).toBeVisible();
+    await expect(bird).not.toHaveAttribute('title');
+
+    // Under 900 px the layout is the phone's: the card in the dock, chips with "All", no keys.
+    await page.setViewportSize({ width: 800, height: 720 });
+    await expect(popover).toHaveCount(0);
+    await expect(page.locator('.sheet .dock-card').getByRole('heading', { name: 'Bird' })).toBeVisible();
+    await expect(page.locator('.sheet-count')).toHaveCount(0);
+    await expect(page.locator('.key-hints')).toHaveCount(0);
+    await expect(bird).toHaveAttribute('title', 'Bird scooter');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheet .dock-card')).toBeVisible();
+    await page.locator('.dock-card').getByRole('button', { name: 'Close scooter details' }).click();
+    await expect(page.getByRole('button', { name: 'All providers, 3. Show all.' })).toBeVisible();
+
+    await bird.click();
+    await expect(page.locator('.sheet .dock-card')).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(popover).toHaveAttribute('data-placed', 'true');
+    await expect(page.locator('.sheet .dock-card')).toHaveCount(0);
+    await expect(page.locator('.sheet-count')).toHaveText(/^1\s*scooter on this map$/);
+    await expect(page.locator('.key-hints')).toBeVisible();
+  });
+
   test('what went wrong is said beside the search bar, clear of the dock', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.cluster-marker')).toHaveCount(1);
