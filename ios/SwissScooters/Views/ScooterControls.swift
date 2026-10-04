@@ -39,6 +39,7 @@ struct ScooterControlDock: View {
     @Bindable var model: ScooterMapModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
     private let maximumContentHeight: CGFloat
     private let onEditFilters: () -> Void
     private let onHeightChange: (CGFloat) -> Void
@@ -218,7 +219,7 @@ struct ScooterControlDock: View {
             title: entry.provider.name,
             accessibilityTitle: entry.isDown ? entry.downLabel : entry.provider.name,
             count: entry.count,
-            color: entry.provider.color,
+            color: providerAccent(entry.provider, colorScheme: colorScheme),
             isSelected: entry.isSelected,
             isDown: entry.isDown,
             accessibilityIsShown: entry.isEnabled
@@ -1438,6 +1439,7 @@ struct ScooterFilterSheet: View {
 struct ScooterSettingsSheet: View {
     @Bindable var model: ScooterMapModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         NavigationStack {
@@ -1460,7 +1462,7 @@ struct ScooterSettingsSheet: View {
                         } label: {
                             HStack(spacing: 10) {
                                 Circle()
-                                    .fill(provider.color)
+                                    .fill(providerAccent(provider, colorScheme: colorScheme))
                                     .frame(width: 10, height: 10)
                                 Text(provider.name)
                                 Spacer(minLength: 8)
