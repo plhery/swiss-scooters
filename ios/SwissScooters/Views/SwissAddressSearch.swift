@@ -112,7 +112,9 @@ struct ScooterSearchIsland: View {
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
                     .font(.system(size: 20, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
+                    // Idle, it is as dark as the Settings icon beside it; the
+                    // layered blue is kept for filters that are active.
+                    .symbolRenderingMode(hasActiveFilters ? .hierarchical : .monochrome)
                     .foregroundStyle(hasActiveFilters ? ScooterPalette.actionText : Color.primary)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
