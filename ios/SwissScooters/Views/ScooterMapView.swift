@@ -56,6 +56,8 @@ struct ScooterMapView: UIViewRepresentable {
     var userHeading: ScooterUserHeading? = nil
     var showsMapCompass = true
     var parking: [ScooterParking] = []
+    var selectedParkingID: String? = nil
+    var onParkingSelectionChange: (String?) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -124,6 +126,7 @@ struct ScooterMapView: UIViewRepresentable {
         context.coordinator.reconcileParking(parking, on: mapView)
         context.coordinator.applyDestination(destination, on: mapView)
         context.coordinator.applySelection(selectedScooterID, on: mapView)
+        context.coordinator.applyParkingSelection(selectedParkingID, on: mapView)
         context.coordinator.applyFocus(focusRequest, on: mapView)
         context.coordinator.updateUserHeading(on: mapView, animated: true)
         context.coordinator.updateCompass(on: mapView)
@@ -137,6 +140,7 @@ struct ScooterMapView: UIViewRepresentable {
         private var reconciledParking: [ScooterParking] = []
         private var lastFocusToken: Int?
         private var appliedSelectionID: String?
+        private var appliedParkingID: String?
         private var reconciledScooterRevision: Int?
         private var reconciledClusterRevision: Int?
         private var clusteringEnabled: Bool?
@@ -236,6 +240,10 @@ struct ScooterMapView: UIViewRepresentable {
             reconciledParking = locations
             let incoming = Dictionary(locations.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
             let removed = parkingAnnotationsByID.values.filter { incoming[$0.parking.id] != $0.parking }
+            if removed.contains(where: { $0.parking.id == appliedParkingID }) {
+                // A bay that is still selected is selected again once it is back on the map.
+                appliedParkingID = nil
+            }
             mapView.removeAnnotations(removed)
             for annotation in removed { parkingAnnotationsByID.removeValue(forKey: annotation.parking.id) }
             let added = locations.filter { parkingAnnotationsByID[$0.id] == nil }.map(ScooterParkingAnnotation.init)
@@ -290,9 +298,31 @@ struct ScooterMapView: UIViewRepresentable {
             }
         }
 
+        func applyParkingSelection(_ selectedID: String?, on mapView: MKMapView) {
+            guard selectedID != appliedParkingID else { return }
+            appliedParkingID = selectedID
+
+            let animated = !UIAccessibility.isReduceMotionEnabled
+            for case let annotation as ScooterParkingAnnotation in mapView.selectedAnnotations
+            where annotation.parking.id != selectedID {
+                mapView.deselectAnnotation(annotation, animated: animated)
+            }
+
+            if let selectedID, let annotation = parkingAnnotationsByID[selectedID] {
+                mapView.selectAnnotation(annotation, animated: animated)
+            }
+        }
+
         func applyFocus(_ request: MapFocusRequest?, on mapView: MKMapView) {
             guard let request, request.token != lastFocusToken else { return }
             lastFocusToken = request.token
+            guard !request.keepsZoom else {
+                mapView.setCenter(
+                    request.point.coordinate,
+                    animated: !UIAccessibility.isReduceMotionEnabled
+                )
+                return
+            }
             let region = MKCoordinateRegion(
                 center: request.point.coordinate,
                 latitudinalMeters: request.latitudinalMeters,
@@ -395,22 +425,17 @@ struct ScooterMapView: UIViewRepresentable {
                 let view = mapView.dequeueReusableAnnotationView(
                     withIdentifier: ScooterParkingAnnotation.reuseIdentifier, for: parking
                 ) as! MKMarkerAnnotationView
-                view.markerTintColor = ScooterProvider(rawValue: parking.parking.provider)?.uiColor ?? .systemBlue
+                view.markerTintColor = parking.parking.providerInfo?.uiColor ?? .systemBlue
                 view.glyphText = "P"
                 view.glyphImage = nil
-                view.canShowCallout = true
+                // The bay opens in the dock, like a scooter.
+                view.canShowCallout = false
                 view.displayPriority = .required
                 view.clusteringIdentifier = nil
-                view.accessibilityLabel = "\(parking.parking.title), \(parking.parking.name)"
-                let details = UILabel()
-                details.numberOfLines = 0
-                details.font = .preferredFont(forTextStyle: .caption1)
-                details.text = parking.parking.guidance
-                details.widthAnchor.constraint(lessThanOrEqualToConstant: 250).isActive = true
-                view.detailCalloutAccessoryView = details
-                let directions = UIButton(type: .detailDisclosure)
-                directions.accessibilityLabel = String(localized: "Directions to parking")
-                view.rightCalloutAccessoryView = directions
+                view.accessibilityLabel = [parking.parking.bayTitle, parking.parking.name]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: ", ")
+                view.accessibilityTraits = .button
                 return view
             }
 
@@ -468,14 +493,20 @@ struct ScooterMapView: UIViewRepresentable {
             guard let mapView = gestureRecognizer.view as? MKMapView else { return }
             let point = gestureRecognizer.location(in: mapView)
             guard !Self.isCompassView(mapView.hitTest(point, with: nil)) else { return }
-            var hitView = mapView.hitTest(point, with: nil)
-            while let view = hitView, view !== mapView {
-                if let annotation = (view as? MKAnnotationView)?.annotation, annotation is ScooterParkingAnnotation { return }
-                hitView = view.superview
-            }
             guard !isExcludedFromMapInteraction(point, on: mapView) else {
                 registerExcludedChromeInteraction()
                 return
+            }
+            var hitView = mapView.hitTest(point, with: nil)
+            while let view = hitView, view !== mapView {
+                if let parking = (view as? MKAnnotationView)?.annotation as? ScooterParkingAnnotation {
+                    // Like a scooter: publish the tap at once, whatever MapKit resolves later.
+                    registerDirectMapTap(selectionID: nil)
+                    publishParkingSelection(parking)
+                    mapView.selectAnnotation(parking, animated: !UIAccessibility.isReduceMotionEnabled)
+                    return
+                }
+                hitView = view.superview
             }
 
             let annotation = scooterAnnotation(at: point, on: mapView)
@@ -562,7 +593,23 @@ struct ScooterMapView: UIViewRepresentable {
             parent.onSelectionChange(scooterID)
         }
 
+        private func publishParkingSelection(_ annotation: ScooterParkingAnnotation) {
+            let parkingID = annotation.parking.id
+            guard appliedParkingID != parkingID else { return }
+            appliedParkingID = parkingID
+            ScooterAnalytics.shared.track("parking_select", provider: annotation.parking.provider)
+            parent.onParkingSelectionChange(parkingID)
+        }
+
         func clearSelection(on mapView: MKMapView) {
+            if appliedParkingID != nil {
+                appliedParkingID = nil
+                for case let annotation as ScooterParkingAnnotation in mapView.selectedAnnotations {
+                    mapView.deselectAnnotation(annotation, animated: false)
+                }
+                parent.onParkingSelectionChange(nil)
+            }
+
             guard appliedSelectionID != nil else { return }
             appliedSelectionID = nil
             for annotation in mapView.selectedAnnotations where annotation is ScooterMapAnnotation {
@@ -599,9 +646,12 @@ struct ScooterMapView: UIViewRepresentable {
         }
 
         private func restoreDirectSelection(on mapView: MKMapView) {
-            guard let directTapSelectionID,
-                  let annotation = annotationsByID[directTapSelectionID] else { return }
-            mapView.selectAnnotation(annotation, animated: false)
+            if let directTapSelectionID {
+                guard let annotation = annotationsByID[directTapSelectionID] else { return }
+                mapView.selectAnnotation(annotation, animated: false)
+            } else if let appliedParkingID, let annotation = parkingAnnotationsByID[appliedParkingID] {
+                mapView.selectAnnotation(annotation, animated: false)
+            }
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
@@ -645,7 +695,14 @@ struct ScooterMapView: UIViewRepresentable {
             }
 
             if let parking = view.annotation as? ScooterParkingAnnotation {
-                ScooterAnalytics.shared.track("parking_select", provider: parking.parking.provider)
+                // A bay MapKit resolves after a direct tap on something else does not replace it.
+                if now < suppressMapKitSelectionUntil, appliedParkingID != parking.parking.id {
+                    mapView.deselectAnnotation(parking, animated: false)
+                    restoreDirectSelection(on: mapView)
+                    return
+                }
+                publishParkingSelection(parking)
+                return
             }
             guard let annotation = view.annotation as? ScooterMapAnnotation else { return }
             if Self.shouldSuppressMapKitSelection(
@@ -669,20 +726,16 @@ struct ScooterMapView: UIViewRepresentable {
             let now = ProcessInfo.processInfo.systemUptime
             guard now >= suppressMapKitSelectionUntil,
                   now >= suppressAllMapKitSelectionsUntil else { return }
+            if let parking = view.annotation as? ScooterParkingAnnotation {
+                guard appliedParkingID == parking.parking.id else { return }
+                appliedParkingID = nil
+                parent.onParkingSelectionChange(nil)
+                return
+            }
             guard let annotation = view.annotation as? ScooterMapAnnotation,
                   appliedSelectionID == annotation.scooter.id else { return }
             appliedSelectionID = nil
             parent.onSelectionChange(nil)
-        }
-
-        func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView,
-            calloutAccessoryControlTapped control: UIControl) {
-            guard let annotation = view.annotation as? ScooterParkingAnnotation else { return }
-            ScooterAnalytics.shared.track("directions_open", provider: annotation.parking.provider, target: "parking")
-            let item = MKMapItem(location: CLLocation(latitude: annotation.coordinate.latitude,
-                longitude: annotation.coordinate.longitude), address: nil)
-            item.name = annotation.parking.name
-            item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
         }
     }
 }
@@ -691,7 +744,7 @@ final class ScooterParkingAnnotation: NSObject, MKAnnotation {
     static let reuseIdentifier = "scooter-parking"
     let parking: ScooterParking
     var coordinate: CLLocationCoordinate2D { parking.coordinate }
-    var title: String? { parking.title }
+    var title: String? { parking.bayTitle }
     var subtitle: String? { parking.name }
     init(parking: ScooterParking) { self.parking = parking; super.init() }
 }

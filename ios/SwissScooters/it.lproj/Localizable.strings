@@ -253,6 +253,8 @@
 
 /* UX alignment: scooter card */
 "≈%1$lld min walk · %2$@" = "≈%1$lld min a piedi · %2$@";
+"≈%1$lld min walk from %2$@ · %3$@" = "≈%1$lld min a piedi da %2$@ · %3$@";
+"≈%1$lld min walk from %2$@" = "≈%1$lld min a piedi da %2$@";
 "Turn on location to see walking time" = "Attiva la posizione per vedere il tempo a piedi";
 "Directions" = "Indicazioni";
 "Open in %@" = "Apri in %@";

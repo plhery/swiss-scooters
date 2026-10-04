@@ -1342,7 +1342,7 @@ extension ScooterMapModelTests {
             vehicles: [],
             clusters: [ScooterCluster(id: "city:ch:zurich", latitude: 47.38, longitude: 8.54,
                 count: 100, providers: ["lime": 80, "bird": 20], city: "Zürich")],
-            meta: ScooterResponseMetadata(partial: false, stale: true, failedSources: [],
+            meta: ScooterResponseMetadata(partial: false, failedSources: [],
                 mode: "clusters", zoom: 8, overview: true, refreshAfterSeconds: 3_600)
         ))
         let model = makeModel(api: api)
@@ -1356,6 +1356,26 @@ extension ScooterMapModelTests {
         XCTAssertEqual(summary.status(at: .distantFuture), .cityTotals)
         XCTAssertEqual(summary.hint, .tapCity)
         XCTAssertEqual(summary.chips.prefix(2).map(\.provider), [.lime, .bird])
+    }
+
+    func testDelayedCityTotalsSayTheyAreDelayed() async throws {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [],
+            clusters: [ScooterCluster(id: "city:ch:zurich", latitude: 47.38, longitude: 8.54,
+                count: 100, providers: ["lime": 100], city: "Zürich")],
+            meta: ScooterResponseMetadata(partial: false, stale: true, failedSources: [],
+                mode: "clusters", zoom: 8, overview: true, refreshAfterSeconds: 3_600)
+        ))
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+
+        XCTAssertTrue(loaded)
+        let lastUpdated = try XCTUnwrap(model.lastUpdated)
+        guard case let .summary(summary) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(summary.status(at: .distantFuture), .delayed(showing: lastUpdated))
+        XCTAssertEqual(summary.hint, .tapCity)
     }
 
     func testDelayedDataSaysWhichTimeItShows() async throws {
@@ -1535,6 +1555,137 @@ extension ScooterMapModelTests {
         model.toggle(provider: .lime)
         XCTAssertNil(model.selectedParkingID)
         XCTAssertNil(model.selectedParking)
+    }
+
+    func testWalkingTimesNameTheSearchedPlaceTheyStartFrom() async throws {
+        let bay = ScooterParking(id: "lime:bay", provider: "lime", name: "Bay",
+            latitude: 47.3769, longitude: 8.5417, mandatory: false)
+        let parked = scooter(id: "one", provider: "lime")
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [parked], parking: [bay])))
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        XCTAssertNil(model.walkingSummary(for: parked), "No origin, no walking time")
+
+        let origin = GeoPoint(latitude: 47.3779, longitude: 8.5417)
+        model.userLocation = origin
+        let distance = try XCTUnwrap(model.formattedDistance(for: parked))
+        XCTAssertEqual(
+            model.walkingSummary(for: parked),
+            String(format: String(localized: "≈%1$lld min walk · %2$@"), Int64(2), distance)
+        )
+
+        // A searched place wins over the user's location and is named.
+        let place = MapDestination(title: "Zürich HB", point: origin)
+        model.searchedDestination = place
+        XCTAssertEqual(
+            model.walkingSummary(for: parked),
+            String(format: String(localized: "≈%1$lld min walk from %2$@ · %3$@"), Int64(2), "Zürich HB", distance)
+        )
+        XCTAssertEqual(
+            model.parkingSubtitle(for: bay),
+            String(
+                format: String(localized: "%1$@ · %2$@"),
+                bay.name,
+                String(format: String(localized: "≈%1$lld min walk from %2$@"), Int64(2), "Zürich HB")
+            )
+        )
+
+        model.clearAddressSearch()
+        XCTAssertEqual(
+            model.walkingSummary(for: parked),
+            String(format: String(localized: "≈%1$lld min walk · %2$@"), Int64(2), distance)
+        )
+    }
+
+    func testTheCardHeaderCentresTheScooterWithoutChangingTheZoom() async throws {
+        let parked = scooter(id: "one", provider: "lime")
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [parked])))
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+
+        model.focusOnScooter(parked)
+
+        let request = try XCTUnwrap(model.focusRequest)
+        XCTAssertEqual(request.point, GeoPoint(parked.coordinate))
+        XCTAssertTrue(request.keepsZoom)
+        XCTAssertEqual(model.selectedScooterID, parked.id)
+        XCTAssertFalse(MapFocusRequest(point: request.point, token: 1).keepsZoom)
+        XCTAssertFalse(MapFocusRequest.city(request.point, token: 1).keepsZoom)
+    }
+
+    func testACardReportsAFailedRefreshOrDelayedDataAndNothingWhenHealthy() async throws {
+        let clock = TestClock()
+        let api = StubScooterAPI(response: timedResponse(generatedAt: clock.now, expiresIn: 300))
+        let model = makeModel(api: api, clock: clock)
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        let shownAt = try XCTUnwrap(model.lastUpdated)
+        model.selectScooter(try XCTUnwrap(model.mapScooters.first?.id))
+        XCTAssertNil(model.cardStatus)
+
+        await api.setFailure(.offline)
+        model.retryLoad()
+        let failed = await waitUntil { model.loadIssue != nil && !model.isLoading }
+        XCTAssertTrue(failed)
+        XCTAssertNotNil(model.selectedScooter, "The card stays open over data that is still valid")
+        XCTAssertEqual(model.cardStatus, .offline(showing: shownAt))
+
+        await api.setFailure(.httpStatus(503))
+        model.retryLoad()
+        let failedAgain = await waitUntil {
+            model.loadIssue == .refreshFailed(.unavailable, showing: shownAt) && !model.isLoading
+        }
+        XCTAssertTrue(failedAgain)
+        XCTAssertEqual(model.cardStatus, .refreshFailed(showing: shownAt))
+
+        await api.setFailure(nil)
+        await api.setResponse(ScooterResponse(
+            vehicles: [scooter(id: "one", provider: "lime")],
+            meta: ScooterResponseMetadata(partial: false, stale: true, failedSources: [])
+        ))
+        model.retryLoad()
+        let delayed = await waitUntil { model.loadIssue == nil && !model.isLoading }
+        XCTAssertTrue(delayed)
+        let delayedAt = try XCTUnwrap(model.lastUpdated)
+        XCTAssertEqual(model.cardStatus, .delayed(showing: delayedAt))
+    }
+
+    func testLocatingFromACardKeepsTheMapAndTheCard() async throws {
+        let manager = StubLocationManager(status: .authorizedWhenInUse)
+        let parked = scooter(id: "one", provider: "lime")
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [parked])),
+            locationManager: manager,
+            defaults: isolatedDefaults()
+        )
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        model.selectScooter(parked.id)
+
+        model.locateForWalkingTime()
+        XCTAssertTrue(model.isLocating)
+        model.locationManager(manager, didUpdateLocations: [CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 47.3779, longitude: 8.5417),
+            altitude: 0,
+            horizontalAccuracy: 25,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )])
+
+        XCTAssertFalse(model.isLocating)
+        XCTAssertNil(model.focusRequest, "The map stays where it is")
+        XCTAssertEqual(model.selectedScooterID, parked.id)
+        XCTAssertNotNil(model.walkingSummary(for: parked))
+        XCTAssertTrue(model.hasLocatedOnce)
+
+        // Near me still moves the map.
+        model.focusOnUser()
+        XCTAssertEqual(model.focusRequest?.latitudinalMeters, ScooterMapModel.userFocusMeters)
     }
 }
 

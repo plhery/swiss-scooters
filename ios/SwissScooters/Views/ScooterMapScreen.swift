@@ -6,7 +6,7 @@ struct ScooterMapScreen: View {
     @State private var searchIsExpanded = false
     @State private var filtersPresented = false
     @State private var settingsPresented = false
-    @State private var collapsedDockHeight: CGFloat = 128
+    @State private var dockHeight: CGFloat = 128
     @State private var topChromeFrame = CGRect.null
     @State private var showLocationIntro = true
     @Environment(\.scenePhase) private var scenePhase
@@ -32,7 +32,9 @@ struct ScooterMapScreen: View {
                     onSelectionChange: handleSelection,
                     userHeading: model.userHeading,
                     showsMapCompass: !searchIsExpanded,
-                    parking: model.mapParking
+                    parking: model.mapParking,
+                    selectedParkingID: model.selectedParkingID,
+                    onParkingSelectionChange: model.selectParking
                 )
                 .ignoresSafeArea()
 
@@ -85,7 +87,7 @@ struct ScooterMapScreen: View {
                     .padding(.trailing, 12)
                     .padding(
                         .bottom,
-                        collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 10
+                        dockHeight + max(proxy.safeAreaInsets.bottom, 8) + 10
                     )
                 }
                 .opacity(searchIsExpanded ? 0 : 1)
@@ -104,7 +106,7 @@ struct ScooterMapScreen: View {
                             .padding(.horizontal, 16)
                             .padding(
                                 .bottom,
-                                collapsedDockHeight + max(proxy.safeAreaInsets.bottom, 8) + 18
+                                dockHeight + max(proxy.safeAreaInsets.bottom, 8) + 18
                             )
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -114,11 +116,12 @@ struct ScooterMapScreen: View {
                     Spacer()
                     ScooterControlDock(
                         model: model,
-                        maximumBriefingHeight: max(
-                            ScooterDetailLayout.minimumHeight,
+                        maximumContentHeight: max(
+                            160,
                             proxy.size.height - (dynamicTypeSize.isAccessibilitySize ? 300 : 220)
                         ),
-                        onCollapsedHeightChange: { collapsedDockHeight = $0 }
+                        onEditFilters: { filtersPresented = true },
+                        onHeightChange: { dockHeight = $0 }
                     )
                     .padding(.horizontal, 10)
                     .padding(.bottom, max(proxy.safeAreaInsets.bottom, 8))
@@ -138,17 +141,6 @@ struct ScooterMapScreen: View {
             ScooterAnalytics.shared.track()
             ScooterAnalytics.shared.track("app_open")
             model.start()
-        }
-        .task(id: scenePhase) {
-            guard scenePhase == .active else { return }
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(for: .seconds(60))
-                } catch {
-                    return
-                }
-                model.autoRefreshIfNeeded()
-            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -190,16 +182,19 @@ struct ScooterMapScreen: View {
                 .presentationDragIndicator(.visible)
         }
         .sensoryFeedback(.selection, trigger: model.selectedScooterID)
+        .sensoryFeedback(.selection, trigger: model.selectedParkingID)
     }
 
     @ViewBuilder
     private var statusBanner: some View {
-        if let errorMessage = model.errorMessage {
+        // Only a first load that failed is reported here; later failures are
+        // the dock's to report, next to the data they concern.
+        if case let .firstLoadFailed(failure) = model.loadIssue {
             MapStatusBanner(
-                message: errorMessage,
+                message: failure.message,
                 style: .error,
-                actionTitle: String(localized: "Retry"),
-                action: { ScooterAnalytics.shared.track("refresh"); model.refresh() }
+                actionTitle: String(localized: "Try again"),
+                action: model.retryLoad
             )
             .transition(.move(edge: .top).combined(with: .opacity))
         } else if model.locationAuthorizationIssue == .denied {

@@ -3,73 +3,70 @@ import MapKit
 import SwiftUI
 import UIKit
 
-enum ScooterDetailLayout {
-    static let minimumHeight: CGFloat = 206
+/// Colours for small text and filled controls. The system tints are too light
+/// for that on glass; these keep a contrast of at least 4.5:1.
+enum ScooterPalette {
+    /// The app's blue under white text.
+    static let actionFill = Color(red: 0, green: 0.42, blue: 0.9)
+    /// Blue text on glass or on a blue tint.
+    static let actionText = adaptive(
+        light: UIColor(red: 0, green: 0.38, blue: 0.8, alpha: 1),
+        dark: UIColor(red: 0.36, green: 0.69, blue: 1, alpha: 1)
+    )
+    static let warning = adaptive(
+        light: UIColor(red: 0.54, green: 0.3, blue: 0, alpha: 1),
+        dark: .systemOrange
+    )
+    static let good = adaptive(
+        light: UIColor(red: 0.11, green: 0.47, blue: 0.2, alpha: 1),
+        dark: .systemGreen
+    )
+    static let critical = adaptive(
+        light: UIColor(red: 0.7, green: 0.15, blue: 0.12, alpha: 1),
+        dark: .systemRed
+    )
+
+    private static func adaptive(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        })
+    }
 }
 
 struct ScooterControlDock: View {
     @Bindable var model: ScooterMapModel
-    @State private var briefingHeight: CGFloat = ScooterDetailLayout.minimumHeight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private let onCollapsedHeightChange: (CGFloat) -> Void
-    private let maximumBriefingHeight: CGFloat
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let maximumContentHeight: CGFloat
+    private let onEditFilters: () -> Void
+    private let onHeightChange: (CGFloat) -> Void
 
     init(
         model: ScooterMapModel,
-        maximumBriefingHeight: CGFloat = .infinity,
-        onCollapsedHeightChange: @escaping (CGFloat) -> Void = { _ in }
+        maximumContentHeight: CGFloat = .infinity,
+        onEditFilters: @escaping () -> Void = {},
+        onHeightChange: @escaping (CGFloat) -> Void = { _ in }
     ) {
         self.model = model
-        self.maximumBriefingHeight = maximumBriefingHeight
-        self.onCollapsedHeightChange = onCollapsedHeightChange
+        self.maximumContentHeight = maximumContentHeight
+        self.onEditFilters = onEditFilters
+        self.onHeightChange = onHeightChange
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            dockHeader
-            quickProviderFilters
+        let content = model.dock
 
-            if let selectedScooter = model.selectedScooter {
+        // Content taller than the room above the dock scrolls, as with large text.
+        DockHeightLimit(maximum: maximumContentHeight) {
+            ViewThatFits(in: .vertical) {
+                dockContent(content)
                 ScrollView(.vertical) {
-                    ScooterDetailCard(model: model, scooter: selectedScooter)
-                        .padding(.horizontal, 2)
+                    dockContent(content)
                 }
-                .scrollDisabled(!briefingNeedsScrolling)
-                .scrollIndicators(briefingNeedsScrolling ? .visible : .hidden)
-                .frame(height: displayedBriefingHeight)
-                .background {
-                    ScooterDetailCard(model: model, scooter: selectedScooter)
-                        .padding(.horizontal, 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .hidden()
-                        .accessibilityHidden(true)
-                        .allowsHitTesting(false)
-                        .onGeometryChange(for: CGFloat.self) { proxy in
-                            proxy.size.height
-                        } action: { measuredHeight in
-                            briefingHeight = max(
-                                ScooterDetailLayout.minimumHeight,
-                                ceil(measuredHeight)
-                            )
-                        }
-                }
-                .animation(
-                    reduceMotion ? nil : .snappy(duration: 0.25),
-                    value: displayedBriefingHeight
-                )
-                .transition(
-                    reduceMotion
-                        ? .opacity
-                        : .move(edge: .bottom).combined(with: .opacity)
-                )
-            } else if shouldOfferAllProviders {
-                noPreferredProvidersMessage
-                    .transition(.opacity)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.vertical, 12)
         .frame(maxWidth: 560)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
@@ -77,92 +74,142 @@ struct ScooterControlDock: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { height in
-            onCollapsedHeightChange(height)
+            onHeightChange(height)
         }
         .animation(
             reduceMotion ? nil : .snappy(duration: 0.28, extraBounce: 0.06),
-            value: model.selectedScooterID
+            value: content.kind
         )
         .sensoryFeedback(.selection, trigger: model.enabledProviders)
     }
 
-    private var dockHeader: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text(model.visibleCount, format: .number)
-                        .font(.headline.weight(.bold))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    Text(countLabel)
+    @ViewBuilder
+    private func dockContent(_ content: ScooterDockContent) -> some View {
+        switch content {
+        case let .scooter(scooter):
+            ScooterCard(model: model, scooter: scooter)
+        case let .parking(parking):
+            ParkingBayCard(model: model, parking: parking)
+        case let .outOfDate(failure, lastUpdate):
+            outOfDateCard(failure, lastUpdate: lastUpdate)
+        case let .finding(chips):
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                    Text("Finding scooters…")
                         .font(.subheadline.weight(.semibold))
                 }
+                .frame(maxWidth: .infinity, minHeight: Self.headerHeight, alignment: .leading)
 
-                FreshnessLabel(
-                    isLoading: model.isLoading,
-                    lastUpdated: model.lastUpdated,
-                    dataHealthMessage: model.dataHealthMessage
-                )
-            }
-
-            Spacer(minLength: 8)
-
-            if model.selectedScooter != nil {
-                Button {
-                    model.selectScooter(nil)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .frame(width: 44, height: 44)
-                        .background(.quaternary, in: Circle())
+                if !chips.isEmpty {
+                    providerChips(chips)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Close scooter details"))
-                .transition(.scale.combined(with: .opacity))
             }
-
+        case .waiting:
+            Text("Waiting for scooter data")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: Self.headerHeight, alignment: .leading)
+        case let .outsideCoverage(cities):
+            outsideCoverageCard(cities)
+        case let .filtersHideEverything(summary):
+            hiddenByFiltersCard(summary)
+        case let .summary(summary):
+            summaryContent(summary)
         }
     }
 
-    private var quickProviderFilters: some View {
+    /// Count and status, and "Finding scooters…" in their place, keep one
+    /// height so the dock does not jump while the map moves.
+    private static let headerHeight: CGFloat = 38
+
+    private func summaryContent(_ summary: ScooterDockSummary) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(summary.count, format: .number)
+                            .font(.headline.weight(.bold))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text(summary.countLabel)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .accessibilityElement(children: .combine)
+
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        DockStatusLabel(status: summary.status(at: context.date))
+                    }
+                }
+                .frame(minHeight: Self.headerHeight, alignment: .leading)
+
+                Spacer(minLength: 8)
+
+                if summary.showsTryAgain {
+                    TryAgainPill(isLoading: model.isLoading, action: model.retryLoad)
+                        .transition(.opacity)
+                }
+            }
+
+            if !summary.notices.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(summary.notices) { notice in
+                        DockNoteRow(systemImage: "exclamationmark.triangle", text: notice.text)
+                    }
+                }
+            }
+
+            providerChips(summary.chips)
+
+            if let hint = summary.hint {
+                DockNoteRow(
+                    systemImage: hint == .tapCity ? "mappin.and.ellipse" : "scooter",
+                    text: hint.text
+                )
+            }
+        }
+    }
+
+    private func providerChips(_ chips: [ScooterProviderEntry]) -> some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 QuickProviderFilterChip(
                     title: String(localized: "All"),
                     accessibilityTitle: String(localized: "All providers"),
                     count: model.allProviderCount,
-                    colors: [],
-                    systemImage: "circle.grid.2x2.fill",
+                    color: nil,
                     isSelected: model.allProvidersSelected,
                     accessibilityIsShown: model.allProvidersSelected,
                     action: model.showAllProviders
                 )
 
-                ForEach(model.quickProviderOrder) { provider in
-                    providerChip(provider)
+                ForEach(chips) { entry in
+                    providerChip(entry)
                 }
             }
             .animation(
                 reduceMotion ? nil : .snappy(duration: 0.25),
-                value: model.quickProviderOrder
+                value: chips.map(\.provider)
             )
         }
         .scrollIndicators(.hidden)
         .contentMargins(.horizontal, 2, for: .scrollContent)
     }
 
-    private func providerChip(_ provider: ScooterProvider) -> some View {
+    private func providerChip(_ entry: ScooterProviderEntry) -> some View {
         QuickProviderFilterChip(
-            title: provider.name,
-            accessibilityTitle: provider.name,
-            count: model.count(for: provider),
-            colors: [provider.color],
-            isSelected: !model.allProvidersSelected && model.enabledProviders.contains(provider),
-            accessibilityIsShown: model.enabledProviders.contains(provider)
+            title: entry.provider.name,
+            accessibilityTitle: entry.isDown ? entry.downLabel : entry.provider.name,
+            count: entry.count,
+            color: entry.provider.color,
+            isSelected: entry.isSelected,
+            isDown: entry.isDown,
+            accessibilityIsShown: entry.isEnabled
         ) {
-            model.toggleQuickProvider(provider)
+            model.toggleQuickProvider(entry.provider)
         }
-        .accessibilityHint(quickProviderHint(provider))
+        .accessibilityHint(quickProviderHint(entry.provider))
     }
 
     private func quickProviderHint(_ provider: ScooterProvider) -> String {
@@ -178,42 +225,391 @@ struct ScooterControlDock: View {
         return String(localized: "Adds this provider")
     }
 
-    private var shouldOfferAllProviders: Bool {
-        !model.allProvidersSelected &&
-            model.visibleCount == 0 &&
-            model.allProviderCount > 0 &&
-            !model.isLoading
-    }
+    private func outOfDateCard(_ failure: ScooterLoadFailure, lastUpdate: Date) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DockCardHeader(
+                systemImage: "clock",
+                tint: ScooterPalette.warning,
+                title: String(localized: "These positions are out of date"),
+                message: ScooterDockStatus.outOfDateBody(failure, lastUpdate: lastUpdate)
+            )
 
-    private var noPreferredProvidersMessage: some View {
-        HStack(spacing: 10) {
-            Label("No selected providers here", systemImage: "mappin.slash")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            Spacer(minLength: 4)
-
-            Button("Show all", action: model.showAllProviders)
-                .font(.caption.weight(.bold))
-                .buttonStyle(.glass)
+            DockActionRow {
+                Button(action: model.retryLoad) {
+                    ZStack {
+                        Label("Try again", systemImage: "arrow.clockwise")
+                            .opacity(model.isLoading ? 0 : 1)
+                        if model.isLoading {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .foregroundStyle(.white)
+                }
+                .dockActionStyle(prominent: true)
+                .disabled(model.isLoading)
+                .accessibilityLabel(String(localized: "Try again"))
+            }
         }
-        .padding(.leading, 2)
     }
 
-    private var displayedBriefingHeight: CGFloat {
-        min(
-            max(ScooterDetailLayout.minimumHeight, briefingHeight),
-            max(ScooterDetailLayout.minimumHeight, maximumBriefingHeight)
+    private func outsideCoverageCard(_ cities: [ScooterCityDistance]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DockCardHeader(
+                systemImage: "map",
+                tint: ScooterPalette.actionText,
+                title: String(localized: "No scooter data here yet"),
+                message: String(localized: "Scooters covers selected cities in France, Switzerland, Germany and Italy.")
+            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Closest cities")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+
+                FlowLayout(spacing: 8, lineSpacing: 8) {
+                    ForEach(cities) { entry in
+                        Button {
+                            model.focusOnCity(entry.city)
+                        } label: {
+                            Label(entry.label, systemImage: "mappin.and.ellipse")
+                                .font(.subheadline.weight(.semibold))
+                                .monospacedDigit()
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 44)
+                                .background(Color.primary.opacity(0.055), in: Capsule())
+                                .overlay {
+                                    Capsule().stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+                                }
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func hiddenByFiltersCard(_ summary: ScooterFilterSummary) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DockCardHeader(
+                systemImage: "line.3.horizontal.decrease",
+                tint: ScooterPalette.actionText,
+                title: summary.title,
+                message: summary.body
+            )
+
+            DockActionRow {
+                Button(action: model.resetFilters) {
+                    // "Show all 1" reads badly; one hidden scooter gets the plain label.
+                    Text(summary.hiddenCount == 1 ? String(localized: "Show all") : summary.showAllTitle)
+                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(.white)
+                }
+                .dockActionStyle(prominent: true)
+
+                Button(action: onEditFilters) {
+                    Text("Edit filters")
+                        .frame(maxWidth: .infinity)
+                }
+                .dockActionStyle(prominent: false)
+            }
+        }
+    }
+}
+
+private extension ScooterDockContent {
+    /// What the dock shows, without its details: a change of kind animates.
+    var kind: String {
+        switch self {
+        case let .scooter(scooter): "scooter:\(scooter.id)"
+        case let .parking(parking): "parking:\(parking.id)"
+        case .outOfDate: "outOfDate"
+        case .finding: "finding"
+        case .waiting: "waiting"
+        case .outsideCoverage: "outsideCoverage"
+        case .filtersHideEverything: "filtersHideEverything"
+        case .summary: "summary"
+        }
+    }
+}
+
+/// Gives its content the height it asks for, up to a limit.
+private struct DockHeightLimit: Layout {
+    let maximum: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        let ideal = content.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: ideal.width, height: min(ideal.height, maximum))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(
+            at: bounds.origin,
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
         )
     }
+}
 
-    private var briefingNeedsScrolling: Bool {
-        briefingHeight > max(ScooterDetailLayout.minimumHeight, maximumBriefingHeight) + 1
+/// Rows that wrap: pills and chips move to the next line when one is full.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+    var lineSpacing: CGFloat = 6
+
+    private struct Row {
+        var sizes: [CGSize] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
     }
 
-    private var countLabel: LocalizedStringKey {
-        if model.isShowingClusterSummary { return "scooters in view" }
-        return model.visibleCount == 1 ? "scooter on map" : "scooters on map"
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(for: subviews, width: proposal.width)
+        let height = rows.reduce(0) { $0 + $1.height } + lineSpacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: rows.map(\.width).max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var index = subviews.startIndex
+        var y = bounds.minY
+        for row in rows(for: subviews, width: bounds.width) {
+            var x = bounds.minX
+            for size in row.sizes {
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
+                    proposal: ProposedViewSize(size)
+                )
+                x += size.width + spacing
+                index = subviews.index(after: index)
+            }
+            y += row.height + lineSpacing
+        }
+    }
+
+    private func rows(for subviews: Subviews, width: CGFloat?) -> [Row] {
+        let available = width ?? .infinity
+        var rows = [Row()]
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+            var row = rows[rows.count - 1]
+            if !row.sizes.isEmpty, row.width + spacing + size.width > available {
+                row = Row()
+                rows.append(row)
+            }
+            row.width += (row.sizes.isEmpty ? 0 : spacing) + size.width
+            row.height = max(row.height, size.height)
+            row.sizes.append(size)
+            rows[rows.count - 1] = row
+        }
+        return rows
+    }
+}
+
+/// The status line under the count, and at the top of a card while data is failing.
+private struct DockStatusLabel: View {
+    let status: ScooterDockStatus
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if status.isLive {
+                LiveIndicator()
+            } else if status.isWarning {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.caption2.weight(.semibold))
+                    .accessibilityHidden(true)
+            }
+
+            Text(status.text)
+                .font(.caption)
+                .monospacedDigit()
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(status.isWarning ? ScooterPalette.warning : Color.secondary)
+    }
+}
+
+/// A calm line in the dock: a small icon and secondary text.
+private struct DockNoteRow: View {
+    let systemImage: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.caption2.weight(.semibold))
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.caption)
+                .monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.leading, 2)
+    }
+}
+
+private struct TryAgainPill: View {
+    let isLoading: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Text("Try again")
+                    .opacity(isLoading ? 0 : 1)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(ScooterPalette.actionText)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .background(ScooterPalette.actionText.opacity(0.12), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(String(localized: "Try again"))
+    }
+}
+
+/// The head of a dock card: a tinted symbol, a title and the sentence under it.
+private struct DockCardHeader: View {
+    let systemImage: String
+    let tint: Color
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            DockSymbolTile(systemImage: systemImage, foreground: tint, tint: tint)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                if !message.isEmpty {
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct DockSymbolTile: View {
+    let systemImage: String
+    var foreground: Color = .primary
+    let tint: Color
+    var size: CGFloat = 44
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: size * 0.43, weight: .semibold))
+            .foregroundStyle(foreground)
+            .frame(width: size, height: size)
+            .background(
+                tint.opacity(0.16),
+                in: RoundedRectangle(cornerRadius: size / 3, style: .continuous)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
+/// One or two buttons side by side; stacked when the text is very large.
+private struct DockActionRow<Content: View>: View {
+    @ViewBuilder let content: Content
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 9) { content }
+            } else {
+                HStack(spacing: 9) { content }
+            }
+        }
+        .font(.subheadline.weight(.semibold))
+        .controlSize(.large)
+    }
+}
+
+private extension View {
+    /// The filled button in the app's blue, or the quiet glass one beside it.
+    @ViewBuilder
+    func dockActionStyle(prominent: Bool) -> some View {
+        if prominent {
+            buttonStyle(.glassProminent)
+                .tint(ScooterPalette.actionFill)
+        } else {
+            buttonStyle(.glass)
+        }
+    }
+
+    func dockPill(_ foreground: Color = .primary, background: Color = Color(uiColor: .tertiarySystemFill)) -> some View {
+        font(.caption.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(minHeight: 32)
+            .background(background, in: Capsule())
+    }
+}
+
+private struct DockCloseButton: View {
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .background(.quaternary, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
+/// A scooter or bay card hides the dock's status line, so a failed refresh or
+/// delayed data is reported here. Nothing shows while the data is healthy.
+private struct CardStatusLine: View {
+    let model: ScooterMapModel
+
+    var body: some View {
+        if let status = model.cardStatus {
+            HStack(spacing: 8) {
+                DockStatusLabel(status: status)
+                Spacer(minLength: 4)
+                if status.isWarning {
+                    Button(action: model.retryLoad) {
+                        Text("Try again")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(ScooterPalette.actionText)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isLoading)
+                }
+            }
+            // The button keeps its 44 pt target; the line stays compact.
+            .padding(.vertical, status.isWarning ? -8 : 0)
+        }
     }
 }
 
@@ -221,9 +617,11 @@ private struct QuickProviderFilterChip: View {
     let title: String
     let accessibilityTitle: String
     let count: Int
-    let colors: [Color]
-    var systemImage: String?
+    /// The provider's colour; nil for "All".
+    let color: Color?
     let isSelected: Bool
+    /// Not sharing data and none in view: dashed, with a warning instead of a count.
+    var isDown = false
     let accessibilityIsShown: Bool
     let action: () -> Void
 
@@ -236,27 +634,38 @@ private struct QuickProviderFilterChip: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
 
-                Text(count, format: .number)
-                    .font(.caption2.weight(.bold))
-                    .monospacedDigit()
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(.quaternary, in: Capsule())
-                    .contentTransition(.numericText())
+                if isDown {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ScooterPalette.warning)
+                } else {
+                    Text(count, format: .number)
+                        .font(.caption2.weight(.bold))
+                        .monospacedDigit()
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                        .contentTransition(.numericText())
+                }
             }
-            .foregroundStyle(isSelected ? Color.blue : Color.primary)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .background(
-                isSelected ? Color.blue.opacity(0.13) : Color.primary.opacity(0.055),
-                in: Capsule()
-            )
+            .background(background, in: Capsule())
             .overlay {
-                Capsule()
-                    .stroke(
-                        isSelected ? Color.blue.opacity(0.32) : Color.secondary.opacity(0.16),
-                        lineWidth: 1
-                    )
+                if isDown {
+                    Capsule()
+                        .strokeBorder(
+                            Color.secondary.opacity(0.6),
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                        )
+                } else {
+                    Capsule()
+                        .stroke(
+                            isSelected ? Color.blue.opacity(0.32) : Color.secondary.opacity(0.16),
+                            lineWidth: 1
+                        )
+                }
             }
             .contentShape(Capsule())
         }
@@ -268,28 +677,35 @@ private struct QuickProviderFilterChip: View {
         )
     }
 
+    private var foreground: Color {
+        if isDown { return .secondary }
+        return isSelected ? ScooterPalette.actionText : .primary
+    }
+
+    private var background: Color {
+        if isDown { return .clear }
+        return isSelected ? Color.blue.opacity(0.13) : Color.primary.opacity(0.055)
+    }
+
     @ViewBuilder
     private var indicator: some View {
-        if let systemImage {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(isSelected ? Color.blue : Color.secondary)
-        } else {
-            HStack(spacing: -3) {
-                ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
-                    Circle()
-                        .fill(color)
-                        .frame(width: 11, height: 11)
-                        .overlay {
-                            Circle().stroke(.background, lineWidth: 1.5)
-                        }
+        if let color {
+            Circle()
+                .fill(isDown ? Color.secondary : color)
+                .frame(width: 11, height: 11)
+                .overlay {
+                    Circle().stroke(.background, lineWidth: 1.5)
                 }
-            }
-            .accessibilityHidden(true)
+                .accessibilityHidden(true)
+        } else {
+            Image(systemName: "circle.grid.2x2.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(isSelected ? ScooterPalette.actionText : Color.secondary)
         }
     }
 
     private var accessibilityLabel: String {
+        if isDown { return accessibilityTitle }
         if count == 1 {
             return String(format: String(localized: "%@, one scooter"), accessibilityTitle)
         }
@@ -301,434 +717,350 @@ private struct QuickProviderFilterChip: View {
     }
 }
 
-private struct ScooterDetailCard: View {
-    @Bindable var model: ScooterMapModel
+private struct ScooterCard: View {
+    let model: ScooterMapModel
     let scooter: Scooter
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(spacing: 10) {
-            Button {
-                model.focusOnScooter(scooter)
-            } label: {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: 8) {
-                            accessibilityWalkingSummary
-                            providerDetails
-                        }
-                    } else {
-                        HStack(spacing: 13) {
-                            walkingTime
+        VStack(alignment: .leading, spacing: 10) {
+            CardStatusLine(model: model)
+            header
+            pills
 
-                            Rectangle()
-                                .fill(.separator)
-                                .frame(width: 0.5, height: 48)
-
-                            providerDetails
-                        }
-                    }
+            DockActionRow {
+                Button {
+                    ScooterAnalytics.shared.track("directions_open", provider: scooter.provider, target: "vehicle")
+                    openWalkingDirections(to: scooter)
+                } label: {
+                    Label("Directions", systemImage: "figure.walk")
+                        .frame(maxWidth: .infinity)
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint(String(localized: "Centers this scooter on the map"))
+                .dockActionStyle(prominent: false)
 
-            ridePriceRow
-
-            HStack(spacing: 9) {
-                actionButtons
+                if let rentalURL = scooter.rentalURL {
+                    Button {
+                        ScooterAnalytics.shared.track("rental_open", provider: scooter.provider)
+                        UIApplication.shared.open(rentalURL)
+                    } label: {
+                        Label(
+                            String(format: String(localized: "Open in %@"), providerName),
+                            systemImage: "scooter"
+                        )
+                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(.white)
+                    }
+                    .dockActionStyle(prominent: true)
+                }
             }
-            .font(.subheadline.weight(.semibold))
-            .controlSize(.large)
+
+            Text(String(
+                format: scooter.rentalURL == nil
+                    ? String(localized: "Open the %@ app to rent this scooter.")
+                    : String(localized: "Opens the %@ app. It won’t reserve the scooter."),
+                providerName
+            ))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
         }
     }
 
+    private var header: some View {
+        HStack(spacing: 12) {
+            if let walk = model.walkingSummary(for: scooter) {
+                Button {
+                    model.focusOnScooter(scooter)
+                } label: {
+                    HStack(spacing: 12) {
+                        tile
+                        titleBlock {
+                            Text(walk)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(String(localized: "Centers this scooter on the map"))
+            } else {
+                Button {
+                    model.focusOnScooter(scooter)
+                } label: {
+                    tile
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(providerName)
+                .accessibilityHint(String(localized: "Centers this scooter on the map"))
+
+                if model.isLocating {
+                    titleBlock {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .accessibilityHidden(true)
+                            Text("Finding your location…")
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                } else {
+                    // Locates without moving the map, so this card stays open.
+                    Button(action: model.locateForWalkingTime) {
+                        titleBlock {
+                            Text("Turn on location to see walking time")
+                                .foregroundStyle(ScooterPalette.actionText)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            DockCloseButton(accessibilityLabel: String(localized: "Close scooter details")) {
+                model.selectScooter(nil)
+            }
+        }
+    }
+
+    private var tile: some View {
+        DockSymbolTile(systemImage: "scooter", tint: providerTint, size: 48)
+    }
+
+    private func titleBlock(@ViewBuilder subtitle: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(providerName)
+                .font(.headline)
+            subtitle()
+                .font(.footnote)
+        }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minHeight: 44, alignment: .leading)
+    }
+
+    private var pills: some View {
+        FlowLayout(spacing: 6, lineSpacing: 0) {
+            if let battery = scooter.battery, let level = scooter.batteryLevel {
+                HStack(spacing: 5) {
+                    Image(systemName: batterySymbol(for: battery))
+                    Text("\(battery)%")
+                }
+                .dockPill(level.color, background: level.color.opacity(0.14))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(localized: "Battery"))
+                .accessibilityValue(String(format: String(localized: "%lld percent"), Int64(battery)))
+            }
+
+            if let range = scooter.formattedRange {
+                HStack(spacing: 5) {
+                    Image(systemName: "gauge.with.dots.needle.67percent")
+                    Text(range)
+                }
+                .dockPill()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(localized: "Estimated"))
+                .accessibilityValue(range)
+            }
+
+            pricePill
+        }
+        // The price pill's 44 pt target makes the row taller than the pills look.
+        .padding(.vertical, -4)
+    }
+
     @ViewBuilder
-    private var ridePriceRow: some View {
-        if let pricing = scooter.pricing,
-           let quote = model.ridePriceQuote(for: scooter) {
+    private var pricePill: some View {
+        if let quote = model.ridePriceQuote(for: scooter) {
+            let price = priceLabel(quote)
             Menu {
                 ForEach(RideEstimateDuration.allowedMinutes, id: \.self) { minutes in
                     Button {
                         model.setRideEstimateMinutes(minutes)
                     } label: {
                         if minutes == model.rideEstimateMinutes {
-                            Label(estimateLabel(minutes), systemImage: "checkmark")
+                            Label(durationLabel(minutes), systemImage: "checkmark")
                         } else {
-                            Text(estimateLabel(minutes))
+                            Text(durationLabel(minutes))
                         }
                     }
                 }
             } label: {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                priceHeadline(quote)
-                                Spacer(minLength: 4)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            priceTotal(quote)
-                            tariffCaption(pricing, quote: quote)
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 10) {
-                                priceHeadline(quote)
-                                Spacer(minLength: 8)
-                                priceTotal(quote)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            tariffCaption(pricing, quote: quote)
-                        }
+                HStack(spacing: 5) {
+                    if quote.passApplied {
+                        Image(systemName: "ticket.fill")
                     }
+                    Text(price)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .opacity(0.6)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(
-                    Color(uiColor: .tertiarySystemFill),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .dockPill(
+                    quote.passApplied ? ScooterPalette.good : .primary,
+                    background: quote.passApplied
+                        ? ScooterPalette.good.opacity(0.14)
+                        : Color(uiColor: .tertiarySystemFill)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                // The pill stays small; its target is 44 pt high.
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "Ride estimate"))
-            .accessibilityValue(priceAccessibilityValue(pricing: pricing, quote: quote))
-            .accessibilityHint(String(localized: "Choose an estimated ride duration"))
+            .accessibilityLabel(String(
+                format: String(localized: "Ride estimate, %lld minutes. Change duration."),
+                Int64(model.rideEstimateMinutes)
+            ))
+            .accessibilityValue(price)
         } else {
-            HStack(spacing: 10) {
+            HStack(spacing: 5) {
                 Image(systemName: "creditcard")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: String(localized: "Check in %@"), providerName))
-                        .font(.subheadline.weight(.semibold))
-                    Text("Open the provider app for current pricing.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 4)
+                    .accessibilityHidden(true)
+                Text(String(format: String(localized: "Price shown in the %@ app"), providerName))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(
-                Color(uiColor: .tertiarySystemFill),
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .accessibilityElement(children: .combine)
+            .dockPill()
+            .frame(minHeight: 44)
         }
     }
 
-    private func priceHeadline(_ quote: RidePriceQuote) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: quote.passApplied ? "ticket.fill" : "clock.badge")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(quote.passApplied ? Color.green : Color.blue)
-                .frame(width: 24, height: 24)
-
-            Text(estimateLabel(model.rideEstimateMinutes))
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.82)
-                .allowsTightening(true)
-        }
-        .layoutPriority(1)
-    }
-
-    private func tariffCaption(
-        _ pricing: ScooterRidePricing,
-        quote: RidePriceQuote
-    ) -> some View {
-        tariffText(pricing: pricing, quote: quote)
-            .font(.caption)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.leading, 33)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func priceTotal(_ quote: RidePriceQuote) -> some View {
-        let formattedTotal = RidePriceFormatter.string(
-            minorUnits: quote.totalMinorUnits,
-            currency: quote.currency
+    /// "≈ CHF 4.50 for 10 min", followed by "Pass applied" when a pass lowers it.
+    private func priceLabel(_ quote: RidePriceQuote) -> String {
+        let estimate = String(
+            format: String(localized: "≈ %1$@ for %2$lld min"),
+            RidePriceFormatter.string(minorUnits: quote.totalMinorUnits, currency: quote.currency),
+            Int64(quote.durationMinutes)
         )
-
-        return VStack(
-            alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing,
-            spacing: 2
-        ) {
-            Text("≈ \(formattedTotal)")
-                .font(.headline.weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(quote.passApplied ? Color.green : Color.primary)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.82)
-                .allowsTightening(true)
-            if quote.passApplied {
-                Text("Pass applied")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.green)
-            }
-        }
-        .layoutPriority(1)
-    }
-
-    private func estimateLabel(_ minutes: Int) -> String {
-        String(
-            format: String(localized: "%lld min estimate"),
-            Int64(minutes)
+        guard quote.passApplied else { return estimate }
+        return String(
+            format: String(localized: "%1$@ · %2$@"),
+            estimate,
+            String(localized: "Pass applied")
         )
     }
 
-    private func tariffText(
-        pricing: ScooterRidePricing,
-        quote: RidePriceQuote
-    ) -> Text {
-        let unlockCovered = quote.chargedUnlockFeeMinorUnits < pricing.unlockFeeMinorUnits
-        let minuteBenefitApplied = quote.freeMinutesApplied > 0 && pricing.minuteFeeMinorUnits > 0
-        let allMinutesCovered = minuteBenefitApplied && quote.billedMinutes == 0
-
-        let unlockText = Text(unlockComponentLabel(
-            minorUnits: quote.chargedUnlockFeeMinorUnits,
-            currency: pricing.currency
-        ))
-        .foregroundColor(unlockCovered ? .green : .secondary)
-        let minuteText = Text(minuteComponentLabel(
-            minorUnits: allMinutesCovered ? 0 : pricing.minuteFeeMinorUnits,
-            currency: pricing.currency
-        ))
-        .foregroundColor(allMinutesCovered ? .green : .secondary)
-
-        if minuteBenefitApplied && !allMinutesCovered {
-            let benefitText = Text(freeMinutesLabel(quote.freeMinutesApplied))
-                .foregroundColor(.green)
-            return Text("\(unlockText) + \(minuteText) · \(benefitText)")
-        }
-
-        return Text("\(unlockText) + \(minuteText)")
-    }
-
-    private func tariffLabel(
-        pricing: ScooterRidePricing,
-        quote: RidePriceQuote
-    ) -> String {
-        let unlockCovered = quote.chargedUnlockFeeMinorUnits < pricing.unlockFeeMinorUnits
-        let minuteBenefitApplied = quote.freeMinutesApplied > 0 && pricing.minuteFeeMinorUnits > 0
-        let allMinutesCovered = minuteBenefitApplied && quote.billedMinutes == 0
-        var components = [
-            unlockComponentLabel(
-                minorUnits: quote.chargedUnlockFeeMinorUnits,
-                currency: pricing.currency
-            ),
-            minuteComponentLabel(
-                minorUnits: allMinutesCovered ? 0 : pricing.minuteFeeMinorUnits,
-                currency: pricing.currency
-            )
-        ]
-        if minuteBenefitApplied && !allMinutesCovered {
-            components.append(freeMinutesLabel(quote.freeMinutesApplied))
-        }
-        if unlockCovered || minuteBenefitApplied {
-            components.append(String(localized: "Pass applied"))
-        }
-        return components.joined(separator: ", ")
-    }
-
-    private func unlockComponentLabel(minorUnits: Int, currency: String) -> String {
-        String(
-            format: String(localized: "%@ unlock"),
-            RidePriceFormatter.string(minorUnits: minorUnits, currency: currency)
-        )
-    }
-
-    private func minuteComponentLabel(minorUnits: Int, currency: String) -> String {
-        String(
-            format: String(localized: "%@/min"),
-            RidePriceFormatter.string(minorUnits: minorUnits, currency: currency)
-        )
-    }
-
-    private func freeMinutesLabel(_ minutes: Int) -> String {
-        String(
-            format: String(localized: "%lld free min"),
-            Int64(minutes)
-        )
-    }
-
-    private func priceAccessibilityValue(
-        pricing: ScooterRidePricing,
-        quote: RidePriceQuote
-    ) -> String {
-        let total = quote.totalMinorUnits == 0 && quote.passApplied
-            ? String(localized: "Included with pass")
-            : RidePriceFormatter.string(
-                minorUnits: quote.totalMinorUnits,
-                currency: quote.currency
-            )
-        return [
-            estimateLabel(model.rideEstimateMinutes),
-            total,
-            tariffLabel(pricing: pricing, quote: quote)
-        ]
-            .joined(separator: ", ")
-    }
-
-    private var accessibilityWalkingSummary: some View {
-        Group {
-            if let minutes = model.approximateWalkingMinutes(to: scooter) {
-                Text(conciseWalkingSummary(minutes: minutes))
-                    .font(.headline.weight(.bold))
-                    .monospacedDigit()
-                    .lineLimit(2)
-            } else if let distance = model.formattedDistance(for: scooter) {
-                Text(awaySummary(distance: distance))
-                    .font(.headline.weight(.bold))
-                    .lineLimit(2)
-            } else {
-                Text("Distance unavailable")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(walkingAccessibilityLabel)
-    }
-
-    private var providerDetails: some View {
-        HStack(spacing: 9) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 7) {
-                    Circle()
-                        .fill(providerColor)
-                        .frame(width: 9, height: 9)
-                    Text(providerName)
-                        .font(.headline)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                }
-
-                HStack(spacing: 9) {
-                    if let battery = scooter.battery {
-                        Label("\(battery)%", systemImage: batterySymbol(for: battery))
-                            .foregroundStyle(batteryColor(for: battery))
-                    }
-                    if let range = scooter.formattedRange {
-                        Label(range, systemImage: "gauge.with.dots.needle.67percent")
-                    }
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 4)
-
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    @ViewBuilder
-    private var actionButtons: some View {
-        Button {
-            ScooterAnalytics.shared.track("directions_open", provider: scooter.provider, target: "vehicle")
-            openWalkingDirections(to: scooter)
-        } label: {
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    Text("Walk")
-                } else {
-                    Label("Walk", systemImage: "figure.walk")
-                }
-            }
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.glass)
-
-        if let rentalURL = scooter.rentalURL {
-            Button {
-                ScooterAnalytics.shared.track("rental_open", provider: scooter.provider)
-                UIApplication.shared.open(rentalURL)
-            } label: {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        Text("Rent")
-                    } else {
-                        Label("Open \(providerName)", systemImage: "scooter")
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .foregroundStyle(.white)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(providerActionTint)
-            .accessibilityLabel(
-                String(format: String(localized: "Open %@"), providerName)
-            )
-        }
-    }
-
-    private var walkingTime: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let minutes = model.approximateWalkingMinutes(to: scooter) {
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("≈\(minutes)")
-                        .font(.system(.title2, design: .rounded, weight: .bold))
-                        .monospacedDigit()
-                    Text("min")
-                        .font(.caption.weight(.semibold))
-                }
-                Text("walk")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-            } else if let distance = model.formattedDistance(for: scooter) {
-                Text(distance)
-                    .font(.headline)
-                Text("away")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : 66, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(walkingAccessibilityLabel)
-    }
-
-    private var walkingAccessibilityLabel: String {
-        if let minutes = model.approximateWalkingMinutes(to: scooter) {
-            if minutes == 1 {
-                return String(localized: "Approximately one minute walking")
-            }
-            return String(format: String(localized: "Approximately %lld minutes walking"), minutes)
-        }
-        return model.formattedDistance(for: scooter) ?? String(localized: "Distance unavailable")
+    private func durationLabel(_ minutes: Int) -> String {
+        String(format: String(localized: "%lld min"), Int64(minutes))
     }
 
     private var providerName: String {
         scooter.providerInfo?.name ?? scooter.provider.capitalized
     }
 
-    private var providerColor: Color {
-        if scooter.providerInfo == .bird, colorScheme == .dark {
-            return Color(uiColor: .label)
-        }
-        return scooter.providerInfo?.color ?? .blue
+    private var providerTint: Color {
+        providerAccent(scooter.providerInfo, colorScheme: colorScheme)
     }
+}
 
-    private var providerActionTint: Color {
-        if scooter.providerInfo == .bird, colorScheme == .dark {
-            return Color(uiColor: .systemGray2)
+private struct ParkingBayCard: View {
+    let model: ScooterMapModel
+    let parking: ScooterParking
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            CardStatusLine(model: model)
+
+            HStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Text(verbatim: "P")
+                        .font(.system(size: 23, weight: .heavy, design: .rounded))
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Color(uiColor: .systemBackground),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    providerAccent(parking.providerInfo, colorScheme: colorScheme),
+                                    lineWidth: 3
+                                )
+                        }
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(parking.bayTitle)
+                            .font(.headline)
+                        let subtitle = model.parkingSubtitle(for: parking)
+                        if !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+
+                Spacer(minLength: 4)
+
+                DockCloseButton(accessibilityLabel: String(localized: "Close parking details")) {
+                    model.selectParking(nil)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "info.circle")
+                    .accessibilityHidden(true)
+                Text(parking.notice)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(parking.mandatory ? ScooterPalette.warning : Color.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                parking.mandatory
+                    ? ScooterPalette.warning.opacity(0.14)
+                    : Color(uiColor: .tertiarySystemFill),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+
+            DockActionRow {
+                Button {
+                    ScooterAnalytics.shared.track("directions_open", provider: parking.provider, target: "parking")
+                    openWalkingDirections(to: parking)
+                } label: {
+                    Label("Directions", systemImage: "figure.walk")
+                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(.white)
+                }
+                .dockActionStyle(prominent: true)
+            }
+
+            Text(parking.footnote)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
         }
-        return providerColor
     }
+}
+
+private extension ScooterBatteryLevel {
+    var color: Color {
+        switch self {
+        case .good: ScooterPalette.good
+        case .low: ScooterPalette.warning
+        case .critical: ScooterPalette.critical
+        }
+    }
+}
+
+/// The provider's colour; Bird's near-black turns to the label colour in dark appearance.
+private func providerAccent(_ provider: ScooterProvider?, colorScheme: ColorScheme) -> Color {
+    guard let provider else { return .blue }
+    if provider == .bird, colorScheme == .dark {
+        return Color(uiColor: .label)
+    }
+    return provider.color
 }
 
 private enum RidePriceFormatter {
@@ -1413,24 +1745,13 @@ private func openWalkingDirections(to scooter: Scooter) {
     ])
 }
 
-private func conciseWalkingSummary(minutes: Int) -> String {
-    String(
-        format: String(localized: "≈%lld min walk"),
-        Int64(minutes)
-    )
-}
-
-private func awaySummary(distance: String) -> String {
-    String(
-        format: String(localized: "%@ away"),
-        distance
-    )
-}
-
-private func batteryColor(for battery: Int) -> Color {
-    if battery >= 50 { return .green }
-    if battery >= 20 { return .orange }
-    return .red
+private func openWalkingDirections(to parking: ScooterParking) {
+    let location = CLLocation(latitude: parking.latitude, longitude: parking.longitude)
+    let destination = MKMapItem(location: location, address: nil)
+    destination.name = parking.name.isEmpty ? parking.bayTitle : parking.name
+    destination.openInMaps(launchOptions: [
+        MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking
+    ])
 }
 
 private func batterySymbol(for battery: Int) -> String {

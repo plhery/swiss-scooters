@@ -895,8 +895,9 @@ struct ScooterDockSummary: Equatable, Sendable {
                 ? .offline(showing: lastUpdated)
                 : .refreshFailed(showing: lastUpdated)
         }
-        if isOverview { return .cityTotals }
+        // Delayed data says so at every zoom, city totals included.
         if isDelayed { return .delayed(showing: lastUpdated) }
+        if isOverview { return .cityTotals }
 
         let age = max(0, now.timeIntervalSince(lastUpdated))
         if age < ScooterDockStatus.liveWindow { return .live }

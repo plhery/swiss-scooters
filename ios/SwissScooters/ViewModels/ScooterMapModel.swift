@@ -68,6 +68,17 @@ enum NearbyOrigin: Equatable, Sendable {
     }
 }
 
+extension MapFocusRequest {
+    /// Moves the map to the point and keeps the zoom it has: there is no span to fit.
+    static func center(_ point: GeoPoint, token: Int) -> MapFocusRequest {
+        MapFocusRequest(point: point, token: token, latitudinalMeters: 0, longitudinalMeters: 0)
+    }
+
+    var keepsZoom: Bool {
+        latitudinalMeters <= 0 || longitudinalMeters <= 0
+    }
+}
+
 @MainActor
 @Observable
 final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
@@ -196,6 +207,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var knownAuthorizationStatus: CLAuthorizationStatus
     @ObservationIgnored private var activeRequestID: UUID?
     @ObservationIgnored private var bestLocationCandidate: CLLocation?
+    /// Set while a card asked for the location: the first fix leaves the map where it is.
+    @ObservationIgnored private var keepsMapOnFirstFix = false
     @ObservationIgnored private var focusToken = 0
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var isApplyingResponse = false
@@ -465,7 +478,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             lastUpdated: lastUpdated,
             refreshFailure: refreshFailure,
             isOverview: isOverview,
-            isDelayed: responseMetadata?.stale == true && !isOverview,
+            isDelayed: responseMetadata?.stale == true,
             notices: dockNotices,
             hint: hint,
             chips: dockChips
@@ -475,6 +488,16 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     private var refreshFailure: ScooterLoadFailure? {
         guard case let .refreshFailed(failure, _) = loadIssue else { return nil }
         return failure
+    }
+
+    /// The failed refresh or the delay to report at the top of a scooter or bay
+    /// card, which hides the dock's own status line. Nil while the data is healthy.
+    var cardStatus: ScooterDockStatus? {
+        if case let .refreshFailed(failure, showing) = loadIssue {
+            return failure == .offline ? .offline(showing: showing) : .refreshFailed(showing: showing)
+        }
+        guard responseMetadata?.stale == true, let lastUpdated else { return nil }
+        return .delayed(showing: lastUpdated)
     }
 
     /// Whether the data on the map was loaded for the area on screen. Only then
@@ -532,15 +555,39 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return max(1, Int(ceil(distance / Self.approximateWalkingMetersPerMinute)))
     }
 
-    /// The second line of the bay card: "Rue Faidherbe · ≈3 min walk", or the
-    /// name alone without an origin.
+    /// The second line of the scooter card: "≈4 min walk · 320 m", or
+    /// "≈4 min walk from Zürich HB · 320 m" when the origin is a searched
+    /// place. Nil without an origin.
+    func walkingSummary(for scooter: Scooter) -> String? {
+        guard let minutes = approximateWalkingMinutes(to: scooter),
+              let distance = formattedDistance(for: scooter) else { return nil }
+        if let searchedDestination {
+            return String(
+                format: String(localized: "≈%1$lld min walk from %2$@ · %3$@"),
+                Int64(minutes),
+                searchedDestination.title,
+                distance
+            )
+        }
+        return String(format: String(localized: "≈%1$lld min walk · %2$@"), Int64(minutes), distance)
+    }
+
+    /// The second line of the bay card: "Rue Faidherbe · ≈3 min walk", with
+    /// "from Zürich HB" when the origin is a searched place, or the name alone
+    /// without an origin.
     func parkingSubtitle(for parking: ScooterParking) -> String {
         guard let minutes = approximateWalkingMinutes(to: parking) else { return parking.name }
-        return String(
-            format: String(localized: "%1$@ · %2$@"),
-            parking.name,
+        let walk = if let searchedDestination {
+            String(
+                format: String(localized: "≈%1$lld min walk from %2$@"),
+                Int64(minutes),
+                searchedDestination.title
+            )
+        } else {
             String(format: String(localized: "≈%lld min walk"), Int64(minutes))
-        )
+        }
+        guard !parking.name.isEmpty else { return walk }
+        return String(format: String(localized: "%1$@ · %2$@"), parking.name, walk)
     }
 
     func setRideEstimateMinutes(_ minutes: Int) {
@@ -774,12 +821,24 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     func focusOnUser() {
         ScooterAnalytics.shared.track("locate")
         searchedDestination = nil
+        keepsMapOnFirstFix = false
         if let userLocation {
             requestUserFocus(at: userLocation)
         } else {
             isLocating = true
             requestLocationAccess()
         }
+    }
+
+    /// "Turn on location to see walking time" on a card: locates like Near me,
+    /// but the map stays where it is, so the card is not closed by the map
+    /// moving away from the scooter.
+    func locateForWalkingTime() {
+        guard userLocation == nil else { return }
+        ScooterAnalytics.shared.track("locate")
+        keepsMapOnFirstFix = true
+        isLocating = true
+        requestLocationAccess()
     }
 
     /// Chooses a place: it becomes the origin for walking times, is remembered
@@ -830,10 +889,11 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         )
     }
 
+    /// The card header: centres the scooter and leaves the zoom as it is.
     func focusOnScooter(_ scooter: Scooter) {
         selectScooter(scooter.id)
         focusToken += 1
-        focusRequest = MapFocusRequest(point: GeoPoint(scooter.coordinate), token: focusToken)
+        focusRequest = .center(GeoPoint(scooter.coordinate), token: focusToken)
     }
 
     func clearAddressSearch() {
@@ -1242,7 +1302,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             defaults.set(true, forKey: Self.hasLocatedOnceKey)
         }
 
-        if !hadLocation {
+        let keepsMap = keepsMapOnFirstFix
+        keepsMapOnFirstFix = false
+        if !hadLocation, keepsMap {
+            // Asked from a card: the walking time appears and the map stays put.
+            distanceOrigin = nextLocation
+        } else if !hadLocation {
             requestUserFocus(at: nextLocation)
             distanceOrigin = nextLocation
 
@@ -1314,6 +1379,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             locationProblem = .notFound
         }
         ScooterAnalytics.shared.track("location_result", result: locationProblem == .denied ? "denied" : "unavailable")
+        keepsMapOnFirstFix = false
         locationTimeoutTask?.cancel()
         locationTimeoutTask = nil
         bestLocationCandidate = nil

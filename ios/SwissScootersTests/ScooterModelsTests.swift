@@ -561,7 +561,7 @@ extension ScooterModelsTests {
         )
     }
 
-    func testDockStatusPrefersFailureThenCityTotalsThenDelayThenAge() {
+    func testDockStatusPrefersFailureThenDelayThenCityTotalsThenAge() {
         let updated = Date(timeIntervalSince1970: 1_790_000_000)
         func summary(
             failure: ScooterLoadFailure? = nil,
@@ -588,7 +588,8 @@ extension ScooterModelsTests {
 
         let later = updated.addingTimeInterval(600)
         XCTAssertEqual(summary(delayed: true).status(at: later), .delayed(showing: updated))
-        XCTAssertEqual(summary(overview: true, delayed: true).status(at: later), .cityTotals)
+        XCTAssertEqual(summary(overview: true).status(at: later), .cityTotals)
+        XCTAssertEqual(summary(overview: true, delayed: true).status(at: later), .delayed(showing: updated))
         XCTAssertEqual(
             summary(failure: .offline, overview: true, delayed: true).status(at: later),
             .offline(showing: updated)

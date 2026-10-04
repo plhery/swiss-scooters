@@ -80,10 +80,6 @@ final class ScooterFilteringTests: XCTestCase {
         XCTAssertFalse(ScooterClusteringPolicy.shouldCluster(at: 20))
     }
 
-    func testSelectedScooterDockReservesPriceAndActionSpace() {
-        XCTAssertGreaterThanOrEqual(ScooterDetailLayout.minimumHeight, 206)
-    }
-
     @MainActor
     func testMapOpensWithASubtleThreeDimensionalPitch() {
         let mapView = MKMapView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
@@ -382,6 +378,77 @@ final class ScooterFilteringTests: XCTestCase {
 
         XCTAssertEqual(selectionChanges.count, 1)
         XCTAssertNil(selectionChanges[0])
+    }
+
+    @MainActor
+    func testMapBackgroundTapClosesTheSelectedParkingBay() {
+        var parkingChanges: [String?] = []
+        let bay = ScooterParking(id: "dott:bay", provider: "dott", name: "Rue Faidherbe",
+            latitude: 50.63, longitude: 3.06, mandatory: true)
+        let parent = ScooterMapView(
+            scooters: [],
+            scooterRevision: 0,
+            clusters: [],
+            clusterRevision: 0,
+            usesServerClusters: false,
+            mapStyle: .standard,
+            showsUserLocation: false,
+            focusRequest: nil,
+            destination: nil,
+            selectedScooterID: nil,
+            onRegionChange: { _, _ in },
+            onSelectionChange: { _ in },
+            parking: [bay],
+            onParkingSelectionChange: { parkingChanges.append($0) }
+        )
+        let coordinator = ScooterMapView.Coordinator(parent: parent)
+        let mapView = MKMapView()
+        coordinator.reconcileParking([bay], on: mapView)
+
+        // Selecting from the model is not reported back to it.
+        coordinator.applyParkingSelection(bay.id, on: mapView)
+        XCTAssertTrue(parkingChanges.isEmpty)
+        XCTAssertEqual(mapView.selectedAnnotations.count, 1)
+
+        coordinator.clearSelection(on: mapView)
+        coordinator.clearSelection(on: mapView)
+
+        XCTAssertEqual(parkingChanges.count, 1)
+        XCTAssertNil(parkingChanges[0])
+        XCTAssertTrue(mapView.selectedAnnotations.isEmpty)
+    }
+
+    @MainActor
+    func testParkingBaysOpenInTheDockWithoutACallout() throws {
+        let bay = ScooterParking(id: "dott:bay", provider: "dott", name: "Rue Faidherbe",
+            latitude: 50.63, longitude: 3.06, mandatory: true)
+        let annotation = ScooterParkingAnnotation(parking: bay)
+        let parent = ScooterMapView(
+            scooters: [],
+            scooterRevision: 0,
+            clusters: [],
+            clusterRevision: 0,
+            usesServerClusters: false,
+            mapStyle: .standard,
+            showsUserLocation: false,
+            focusRequest: nil,
+            destination: nil,
+            selectedScooterID: nil,
+            onRegionChange: { _, _ in },
+            onSelectionChange: { _ in }
+        )
+        let coordinator = ScooterMapView.Coordinator(parent: parent)
+        let mapView = MKMapView()
+        mapView.register(
+            MKMarkerAnnotationView.self,
+            forAnnotationViewWithReuseIdentifier: ScooterParkingAnnotation.reuseIdentifier
+        )
+
+        let view = try XCTUnwrap(coordinator.mapView(mapView, viewFor: annotation))
+
+        XCTAssertFalse(view.canShowCallout)
+        XCTAssertEqual(view.accessibilityLabel, "\(bay.bayTitle), Rue Faidherbe")
+        XCTAssertEqual(annotation.title, bay.bayTitle)
     }
 
     func testAddressSuggestionsSeparateTheStreetFromPostalCodeAndCity() {

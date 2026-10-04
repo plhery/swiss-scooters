@@ -171,7 +171,7 @@
 
 /* Scooter parking */
 "Designated parking is required in this zone." = "In dieser Zone muss auf ausgewiesenen Flächen geparkt werden.";
-"Designated scooter parking." = "Ausgewiesener Rollerparkplatz.";
+"Designated scooter parking." = "Ausgewiesener Scooter-Parkplatz.";
 "Check the operator app to confirm you can end your ride here." = "Prüfe in der Anbieter-App, ob du die Fahrt hier beenden kannst.";
 "Directions to parking" = "Weg zum Parkplatz";
 "Parking data is temporarily unavailable" = "Parkplatzdaten sind vorübergehend nicht verfügbar";
@@ -253,6 +253,8 @@
 
 /* UX alignment: scooter card */
 "≈%1$lld min walk · %2$@" = "≈%1$lld Min. zu Fuss · %2$@";
+"≈%1$lld min walk from %2$@ · %3$@" = "≈%1$lld Min. zu Fuss ab %2$@ · %3$@";
+"≈%1$lld min walk from %2$@" = "≈%1$lld Min. zu Fuss ab %2$@";
 "Turn on location to see walking time" = "Standort aktivieren, um Gehzeit zu sehen";
 "Directions" = "Route";
 "Open in %@" = "In %@ öffnen";
