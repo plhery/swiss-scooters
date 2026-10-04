@@ -165,20 +165,26 @@ struct ScooterSearchIsland: View {
                 .font(.subheadline.weight(state == .empty ? .medium : .semibold))
                 .foregroundStyle(state == .empty ? Color.secondary : Color.primary)
                 .lineLimit(usesAccessibilityLayout ? 2 : 1)
-                // "Recherche de votre position…" is a few points too long for one line.
-                .minimumScaleFactor(0.9)
-                .fixedSize(horizontal: false, vertical: usesAccessibilityLayout)
+                // A long place name is cut short. The bar's own sentences shrink
+                // further instead: "Recherche de votre position…" on a narrow phone.
+                .minimumScaleFactor(showsPlace ? 0.9 : 0.8)
             if let subtitle = state.subtitle, !usesAccessibilityLayout {
+                // Beside the clear button the line is too long for narrow
+                // phones and for Italian, so it may take a second line.
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    // Beside the clear button the line is a few points short.
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(2)
             }
         }
         .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
         .layoutPriority(1)
+    }
+
+    private var showsPlace: Bool {
+        if case .place = state { return true }
+        return false
     }
 
     private var usesAccessibilityLayout: Bool {
