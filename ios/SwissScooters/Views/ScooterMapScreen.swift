@@ -2,15 +2,22 @@ import SwiftUI
 import UIKit
 
 struct ScooterMapScreen: View {
-    @State private var model = ScooterMapModel()
+    @State private var model: ScooterMapModel
     @State private var searchIsExpanded = false
     @State private var filtersPresented = false
     @State private var settingsPresented = false
     @State private var dockHeight: CGFloat = 128
+    @State private var searchBarHeight: CGFloat = 62
+    @State private var locateButtonHeight: CGFloat = 52
     @State private var topChromeFrame = CGRect.null
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// Tests hand in a model with the state they want to see.
+    init(model: ScooterMapModel = ScooterMapModel()) {
+        _model = State(initialValue: model)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -61,9 +68,26 @@ struct ScooterMapScreen: View {
                                 settingsPresented = true
                             }
                         )
+                        .onGeometryChange(for: CGFloat.self) { geometry in
+                            geometry.size.height
+                        } action: { height in
+                            if !searchIsExpanded { searchBarHeight = height }
+                        }
 
-                        if !searchIsExpanded {
-                            topNotices
+                        if !searchIsExpanded, hasTopNotices {
+                            // With large text a banner and a card can be taller than
+                            // the room above the locate button; then they scroll.
+                            HeightLimit(maximum: topNoticesHeightLimit(in: proxy)) {
+                                ViewThatFits(in: .vertical) {
+                                    VStack(spacing: 8) { topNotices }
+                                    ScrollView(.vertical) {
+                                        VStack(spacing: 8) { topNotices }
+                                            .padding(.horizontal, 12)
+                                    }
+                                    // Room for the shadows at the sides.
+                                    .padding(.horizontal, -12)
+                                }
+                            }
                         }
                     }
                     .onGeometryChange(for: CGRect.self) { geometry in
@@ -85,6 +109,11 @@ struct ScooterMapScreen: View {
                     HStack {
                         Spacer()
                         FloatingMapControls(model: model)
+                            .onGeometryChange(for: CGFloat.self) { geometry in
+                                geometry.size.height
+                            } action: { height in
+                                locateButtonHeight = height
+                            }
                     }
                     .padding(.trailing, 12)
                     .padding(
@@ -105,6 +134,8 @@ struct ScooterMapScreen: View {
                         maximumContentHeight: max(
                             160,
                             proxy.size.height - (dynamicTypeSize.isAccessibilitySize ? 300 : 220)
+                                // With large text a notice under the search bar needs room too.
+                                - (dynamicTypeSize.isAccessibilitySize && hasTopNotices ? 120 : 0)
                         ),
                         onEditFilters: { filtersPresented = true },
                         onHeightChange: { dockHeight = $0 }
@@ -167,6 +198,18 @@ struct ScooterMapScreen: View {
     private var firstLoadFailure: ScooterLoadFailure? {
         guard case let .firstLoadFailed(failure) = model.loadIssue else { return nil }
         return failure
+    }
+
+    private var hasTopNotices: Bool {
+        firstLoadFailure != nil || model.locationIssue != nil
+    }
+
+    /// The room between the search bar and the locate button above the dock.
+    private func topNoticesHeightLimit(in proxy: GeometryProxy) -> CGFloat {
+        let dockAndGap = dockHeight + max(proxy.safeAreaInsets.bottom, 8) + 10
+        let room = proxy.size.height - 8 - searchBarHeight - 8 - 8 - locateButtonHeight - dockAndGap
+        // Never less than a banner, or the title of a card.
+        return max(64, room)
     }
 
     @ViewBuilder
