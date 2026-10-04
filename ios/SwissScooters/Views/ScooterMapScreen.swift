@@ -154,7 +154,7 @@ struct ScooterMapScreen: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $settingsPresented) {
-            ScooterSettingsSheet(model: model, onUseCurrentLocation: model.focusOnUser)
+            ScooterSettingsSheet(model: model)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }

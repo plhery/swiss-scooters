@@ -1100,7 +1100,7 @@ struct ScooterFilterSheet: View {
                 .padding(.top, 8)
                 .padding(.bottom, 16)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Self.sheetBackground)
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1300,7 +1300,24 @@ struct ScooterFilterSheet: View {
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
+        // The list ends above the button instead of showing through and under it.
+        .background {
+            Self.sheetBackground
+                .ignoresSafeArea(edges: .bottom)
+        }
+        .overlay(alignment: .top) {
+            LinearGradient(
+                colors: [Self.sheetBackground.opacity(0), Self.sheetBackground],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 14)
+            .offset(y: -14)
+            .allowsHitTesting(false)
+        }
     }
+
+    private static let sheetBackground = Color(uiColor: .systemGroupedBackground)
 
     /// What the map will show with the current choices. While the answer for
     /// a new minimum is still on its way there is no count to promise.
@@ -1332,22 +1349,15 @@ struct ScooterFilterSheet: View {
     }
 }
 
+/// Settings: how the map looks, the rider's passes, and About with the
+/// credits, the privacy choice and the source code.
 struct ScooterSettingsSheet: View {
-    @AppStorage(ScooterAnalytics.disabledKey) private var analyticsDisabled = false
     @Bindable var model: ScooterMapModel
-    let onUseCurrentLocation: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Analytics") {
-                    Toggle("Share anonymous usage", isOn: Binding(
-                        get: { !analyticsDisabled }, set: { analyticsDisabled = !$0 }
-                    ))
-                    Text("Helps improve Scooters. No addresses or precise locations are sent.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
                 Section("Map") {
                     Picker("Appearance", selection: $model.mapStyle) {
                         ForEach(AppleMapStyle.allCases) { style in
@@ -1355,32 +1365,12 @@ struct ScooterSettingsSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
-
-                    Button {
-                        onUseCurrentLocation()
-                        dismiss()
-                    } label: {
-                        Label("Use current location", systemImage: "location.fill")
-                    }
-
-                    Button {
-                        ScooterAnalytics.shared.track("refresh")
-                        model.refresh()
-                    } label: {
-                        HStack {
-                            Label("Refresh availability", systemImage: "arrow.clockwise")
-                            Spacer()
-                            if model.isLoading {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
-                        }
-                    }
-                    .disabled(model.isLoading)
                 }
 
                 Section {
-                    ForEach(ScooterProvider.allCases) { provider in
+                    // Only the providers that matter here: those operating on
+                    // this part of the map, and those the rider has a pass for.
+                    ForEach(model.passProviders) { provider in
                         NavigationLink {
                             ProviderRidePassEditor(model: model, provider: provider)
                         } label: {
@@ -1404,45 +1394,32 @@ struct ScooterSettingsSheet: View {
                     Text("Pass benefits are used only for estimates. Free-minute balances are not reduced automatically.")
                 }
 
-                Section("Live data") {
-                    HStack {
-                        Label("Status", systemImage: "dot.radiowaves.left.and.right")
-                        Spacer()
-                        FreshnessLabel(
-                            isLoading: model.isLoading,
-                            lastUpdated: model.lastUpdated,
-                            dataHealthMessage: model.dataHealthMessage
-                        )
-                    }
-
-                    if let health = model.dataHealthMessage {
-                        Label(health, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                    }
-                }
-
                 Section {
-                    Link(destination: URL(string: "https://opentransportdata.swiss/en/cookbook/shared-mobility/")!) {
-                        Label("Mobility data sources", systemImage: "network")
+                    NavigationLink {
+                        ScooterCreditsList()
+                    } label: {
+                        Label("Map & data credits", systemImage: "map")
                     }
-                    Link(destination: URL(string: "https://transport.data.gouv.fr/datasets?type=vehicles-sharing")!) {
-                        Label("French mobility data", systemImage: "network")
-                    }
-                    Link("MobiData BW", destination: URL(string: "https://www.mobidata-bw.de/")!)
-                    Link("DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird", destination: URL(string: "https://github.com/MobilityData/gbfs")!)
-                    Link(destination: URL(string: "https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api")!) {
-                        Label("Address data © swisstopo", systemImage: "map")
-                    }
-                    Link(destination: URL(string: "https://scooters.plhery.com/privacy")!) {
+
+                    NavigationLink {
+                        ScooterPrivacySettings()
+                    } label: {
                         Label("Privacy", systemImage: "hand.raised")
+                    }
+
+                    Link(destination: ScooterLinks.sourceCode) {
+                        ExternalLinkRow(
+                            title: String(localized: "Source code on GitHub"),
+                            systemImage: "chevron.left.forwardslash.chevron.right"
+                        )
                     }
                 } header: {
                     Text("About")
                 } footer: {
-                    Text("Availability is refreshed automatically. Opening a provider app does not reserve a scooter.")
+                    Text("Availability refreshes automatically. Opening a provider app doesn’t reserve a scooter.")
                 }
             }
-            .navigationTitle("More")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -1470,6 +1447,135 @@ struct ScooterSettingsSheet: View {
         return benefits.isEmpty
             ? String(localized: "Pass active")
             : benefits.joined(separator: " · ")
+    }
+}
+
+enum ScooterLinks {
+    static let privacyNotice = URL(string: "https://scooters.plhery.com/privacy")!
+    static let sourceCode = URL(string: "https://github.com/plhery/swiss-scooters")!
+}
+
+/// Settings › About › Privacy: the one choice about usage data, and the notice.
+struct ScooterPrivacySettings: View {
+    @AppStorage(ScooterAnalytics.disabledKey) private var analyticsDisabled = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Share anonymous usage", isOn: Binding(
+                    get: { !analyticsDisabled },
+                    set: { analyticsDisabled = !$0 }
+                ))
+            } footer: {
+                Text("Helps improve Scooters. No addresses or precise locations are sent.")
+            }
+
+            Section {
+                Link(destination: ScooterLinks.privacyNotice) {
+                    ExternalLinkRow(title: String(localized: "Read the privacy notice"))
+                }
+            }
+        }
+        .navigationTitle("Privacy")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Settings › About › Map & data credits: where the map and the data come from.
+struct ScooterCreditsList: View {
+    struct Source: Identifiable {
+        let title: String
+        let url: URL
+
+        var id: URL { url }
+    }
+
+    /// The same sources as the credits list on the web. Names of feeds and
+    /// operators are not translated.
+    static var sources: [Source] {
+        [
+            Source(
+                title: String(localized: "Mobility data sources"),
+                url: URL(string: "https://opentransportdata.swiss/en/cookbook/shared-mobility/")!
+            ),
+            Source(
+                title: String(localized: "French mobility data"),
+                url: URL(string: "https://transport.data.gouv.fr/datasets?type=vehicles-sharing")!
+            ),
+            Source(
+                title: "MobiData BW",
+                url: URL(string: "https://www.mobidata-bw.de/")!
+            ),
+            Source(
+                title: "DE/IT: Dott, Bolt, Hopp, Lime, Voi, Bird",
+                url: URL(string: "https://github.com/MobilityData/gbfs")!
+            ),
+            Source(
+                title: String(localized: "Address data © swisstopo"),
+                url: URL(string: "https://www.geo.admin.ch/en/geo-services/geo-services/application-programming-interface-api")!
+            ),
+            Source(
+                title: String(
+                    format: String(localized: "%1$@ · %2$@"),
+                    String(localized: "Parking"),
+                    "Métropole Européenne de Lille"
+                ),
+                url: URL(string: "https://data.lillemetropole.fr/")!
+            )
+        ]
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                // Apple shows its own map credits on the map, behind "Legal".
+                LabeledContent {
+                    Text(verbatim: "Apple Maps")
+                } label: {
+                    Text("Map")
+                }
+            }
+
+            Section {
+                ForEach(Self.sources) { source in
+                    Link(destination: source.url) {
+                        ExternalLinkRow(title: source.title)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Map & data credits")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A row that leaves the app: its text, and an arrow that says so.
+private struct ExternalLinkRow: View {
+    let title: String
+    var systemImage: String?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let systemImage {
+                Label {
+                    Text(title)
+                        .foregroundStyle(Color.primary)
+                } icon: {
+                    Image(systemName: systemImage)
+                }
+            } else {
+                Text(title)
+                    .foregroundStyle(Color.primary)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "arrow.up.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .accessibilityHidden(true)
+        }
+        .multilineTextAlignment(.leading)
     }
 }
 
@@ -1626,48 +1732,6 @@ struct FloatingMapControls: View {
         }
         .accessibilityHidden(true)
     }
-}
-
-private struct FreshnessLabel: View {
-    let isLoading: Bool
-    let lastUpdated: Date?
-    let dataHealthMessage: String?
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            HStack(spacing: 5) {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.mini)
-                } else if isLive(at: context.date) && dataHealthMessage == nil {
-                    LiveIndicator()
-                }
-
-                Text(label(at: context.date))
-                    .font(.caption)
-                    .foregroundStyle(dataHealthMessage == nil ? Color.secondary : Color.orange)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-            }
-        }
-    }
-
-    private func label(at date: Date) -> String {
-        if isLoading { return String(localized: "Updating…") }
-        if let dataHealthMessage { return dataHealthMessage }
-        guard let lastUpdated else { return String(localized: "Waiting for live data") }
-        let age = max(0, date.timeIntervalSince(lastUpdated))
-        if age < 90 { return String(localized: "Live") }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(fromTimeInterval: -age)
-    }
-
-    private func isLive(at date: Date) -> Bool {
-        guard let lastUpdated else { return false }
-        return max(0, date.timeIntervalSince(lastUpdated)) < 90
-    }
-
 }
 
 private struct LiveIndicator: View {

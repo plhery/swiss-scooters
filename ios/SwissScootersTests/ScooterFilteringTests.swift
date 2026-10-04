@@ -501,6 +501,20 @@ final class ScooterFilteringTests: XCTestCase {
     }
 
     @MainActor
+    func testCreditsNameEverySourceOnceAndAboutLinksAreSecure() {
+        let sources = ScooterCreditsList.sources
+
+        // The sources of the credits list on the web, Lille's parking bays included.
+        XCTAssertEqual(sources.count, 6)
+        XCTAssertEqual(Set(sources.map(\.url)).count, sources.count)
+        XCTAssertTrue(sources.allSatisfy { $0.url.scheme == "https" && !$0.title.isEmpty })
+        XCTAssertTrue(sources.contains { $0.url.host() == "data.lillemetropole.fr" })
+
+        XCTAssertEqual(ScooterLinks.privacyNotice.absoluteString, "https://scooters.plhery.com/privacy")
+        XCTAssertEqual(ScooterLinks.sourceCode.absoluteString, "https://github.com/plhery/swiss-scooters")
+    }
+
+    @MainActor
     func testCompassTouchesAreExcludedFromScooterTapHandling() {
         let compass = MKCompassButton(mapView: MKMapView())
         let container = UIView()
