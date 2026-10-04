@@ -546,6 +546,62 @@ test('says that location is off under the search bar, stays dismissed and leads 
   await expect(card).toBeHidden();
 });
 
+test('See how explains how to turn location back on in this browser and on this device', async ({ page, browserName }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Near me', exact: true }).click();
+  const card = page.getByRole('status').filter({ hasText: 'Location is off' });
+  // The help comes before the way around it; the last button dismisses the card.
+  await expect(card.getByRole('button')).toHaveText(['See how', 'Search a place', '']);
+  const seeHow = card.getByRole('button', { name: 'See how' });
+  await seeHow.click();
+
+  const help = page.getByRole('dialog', { name: 'Turn location back on', exact: true });
+  await expect(help).toBeVisible();
+  // The two projects are a desktop Chrome on Windows and Safari on an iPhone.
+  await expect(help.getByRole('listitem')).toHaveText(browserName === 'webkit'
+    ? [
+        '1In Safari, open the page menu in the address bar, choose Website Settings and set Location to Allow.',
+        '2If it is still off: Settings › Privacy & Security › Location Services, and allow your browser while using the app.',
+      ]
+    : [
+        '1Click the icon at the left of the address bar and allow Location.',
+        '2If it is still off: Settings › Privacy & security › Location, and allow apps to use your location.',
+      ]);
+  await expect(help.getByText('Then come back and tap Near me.')).toBeVisible();
+  await help.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  const accessibility = await new AxeBuilder({ page }).include('.control-sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  // Done leads back to the card, which waits for the next attempt.
+  await help.getByRole('button', { name: 'Done' }).click();
+  await expect(help).not.toBeVisible();
+  await expect(seeHow).toBeFocused();
+  await seeHow.click();
+  await page.keyboard.press('Escape');
+  await expect(help).not.toBeVisible();
+  await expect(card).toBeVisible();
+
+  // The longest wording on the smallest screen: the sheet stays on it, with its button.
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.evaluate(() => localStorage.setItem('scooters-locale', 'de'));
+  await page.reload();
+  await page.getByRole('button', { name: 'In meiner Nähe', exact: true }).click();
+  await page.getByRole('button', { name: 'So geht’s' }).click();
+  const hilfe = page.getByRole('dialog', { name: 'Standort wieder aktivieren', exact: true });
+  await expect(hilfe.getByRole('listitem')).toHaveCount(2);
+  await hilfe.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  const box = (await hilfe.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(320);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(568);
+  await expect(hilfe.getByRole('button', { name: 'Fertig' })).toBeInViewport({ ratio: 1 });
+  const last = hilfe.getByText('Komm dann zurück und tippe auf «In meiner Nähe».');
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport({ ratio: 1 });
+});
+
 test('a load that fails says why under the search bar and recovers with Try again', async ({ page }) => {
   let fail = true;
   await page.route('**/api/scooters?**', async route => {

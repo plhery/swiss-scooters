@@ -17,6 +17,8 @@ interface MapNoticesProps {
   hidden: boolean;
   onRetryLoad: () => void;
   onRetryLocate: () => void;
+  /** Opens the steps that turn location back on for this site. */
+  onSeeHow: () => void;
   onSearchPlace: () => void;
   onDismissLocation: () => void;
 }
@@ -29,6 +31,7 @@ export default function MapNotices({
   hidden,
   onRetryLoad,
   onRetryLocate,
+  onSeeHow,
   onSearchPlace,
   onDismissLocation,
 }: MapNoticesProps) {
@@ -81,7 +84,21 @@ export default function MapNotices({
             )}
             <div className="location-card-actions">
               {locationError === 'denied' ? (
-                <button type="button" onClick={tap(onSearchPlace)}>{t('loc.searchPlace')}</button>
+                <>
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    onClick={(event) => {
+                      // Safari does not focus a button that is tapped: the sheet returns the focus here when it closes.
+                      event.currentTarget.focus({ preventScroll: true });
+                      selectionFeedback();
+                      onSeeHow();
+                    }}
+                  >
+                    {t('loc.seeHow')}
+                  </button>
+                  <button type="button" onClick={tap(onSearchPlace)}>{t('loc.searchPlace')}</button>
+                </>
               ) : (
                 <button type="button" onClick={tap(onRetryLocate)}>{t('loc.tryAgain')}</button>
               )}

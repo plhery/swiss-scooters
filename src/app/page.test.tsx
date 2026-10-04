@@ -594,6 +594,33 @@ it('says that location is off, and keeps the card dismissed until the next attem
   expect(screen.getByText('Location is off')).toBeVisible();
 });
 
+it('shows how to turn location back on from the card, and keeps the card for when you come back', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  // jsdom has neither modal dialogs nor animations.
+  HTMLDialogElement.prototype.showModal = function showModal() { this.open = true; };
+  HTMLDialogElement.prototype.close = function close() { this.open = false; };
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('prefers-reduced-motion') }));
+  stubGeolocation(null);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  // The only sheet that is not replaced by a stand-in in this file.
+  const help = () => document.querySelector('dialog')!;
+  expect(help()).not.toHaveAttribute('open');
+  expect(help().querySelectorAll('li')).toHaveLength(0);
+
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
+  fireEvent.click(screen.getByRole('button', { name: 'See how' }));
+  expect(screen.getByRole('dialog', { name: 'Turn location back on' })).toBe(help());
+  expect(help()).toHaveAttribute('open');
+  // One step for the browser, and one for the device where it is known.
+  expect(within(help()).getAllByRole('listitem').length).toBeGreaterThanOrEqual(1);
+  expect(help()).toHaveTextContent('Then come back and tap Near me.');
+
+  fireEvent.click(within(help()).getByRole('button', { name: 'Done' }));
+  expect(help()).not.toHaveAttribute('open');
+  expect(screen.getByText('Location is off')).toBeVisible();
+});
+
 it('offers another attempt when the browser cannot find the location', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
   // jsdom has no geolocation, like a browser that cannot locate at all.

@@ -13,6 +13,7 @@ function renderNotices(overrides: Partial<React.ComponentProps<typeof MapNotices
     hidden: false,
     onRetryLoad: vi.fn(),
     onRetryLocate: vi.fn(),
+    onSeeHow: vi.fn(),
     onSearchPlace: vi.fn(),
     onDismissLocation: vi.fn(),
     ...overrides,
@@ -66,13 +67,23 @@ describe('MapNotices', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toHaveAttribute('aria-busy', 'true');
   });
 
-  it('says that location is off and points to search instead', () => {
+  it('says that location is off, and offers to show how to turn it on or to search instead', () => {
     const { props } = renderNotices({ locationError: 'denied' });
 
     const card = screen.getByRole('status');
     expect(card).toHaveTextContent('Location is off');
     expect(card).toHaveTextContent('Turn it on for this site, or search a place instead.');
     expect(within(card).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    // The help comes first: it is what the sentence above promises.
+    expect(within(card).getAllByRole('button').map(button => button.textContent))
+      .toEqual(['See how', 'Search a place', '']);
+    const seeHow = within(card).getByRole('button', { name: 'See how' });
+    expect(seeHow).toHaveAttribute('aria-haspopup', 'dialog');
+    fireEvent.click(seeHow);
+    expect(props.onSeeHow).toHaveBeenCalledOnce();
+    // The sheet returns the focus to where it was opened from, also where a tap does not focus a button.
+    expect(seeHow).toHaveFocus();
+    expect(props.onSearchPlace).not.toHaveBeenCalled();
     fireEvent.click(within(card).getByRole('button', { name: 'Search a place' }));
     expect(props.onSearchPlace).toHaveBeenCalledOnce();
     fireEvent.click(within(card).getByRole('button', { name: 'Dismiss' }));
@@ -85,6 +96,8 @@ describe('MapNotices', () => {
     const card = screen.getByRole('status');
     expect(card).toHaveTextContent('Couldn’t find your location.');
     expect(within(card).queryByRole('button', { name: 'Search a place' })).not.toBeInTheDocument();
+    // Nothing was refused, so there is nothing to turn back on.
+    expect(within(card).queryByRole('button', { name: 'See how' })).not.toBeInTheDocument();
     fireEvent.click(within(card).getByRole('button', { name: 'Try again' }));
     expect(props.onRetryLocate).toHaveBeenCalledOnce();
     fireEvent.click(within(card).getByRole('button', { name: 'Dismiss' }));

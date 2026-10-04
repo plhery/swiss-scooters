@@ -1497,6 +1497,43 @@ svg {
   transition: transform 260ms var(--spring);
 }
 
+/* Turning location back on: numbered steps, then what to do next. */
+.help-steps {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.help-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.help-steps li > span:last-child {
+  padding-top: 3px;
+}
+.help-step-number {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--blue) 11%, transparent);
+  color: var(--blue-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.help-after {
+  margin: 16px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 /* Floating actions and status */
 .fab-stack {
   position: fixed;

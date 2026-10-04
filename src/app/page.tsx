@@ -13,6 +13,7 @@ import MapCredits from '@/components/MapCredits';
 import MapNotices from '@/components/MapNotices';
 import SearchIsland from '@/components/SearchIsland';
 import ControlSheet from '@/components/ControlSheet';
+import LocationHelpSheet from '@/components/LocationHelpSheet';
 import { selectionFeedback } from '@/lib/feedback';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
@@ -151,6 +152,7 @@ export default function Home() {
   const recent = useRecentPlaces();
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [locationHelpOpen, setLocationHelpOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'filters' | 'settings'>('filters');
   const [locatedOnce, setLocatedOnce] = useState<boolean | null>(null);
   const [locationNoticeDismissed, setLocationNoticeDismissed] = useState(false);
@@ -564,6 +566,7 @@ export default function Home() {
         hidden={searchExpanded}
         onRetryLoad={retryLoad}
         onRetryLocate={handleLocateMe}
+        onSeeHow={() => setLocationHelpOpen(true)}
         onSearchPlace={openSearch}
         onDismissLocation={() => setLocationNoticeDismissed(true)}
       />
@@ -616,6 +619,8 @@ export default function Home() {
         onThemeChange={next => { track('map_style', { style: next }); setTheme(next); }}
         onMapStyleChange={next => { track('map_style', { style: next }); setMapStyle(next); }}
       />
+
+      <LocationHelpSheet open={locationHelpOpen} onClose={() => setLocationHelpOpen(false)} />
     </div>
   );
 }
