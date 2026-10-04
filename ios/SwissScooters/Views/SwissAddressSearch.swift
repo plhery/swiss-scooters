@@ -3,215 +3,21 @@ import Observation
 import SwiftUI
 import UIKit
 
-struct SwissAddressSearch: View {
-    @State private var searchModel = SwissAddressSearchModel()
-    @State private var suggestionContentHeight: CGFloat = 240
-    @FocusState private var fieldIsFocused: Bool
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    let onSelect: (MapDestination) -> Void
-    let onClear: () -> Void
-    let compact: Bool
-    let autofocus: Bool
-
-    init(
-        compact: Bool = false,
-        autofocus: Bool = false,
-        onSelect: @escaping (MapDestination) -> Void,
-        onClear: @escaping () -> Void
-    ) {
-        self.compact = compact
-        self.autofocus = autofocus
-        self.onSelect = onSelect
-        self.onClear = onClear
-    }
-
-    var body: some View {
-        @Bindable var searchModel = searchModel
-
-        VStack(alignment: .leading, spacing: compact ? 6 : 9) {
-            if !compact {
-                Label("Address search", systemImage: "magnifyingglass")
-                    .font(.subheadline.weight(.medium))
-            }
-
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-
-                TextField("City or address", text: $searchModel.query)
-                    .focused($fieldIsFocused)
-                    .textContentType(.fullStreetAddress)
-                    .textInputAutocapitalization(.words)
-                    .submitLabel(.search)
-                    .onSubmit(selectFirstSuggestion)
-
-                if searchModel.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 44, height: 44)
-                        .accessibilityLabel(String(localized: "Searching addresses…"))
-                } else if !searchModel.query.isEmpty {
-                    Button {
-                        ScooterAnalytics.shared.track("search_clear")
-                        searchModel.clear()
-                        onClear()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "Clear address search"))
-                }
-            }
-            .padding(.leading, 12)
-            .padding(.trailing, 4)
-            .frame(minHeight: 44)
-            .background(
-                .quaternary.opacity(0.55),
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-
-            if !searchModel.suggestions.isEmpty {
-                ScrollView {
-                    suggestionRows
-                        .onGeometryChange(for: CGFloat.self) { geometry in
-                            geometry.size.height
-                        } action: { height in
-                            suggestionContentHeight = height
-                        }
-                }
-                .frame(height: min(suggestionContentHeight, usesAccessibilityLayout ? 300 : 240))
-                .scrollBounceBehavior(.basedOnSize)
-                .background(
-                    .quaternary.opacity(0.42),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
-            } else if let statusMessage = searchModel.statusMessage {
-                Text(statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 2)
-            }
-        }
-        .onDisappear {
-            searchModel.cancel()
-        }
-        .task {
-            guard autofocus else { return }
-            await Task.yield()
-            fieldIsFocused = true
-        }
-        .onChange(of: searchOutcomeSignature) { _, _ in
-            announceSearchOutcome()
-        }
-    }
-
-    private var suggestionRows: some View {
-        VStack(spacing: 0) {
-            ForEach(searchModel.suggestions) { suggestion in
-                Button {
-                    select(suggestion)
-                } label: {
-                    SwissAddressSuggestionRow(suggestion: suggestion)
-                }
-                .buttonStyle(.plain)
-
-                if suggestion.id != searchModel.suggestions.last?.id {
-                    Divider()
-                        .padding(.leading, 57)
-                }
-            }
-        }
-    }
-
-    private var usesAccessibilityLayout: Bool {
-        dynamicTypeSize.isAccessibilitySize
-    }
-
-    private var searchOutcomeSignature: String {
-        let suggestionIDs = searchModel.suggestions.map(\.id).joined(separator: "|")
-        return "\(searchModel.isSearching)|\(searchModel.statusMessage ?? "")|\(suggestionIDs)"
-    }
-
-    private func announceSearchOutcome() {
-        guard UIAccessibility.isVoiceOverRunning,
-              !searchModel.isSearching else { return }
-
-        let message: String
-        if let statusMessage = searchModel.statusMessage {
-            message = statusMessage
-        } else if searchModel.suggestions.count == 1 {
-            message = String(localized: "One address suggestion")
-        } else if !searchModel.suggestions.isEmpty {
-            message = String(
-                format: String(localized: "%lld address suggestions"),
-                Int64(searchModel.suggestions.count)
-            )
-        } else {
-            return
-        }
-
-        UIAccessibility.post(notification: .announcement, argument: message)
-    }
-
-    private func selectFirstSuggestion() {
-        guard let suggestion = searchModel.suggestions.first else { return }
-        select(suggestion)
-    }
-
-    private func select(_ suggestion: SwissAddressSuggestion) {
-        let destination = searchModel.select(suggestion)
-        fieldIsFocused = false
-        onSelect(destination)
-    }
-}
-
-struct SwissAddressSuggestionRow: View {
-    let suggestion: SwissAddressSuggestion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 11) {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.body.weight(.medium))
-                .foregroundStyle(.blue)
-                .frame(width: 34, height: 34)
-                .background(.blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(suggestion.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !suggestion.subtitle.isEmpty {
-                    Text(suggestion.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(minHeight: 56)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
-}
-
 /// The search bar at the top of the map. Collapsed, it says what the map is
-/// based on: nothing yet, your location, a searched place, or a location on its way.
+/// based on: nothing yet, your location, a searched place, or a location on
+/// its way. Tapped, it opens into the search panel.
 struct ScooterSearchIsland: View {
     let state: ScooterSearchBarState
     @Binding var isSearching: Bool
     let hasActiveFilters: Bool
+    /// Places chosen during this session, newest first.
+    var recentPlaces: [MapDestination] = []
+    /// The covered cities nearest to the map centre.
+    var nearbyCities: [ScooterCity] = []
+    /// Where the open panel has to end when no keyboard is up, in global coordinates.
+    var bottomLimit: CGFloat = .infinity
     let onSelect: (MapDestination) -> Void
+    var onChooseCity: (ScooterCity) -> Void = { _ in }
     let onClear: () -> Void
     let onUseCurrentLocation: () -> Void
     let onShowFilters: () -> Void
@@ -220,60 +26,26 @@ struct ScooterSearchIsland: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(spacing: isSearching ? 10 : 0) {
+        VStack(spacing: 0) {
             if isSearching {
-                HStack(
-                    alignment: usesAccessibilityLayout ? .firstTextBaseline : .center,
-                    spacing: 10
-                ) {
-                    if !usesAccessibilityLayout {
-                        Image(systemName: "location.magnifyingglass")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.blue)
-                            .frame(width: 30, height: 30)
-                            .accessibilityHidden(true)
-                    }
-
-                    Text("Search nearby")
-                        .font(.headline)
-                        .lineLimit(usesAccessibilityLayout ? 2 : 1)
-                        .fixedSize(horizontal: false, vertical: usesAccessibilityLayout)
-
-                    Spacer(minLength: 8)
-
-                    Button("Done") {
-                        setSearching(false)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.blue)
-                    .frame(minHeight: 44)
-                    .fixedSize(horizontal: true, vertical: false)
-                }
-
-                SwissAddressSearch(
-                    compact: true,
-                    autofocus: true,
+                ScooterSearchPanel(
+                    recentPlaces: recentPlaces,
+                    nearbyCities: nearbyCities,
+                    bottomLimit: bottomLimit,
                     onSelect: { destination in
                         onSelect(destination)
                         setSearching(false)
                     },
-                    onClear: onClear
+                    onChooseCity: { city in
+                        onChooseCity(city)
+                        setSearching(false)
+                    },
+                    onUseCurrentLocation: {
+                        onUseCurrentLocation()
+                        setSearching(false)
+                    },
+                    onCancel: { setSearching(false) }
                 )
-
-                Group {
-                    if usesAccessibilityLayout {
-                        VStack(spacing: 8) {
-                            expandedActions
-                        }
-                    } else {
-                        HStack(spacing: 8) {
-                            expandedActions
-                        }
-                    }
-                }
-                .font(.subheadline.weight(.semibold))
-                .controlSize(.large)
             } else {
                 collapsedBar
             }
@@ -407,26 +179,6 @@ struct ScooterSearchIsland: View {
         .layoutPriority(1)
     }
 
-    @ViewBuilder
-    private var expandedActions: some View {
-        Button {
-            onUseCurrentLocation()
-            setSearching(false)
-        } label: {
-            Label("Use current location", systemImage: "location.fill")
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-
-        Button(action: onShowFilters) {
-            Label("Filters", systemImage: "line.3.horizontal.decrease")
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-    }
-
     private var usesAccessibilityLayout: Bool {
         dynamicTypeSize.isAccessibilitySize
     }
@@ -435,6 +187,413 @@ struct ScooterSearchIsland: View {
         withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.88)) {
             isSearching = searching
         }
+    }
+}
+
+/// The open search: the field first, with Cancel beside it. Under it, ways to
+/// start while nothing is typed, and the places found from two characters on.
+struct ScooterSearchPanel: View {
+    @State private var searchModel: SwissAddressSearchModel
+    @State private var contentTop: CGFloat = 0
+    @State private var keyboardTop = CGFloat.infinity
+    @FocusState private var fieldIsFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let recentPlaces: [MapDestination]
+    private let nearbyCities: [ScooterCity]
+    private let bottomLimit: CGFloat
+    private let autofocus: Bool
+    private let onSelect: (MapDestination) -> Void
+    private let onChooseCity: (ScooterCity) -> Void
+    private let onUseCurrentLocation: () -> Void
+    private let onCancel: () -> Void
+
+    init(
+        searchModel: SwissAddressSearchModel = SwissAddressSearchModel(),
+        recentPlaces: [MapDestination] = [],
+        nearbyCities: [ScooterCity] = [],
+        bottomLimit: CGFloat = .infinity,
+        autofocus: Bool = true,
+        onSelect: @escaping (MapDestination) -> Void,
+        onChooseCity: @escaping (ScooterCity) -> Void = { _ in },
+        onUseCurrentLocation: @escaping () -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        _searchModel = State(initialValue: searchModel)
+        self.recentPlaces = recentPlaces
+        self.nearbyCities = nearbyCities
+        self.bottomLimit = bottomLimit
+        self.autofocus = autofocus
+        self.onSelect = onSelect
+        self.onChooseCity = onChooseCity
+        self.onUseCurrentLocation = onUseCurrentLocation
+        self.onCancel = onCancel
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if dynamicTypeSize.isAccessibilitySize {
+                // Large text leaves no room for the field beside Cancel.
+                VStack(alignment: .trailing, spacing: 0) {
+                    field
+                    cancelButton
+                }
+            } else {
+                HStack(spacing: 6) {
+                    field
+                    cancelButton
+                }
+            }
+
+            // What does not fit above the keyboard scrolls.
+            HeightLimit(maximum: maximumContentHeight) {
+                ViewThatFits(in: .vertical) {
+                    content
+                    ScrollView(.vertical) {
+                        content
+                    }
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.frame(in: .global).minY
+            } action: { top in
+                contentTop = top
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)
+        ) { notification in
+            guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+                return
+            }
+            keyboardTop = frame.minY
+        }
+        .onDisappear {
+            searchModel.cancel()
+        }
+        .task {
+            guard autofocus else { return }
+            await Task.yield()
+            fieldIsFocused = true
+        }
+        .onChange(of: searchModel.status) { _, status in
+            announce(status)
+        }
+    }
+
+    private var cancelButton: some View {
+        Button(action: onCancel) {
+            Text("Cancel")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ScooterPalette.actionText)
+                .padding(.horizontal, 6)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var field: some View {
+        @Bindable var searchModel = searchModel
+
+        return HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            TextField("City or address", text: $searchModel.query)
+                .focused($fieldIsFocused)
+                .textContentType(.fullStreetAddress)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .onSubmit(chooseFirstResult)
+
+            if !searchModel.query.isEmpty {
+                Button {
+                    searchModel.clear()
+                    fieldIsFocused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Clear search"))
+            }
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, searchModel.query.isEmpty ? 12 : 0)
+        .frame(minHeight: 46)
+        .background(
+            .quaternary.opacity(0.55),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch searchModel.status {
+        case .idle:
+            suggestions
+        case .searching:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+                Text("Searching…")
+            }
+            .searchStatusStyle()
+        case let .results(results):
+            resultRows(results)
+        case .noResults:
+            Text("No places found. Outside Switzerland, search by city.")
+                .searchStatusStyle()
+        case .failed:
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Search isn’t available right now.")
+                    .searchStatusStyle()
+
+                Button(action: searchModel.retry) {
+                    Text("Try again")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ScooterPalette.actionText)
+                        .padding(.horizontal, 6)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Nothing typed yet: your location, the places of this session and the
+    /// covered cities nearest to the map.
+    private var suggestions: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onUseCurrentLocation) {
+                HStack(spacing: 11) {
+                    SearchSymbolTile(systemImage: "location.fill")
+                        .accessibilityHidden(true)
+                    Text("Use my location")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ScooterPalette.actionText)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 6)
+                .frame(minHeight: 52)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if !recentPlaces.isEmpty {
+                sectionHeader("Recent")
+
+                ForEach(recentPlaces) { place in
+                    Button {
+                        onSelect(place)
+                    } label: {
+                        SearchPlaceRow(
+                            title: place.title,
+                            subtitle: place.subtitle,
+                            systemImage: "clock.arrow.circlepath",
+                            isAccented: false,
+                            showsNoData: !place.isCovered
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    if place.id != recentPlaces.last?.id {
+                        rowDivider
+                    }
+                }
+            }
+
+            if !nearbyCities.isEmpty {
+                sectionHeader("Cities with scooters")
+
+                FlowLayout(spacing: 8, lineSpacing: 8) {
+                    ForEach(nearbyCities) { city in
+                        Button {
+                            onChooseCity(city)
+                        } label: {
+                            Text(city.name)
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 44)
+                                .background(Color.primary.opacity(0.055), in: Capsule())
+                                .overlay {
+                                    Capsule().stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+                                }
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
+            }
+        }
+    }
+
+    private func resultRows(_ results: [AddressSearchResult]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(results) { result in
+                // Return chooses the first place, so it is shown as chosen.
+                let isFirst = result.id == results.first?.id
+
+                Button {
+                    choose(result)
+                } label: {
+                    SearchPlaceRow(
+                        title: result.title,
+                        subtitle: result.subtitle,
+                        isAccented: result.isCovered,
+                        showsNoData: !result.isCovered
+                    )
+                    .background(
+                        isFirst ? ScooterPalette.actionText.opacity(0.08) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isFirst ? .isSelected : [])
+
+                if result.id != results.last?.id {
+                    rowDivider
+                }
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.top, 12)
+            .padding(.bottom, 6)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var rowDivider: some View {
+        Divider()
+            .padding(.leading, 51)
+    }
+
+    /// The panel ends above the keyboard, or at the bottom of the screen without one.
+    private var maximumContentHeight: CGFloat {
+        let limit = min(keyboardTop, bottomLimit)
+        guard limit.isFinite else { return .infinity }
+        return max(120, limit - contentTop - 20)
+    }
+
+    private func announce(_ status: SwissAddressSearchStatus) {
+        guard UIAccessibility.isVoiceOverRunning else { return }
+
+        let message: String
+        switch status {
+        case .idle, .searching:
+            return
+        case let .results(results) where results.count == 1:
+            message = String(localized: "One address suggestion")
+        case let .results(results):
+            message = String(
+                format: String(localized: "%lld address suggestions"),
+                Int64(results.count)
+            )
+        case .noResults:
+            message = String(localized: "No places found. Outside Switzerland, search by city.")
+        case .failed:
+            message = String(localized: "Search isn’t available right now.")
+        }
+
+        UIAccessibility.post(notification: .announcement, argument: message)
+    }
+
+    private func chooseFirstResult() {
+        guard let result = searchModel.firstResult else { return }
+        choose(result)
+    }
+
+    private func choose(_ result: AddressSearchResult) {
+        let destination = searchModel.select(result)
+        fieldIsFocused = false
+        onSelect(destination)
+    }
+}
+
+private extension View {
+    /// "Searching…" and the sentences that stand in for results.
+    func searchStatusStyle() -> some View {
+        font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    }
+}
+
+/// A place in the search panel: a result, or a place chosen earlier.
+struct SearchPlaceRow: View {
+    let title: String
+    /// May be empty; the second line is left out then.
+    let subtitle: String
+    var systemImage = "mappin.and.ellipse"
+    /// Blue for a place with scooter data, grey for one without and for recent places.
+    var isAccented = true
+    /// The neutral "No data" tag of a place no operator serves.
+    var showsNoData = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(spacing: 11) {
+            SearchSymbolTile(systemImage: systemImage, isAccented: isAccented)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(usesAccessibilityLayout ? nil : 2)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(usesAccessibilityLayout ? nil : 2)
+                }
+                // Beside large text there is no room left for the tag.
+                if showsNoData, usesAccessibilityLayout {
+                    noDataTag
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if showsNoData, !usesAccessibilityLayout {
+                noDataTag
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var noDataTag: some View {
+        Text("No data")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.06), in: Capsule())
+    }
+
+    private var usesAccessibilityLayout: Bool {
+        dynamicTypeSize.isAccessibilitySize
     }
 }
 
@@ -456,112 +615,80 @@ struct SearchSymbolTile: View {
     }
 }
 
-struct SwissAddressSuggestion: Identifiable {
-    let result: AddressSearchResult
-
-    var id: String { result.id }
-
-    var title: String {
-        displayLines.title
-    }
-
-    var subtitle: String {
-        displayLines.subtitle
-    }
-
-    private var displayLines: (title: String, subtitle: String) {
-        let name = result.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let components = name.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-
-        if components.count > 1 {
-            if components[0].range(of: #"^\d+[a-zA-Z]?(?:[-/]\d+[a-zA-Z]?)?$"#, options: .regularExpression) != nil {
-                return ("\(components[1]) \(components[0])", components.dropFirst(2).joined(separator: ", "))
-            }
-            return (components[0], components.dropFirst().joined(separator: ", "))
-        }
-
-        // Swisstopo labels usually look like "Bahnhofstrasse 1 8001 Zürich".
-        if let postalCode = name.range(of: #"\s+(?:CH-)?\d{4}\s+\p{L}"#, options: .regularExpression) {
-            return (
-                String(name[..<postalCode.lowerBound]),
-                name[postalCode.lowerBound...].trimmingCharacters(in: .whitespaces)
-            )
-        }
-        return (name, "")
-    }
+/// What the open search shows under the field.
+enum SwissAddressSearchStatus: Equatable, Sendable {
+    /// Fewer than two characters typed: the panel shows its suggestions.
+    case idle
+    case searching
+    /// Never empty. Return chooses the first place.
+    case results([AddressSearchResult])
+    case noResults
+    /// The search could not be reached; "Try again" repeats it.
+    case failed
 }
 
 @MainActor
 @Observable
 final class SwissAddressSearchModel {
     var query = "" {
-        didSet { scheduleSearch() }
+        didSet { scheduleSearch(after: debounce) }
     }
-    private(set) var suggestions: [SwissAddressSuggestion] = []
-    private(set) var isSearching = false
-    private(set) var statusMessage: String?
+    private(set) var status = SwissAddressSearchStatus.idle
 
     @ObservationIgnored private let api: any AddressSearchAPIClient
+    @ObservationIgnored private let debounce: Duration
     @ObservationIgnored private var searchTask: Task<Void, Never>?
-    @ObservationIgnored private var ignoresQueryChanges = false
 
-    init(api: any AddressSearchAPIClient = AddressSearchAPI()) {
+    init(
+        api: any AddressSearchAPIClient = AddressSearchAPI(),
+        debounce: Duration = .milliseconds(350)
+    ) {
         self.api = api
+        self.debounce = debounce
     }
 
+    /// The place Return chooses.
+    var firstResult: AddressSearchResult? {
+        guard case let .results(results) = status else { return nil }
+        return results.first
+    }
+
+    /// Empties the field, which brings the suggestions back.
     func clear() {
-        cancel()
-        ignoresQueryChanges = true
         query = ""
-        ignoresQueryChanges = false
-        suggestions = []
-        isSearching = false
-        statusMessage = nil
     }
 
     func cancel() {
         searchTask?.cancel()
         searchTask = nil
-        isSearching = false
+        if status == .searching { status = .idle }
     }
 
-    func select(_ suggestion: SwissAddressSuggestion) -> MapDestination {
+    /// "Try again" after a failed search: the same text, searched at once.
+    func retry() {
+        scheduleSearch(after: .zero)
+    }
+
+    func select(_ result: AddressSearchResult) -> MapDestination {
         cancel()
-        ignoresQueryChanges = true
-        query = suggestion.result.displayName
-        ignoresQueryChanges = false
-        suggestions = []
-        isSearching = false
-        statusMessage = nil
-        return MapDestination(
-            title: suggestion.title,
-            point: GeoPoint(
-                latitude: suggestion.result.latitude,
-                longitude: suggestion.result.longitude
-            )
-        )
+        return result.destination
     }
 
-    private func scheduleSearch() {
-        guard !ignoresQueryChanges else { return }
+    private func scheduleSearch(after delay: Duration) {
         searchTask?.cancel()
+        searchTask = nil
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        suggestions = []
-        statusMessage = nil
 
         guard trimmedQuery.count >= 2 else {
-            isSearching = false
-            searchTask = nil
+            status = .idle
             return
         }
 
-        isSearching = true
+        status = .searching
         let language = Self.searchLanguage
         searchTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .milliseconds(350))
+                try await Task.sleep(for: delay)
                 guard let self else { return }
                 let results = try await api.search(query: trimmedQuery, language: language)
                 try Task.checkCancellation()
@@ -569,20 +696,14 @@ final class SwissAddressSearchModel {
                     return
                 }
                 ScooterAnalytics.shared.track("search_results", value: results.count)
-                suggestions = results.map(SwissAddressSuggestion.init)
-                statusMessage = suggestions.isEmpty
-                    ? String(localized: "No addresses or cities found.")
-                    : nil
-                isSearching = false
+                status = results.isEmpty ? .noResults : .results(results)
                 searchTask = nil
             } catch is CancellationError {
                 return
             } catch {
                 guard let self, !Task.isCancelled else { return }
-                suggestions = []
-                isSearching = false
                 ScooterAnalytics.shared.track("search_error")
-                statusMessage = String(localized: "Address search is unavailable. Try again.")
+                status = .failed
                 searchTask = nil
             }
         }

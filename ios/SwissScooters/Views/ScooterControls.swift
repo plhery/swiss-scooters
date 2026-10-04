@@ -59,7 +59,7 @@ struct ScooterControlDock: View {
         let content = model.dock
 
         // Content taller than the room above the dock scrolls, as with large text.
-        DockHeightLimit(maximum: maximumContentHeight) {
+        HeightLimit(maximum: maximumContentHeight) {
             ViewThatFits(in: .vertical) {
                 dockContent(content)
                 ScrollView(.vertical) {
@@ -339,7 +339,7 @@ private extension ScooterDockContent {
 }
 
 /// Gives its content the height it asks for, up to a limit.
-private struct DockHeightLimit: Layout {
+struct HeightLimit: Layout {
     let maximum: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -357,7 +357,7 @@ private struct DockHeightLimit: Layout {
 }
 
 /// Rows that wrap: pills and chips move to the next line when one is full.
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 6
 

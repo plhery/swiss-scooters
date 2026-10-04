@@ -268,14 +268,135 @@ final class AddressSearchAPITests: XCTestCase {
 
         let examples: [(String, String, String)] = [
             ("Bahnhofstrasse 1 8001 Zürich", "Bahnhofstrasse 1", "8001 Zürich"),
+            ("Rue du Rhône 10 1204 Genève", "Rue du Rhône 10", "1204 Genève"),
             ("Via Nassa 5, 6900 Lugano", "Via Nassa 5", "6900 Lugano"),
+            ("114, Ankerstrasse, Zurich, Switzerland", "Ankerstrasse 114", "Zurich, Switzerland"),
             ("Zürich HB", "Zürich HB", ""),
+            ("8001 Zürich", "8001 Zürich", ""),
             ("  Bahnhofstrasse 1, CH-8001 Zürich  ", "Bahnhofstrasse 1", "CH-8001 Zürich")
         ]
         for (label, title, subtitle) in examples {
             let lines = AddressSearchResult.lines(fromDisplayName: label)
             XCTAssertEqual(lines.title, title, label)
             XCTAssertEqual(lines.subtitle, subtitle, label)
+
+            // A search result without its own title shows the same two lines.
+            let result = AddressSearchResult(latitude: 47.3769, longitude: 8.5417, displayName: label)
+            XCTAssertEqual(result.title, title, label)
+            XCTAssertEqual(result.subtitle, subtitle, label)
+        }
+    }
+}
+
+@MainActor
+final class AddressSearchModelTests: XCTestCase {
+    private let zurich = AddressSearchResult(
+        latitude: 47.3690, longitude: 8.5390, displayName: "Paradeplatz (ZH) - Zürich",
+        title: "Paradeplatz", subtitle: "Zürich ZH", isCovered: true
+    )
+    private let lungern = AddressSearchResult(
+        latitude: 46.7741, longitude: 8.1558, displayName: "Paradeplatz (OW) - Lungern",
+        title: "Paradeplatz", subtitle: "Lungern OW", isCovered: false
+    )
+
+    func testSearchStartsAtTwoCharactersAndReturnChoosesTheFirstPlace() async {
+        let api = StubAddressSearchClient(answers: [.places([zurich, lungern])])
+        let model = SwissAddressSearchModel(api: api, debounce: .zero)
+        XCTAssertEqual(model.status, .idle)
+        XCTAssertNil(model.firstResult)
+
+        // One character keeps the suggestions on screen and asks nothing.
+        model.query = "P"
+        XCTAssertEqual(model.status, .idle)
+
+        model.query = " Paradeplatz "
+        XCTAssertEqual(model.status, .searching)
+        let found = await waitUntil { model.status != .searching }
+        XCTAssertTrue(found)
+        XCTAssertEqual(model.status, .results([zurich, lungern]))
+        XCTAssertEqual(model.firstResult, zurich)
+        let queries = await api.queries
+        XCTAssertEqual(queries, ["Paradeplatz"])
+
+        // The chosen place carries its two lines and whether it has scooter data.
+        let unserved = model.select(lungern)
+        XCTAssertEqual(unserved.title, "Paradeplatz")
+        XCTAssertEqual(unserved.subtitle, "Lungern OW")
+        XCTAssertFalse(unserved.isCovered)
+        XCTAssertTrue(model.select(zurich).isCovered)
+    }
+
+    func testNothingFoundAndAFailedSearchAreToldApartAndTryAgainSearchesAgain() async {
+        let api = StubAddressSearchClient(answers: [.places([]), .failure, .places([zurich])])
+        let model = SwissAddressSearchModel(api: api, debounce: .zero)
+
+        model.query = "Xyzzy"
+        var settled = await waitUntil { model.status != .searching }
+        XCTAssertTrue(settled)
+        XCTAssertEqual(model.status, .noResults)
+        XCTAssertNil(model.firstResult)
+
+        model.query = "Zürich"
+        settled = await waitUntil { model.status != .searching }
+        XCTAssertTrue(settled)
+        XCTAssertEqual(model.status, .failed)
+
+        // Try again repeats the search for the text in the field.
+        model.retry()
+        XCTAssertEqual(model.status, .searching)
+        settled = await waitUntil { model.status != .searching }
+        XCTAssertTrue(settled)
+        XCTAssertEqual(model.status, .results([zurich]))
+        let queries = await api.queries
+        XCTAssertEqual(queries, ["Xyzzy", "Zürich", "Zürich"])
+    }
+
+    func testClearingTheFieldBringsTheSuggestionsBackAndDropsALateAnswer() async {
+        let api = StubAddressSearchClient(answers: [.places([zurich])], delay: .milliseconds(60))
+        let model = SwissAddressSearchModel(api: api, debounce: .zero)
+
+        model.query = "Paradeplatz"
+        XCTAssertEqual(model.status, .searching)
+        model.clear()
+        XCTAssertEqual(model.query, "")
+        XCTAssertEqual(model.status, .idle)
+
+        // The answer to the cleared text arrives later and changes nothing.
+        try? await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(model.status, .idle)
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async -> Bool {
+        for _ in 0 ..< 200 {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return condition()
+    }
+}
+
+private actor StubAddressSearchClient: AddressSearchAPIClient {
+    enum Answer: Sendable {
+        case places([AddressSearchResult])
+        case failure
+    }
+
+    private var answers: [Answer]
+    private let delay: Duration
+    private(set) var queries: [String] = []
+
+    init(answers: [Answer], delay: Duration = .zero) {
+        self.answers = answers
+        self.delay = delay
+    }
+
+    func search(query: String, language: String) async throws -> [AddressSearchResult] {
+        queries.append(query)
+        let answer = answers.isEmpty ? Answer.places([]) : answers.removeFirst()
+        try await Task.sleep(for: delay)
+        switch answer {
+        case let .places(places): return places
+        case .failure: throw URLError(.notConnectedToInternet)
         }
     }
 }

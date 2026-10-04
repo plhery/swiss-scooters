@@ -500,25 +500,6 @@ final class ScooterFilteringTests: XCTestCase {
         XCTAssertEqual(annotation.title, bay.bayTitle)
     }
 
-    func testAddressSuggestionsSeparateTheStreetFromPostalCodeAndCity() {
-        let examples: [(String, String, String)] = [
-            ("Bahnhofstrasse 1 8001 Zürich", "Bahnhofstrasse 1", "8001 Zürich"),
-            ("Rue du Rhône 10 1204 Genève", "Rue du Rhône 10", "1204 Genève"),
-            ("Via Nassa 5, 6900 Lugano", "Via Nassa 5", "6900 Lugano"),
-            ("114, Ankerstrasse, Zurich, Switzerland", "Ankerstrasse 114", "Zurich, Switzerland"),
-            ("Zürich HB", "Zürich HB", ""),
-            ("8001 Zürich", "8001 Zürich", ""),
-            ("  Bahnhofstrasse 1, CH-8001 Zürich  ", "Bahnhofstrasse 1", "CH-8001 Zürich")
-        ]
-        for (label, title, subtitle) in examples {
-            let suggestion = SwissAddressSuggestion(result: AddressSearchResult(
-                latitude: 47.3769, longitude: 8.5417, displayName: label
-            ))
-            XCTAssertEqual(suggestion.title, title, label)
-            XCTAssertEqual(suggestion.subtitle, subtitle, label)
-        }
-    }
-
     @MainActor
     func testCompassTouchesAreExcludedFromScooterTapHandling() {
         let compass = MKCompassButton(mapView: MKMapView())

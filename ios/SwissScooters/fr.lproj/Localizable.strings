@@ -202,6 +202,7 @@
 "No data" = "Aucune donnée";
 "Searching…" = "Recherche…";
 "No places found" = "Aucun lieu trouvé";
+"No places found. Outside Switzerland, search by city." = "Aucun lieu trouvé. Hors de Suisse, cherchez par ville.";
 "Search isn’t available right now." = "La recherche est indisponible pour le moment.";
 "Try again" = "Réessayer";
 "Suggestions" = "Suggestions";

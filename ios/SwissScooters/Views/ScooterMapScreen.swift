@@ -45,7 +45,11 @@ struct ScooterMapScreen: View {
                             state: model.searchBarState,
                             isSearching: $searchIsExpanded,
                             hasActiveFilters: model.hasActiveFilters,
+                            recentPlaces: model.recentPlaces,
+                            nearbyCities: searchIsExpanded ? model.nearbyCities.map(\.city) : [],
+                            bottomLimit: proxy.frame(in: .global).maxY,
                             onSelect: model.focusOnAddress,
+                            onChooseCity: model.chooseCity,
                             onClear: model.clearAddressSearch,
                             onUseCurrentLocation: model.focusOnUser,
                             onShowFilters: {
