@@ -1837,13 +1837,16 @@ struct MapStatusBanner: View {
                 HStack(spacing: 9) {
                     statusIndicator
                     statusMessage
+                    Spacer(minLength: 0)
                     statusAction
                 }
             }
         }
         .padding(.leading, 14)
         .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 14 : 5)
-        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 10 : 5)
+        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 10 : 2)
+        // As wide as the search bar above it, whatever the length of the sentence.
+        .frame(maxWidth: 560)
         .background {
             TopChromeTapShield(cornerRadius: bannerCornerRadius)
         }
@@ -1876,11 +1879,28 @@ struct MapStatusBanner: View {
     }
 
     private var statusAction: some View {
-        Button(actionTitle, action: action)
+        Button(action: action) {
+            ZStack {
+                Text(actionTitle)
+                    .opacity(isBusy ? 0 : 1)
+                if isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                }
+            }
             .font(.caption.weight(.bold))
-            .buttonStyle(.borderedProminent)
-            .tint(ScooterPalette.criticalFill)
-            .disabled(isBusy)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 34)
+            .background(ScooterPalette.criticalFill, in: Capsule())
+            // The pill stays small; its target is 44 pt high.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+        .accessibilityLabel(actionTitle)
     }
 }
 
