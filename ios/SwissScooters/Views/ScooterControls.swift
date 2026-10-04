@@ -1474,6 +1474,7 @@ struct ScooterSettingsSheet: View {
     @Bindable var model: ScooterMapModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         NavigationStack {
@@ -1498,13 +1499,23 @@ struct ScooterSettingsSheet: View {
                                 Circle()
                                     .fill(providerAccent(provider, colorScheme: colorScheme))
                                     .frame(width: 10, height: 10)
-                                Text(provider.name)
-                                Spacer(minLength: 8)
-                                Text(passStatus(for: provider))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.trailing)
-                                    .lineLimit(2)
+                                if dynamicTypeSize.isAccessibilitySize {
+                                    // Very large text: the status goes under the name, so neither is cut off.
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(provider.name)
+                                        Text(passStatus(for: provider))
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else {
+                                    Text(provider.name)
+                                    Spacer(minLength: 8)
+                                    Text(passStatus(for: provider))
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.trailing)
+                                        .lineLimit(2)
+                                }
                             }
                         }
                     }
