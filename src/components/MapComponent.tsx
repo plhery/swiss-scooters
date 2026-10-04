@@ -257,6 +257,9 @@ export default function MapComponent({
   const scooterLayerRef = useRef<L.LayerGroup | null>(null);
   const destinationLayerRef = useRef<L.LayerGroup | null>(null);
   const destinationMarkerRef = useRef<L.Marker | null>(null);
+  // The pin of a searched place is kept clear of the dock from the moment the
+  // place is chosen until the visitor drags the map: from then on it stays put.
+  const revealPlaceRef = useRef(false);
   // True from the start of a move of the map, by hand or by itself, to its end.
   const movingRef = useRef(false);
   const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -358,6 +361,7 @@ export default function MapComponent({
       setZoom(currentZoom);
     };
     const updateViewport = () => reportViewport(map);
+    map.on('dragstart', () => { revealPlaceRef.current = false; });
     map.on('movestart', () => { movingRef.current = true; });
     map.on('moveend', () => { movingRef.current = false; });
     // Markers keep their clicks to themselves, so this is the map and nothing on it.
@@ -462,6 +466,11 @@ export default function MapComponent({
       easeLinearity: 0.25,
     });
   }, [focusLocation, focusVersion, focusZoom, readyMap]);
+
+  // Each choice of a place, the same one again included, is a new flight to it.
+  useEffect(() => {
+    revealPlaceRef.current = destination !== null;
+  }, [destination, focusVersion]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -664,7 +673,9 @@ export default function MapComponent({
   // On a phone a card opens in the dock, which grows and lifts the controls that
   // sit on it. What the visitor picked, a scooter, a bay or a searched place, must
   // not end up underneath: once the dock has settled, the map moves up by just
-  // what is needed. Declared after the effects that draw the markers.
+  // what is needed. A place counts as just picked until the map is dragged; after
+  // that the map does not move by itself for it again. Declared after the effects
+  // that draw the markers.
   useEffect(() => {
     const map = mapRef.current;
     const content = document.querySelector('.sheet-content');
@@ -674,7 +685,7 @@ export default function MapComponent({
     const boxOf = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
     const reveal = () => {
       waiting = false;
-      const marker = popoverAnchor() ?? destinationMarkerRef.current?.getElement();
+      const marker = popoverAnchor() ?? (revealPlaceRef.current ? destinationMarkerRef.current?.getElement() : null);
       // While the search is open the dock is not shown.
       if (!marker || document.querySelector('.app-shell[data-searching="true"]')) return;
       const area = map.getContainer().getBoundingClientRect();

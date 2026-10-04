@@ -2313,6 +2313,53 @@ test.describe('on a small phone, or one held on its side', () => {
     await expect(credits).toBeVisible();
   });
 
+  test('a searched place that the visitor dragged under the dock is left there when a card closes', async ({ page }) => {
+    // Some 550 m south of the scooters, so that they stay well above the dock and the card.
+    await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([
+      { lat: 47.37195, lng: 8.5417, display_name: 'Bürkliplatz', title: 'Bürkliplatz', subtitle: 'Zürich ZH', covered: true },
+    ]) }));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Search city or address' }).click();
+    await page.getByRole('combobox').fill('Bürkliplatz');
+    await expect(page.getByRole('option', { name: /^Bürkliplatz/ })).toBeVisible();
+    await page.getByRole('combobox').press('Enter');
+    const pin = page.getByRole('img', { name: 'Searched address: Bürkliplatz, Zürich ZH' });
+    await expect(pin).toBeVisible();
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
+    const marker = page.getByRole('button', { name: /^Bird scooter/ });
+    await expect(marker).toBeVisible();
+
+    // The visitor moves the map: the pin ends up behind the dock.
+    const dock = page.locator('.sheet');
+    const [place, sheet] = [(await pin.boundingBox())!, (await dock.boundingBox())!];
+    const distance = Math.round(sheet.y + 24 - place.y);
+    await page.mouse.move(120, 300);
+    await page.mouse.down();
+    await page.mouse.move(120, 300 + distance, { steps: 12 });
+    // Held still before letting go, so that the map does not glide on.
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+    await expect.poll(async () => (await pin.boundingBox())!.y).toBeGreaterThan(sheet.y);
+    // Once the map has come to rest.
+    await page.waitForTimeout(600);
+    const before = (await marker.boundingBox())!;
+    expect(before.y + before.height).toBeLessThan(sheet.y - 230);
+
+    // A card opens and closes; its scooter is far above it. The map stays where the visitor left it.
+    await marker.click();
+    await expect(page.locator('.sheet .dock-card').getByRole('heading', { name: 'Bird' })).toBeVisible();
+    await page.waitForTimeout(700);
+    expect((await marker.boundingBox())!.y).toBe(before.y);
+    await page.getByRole('button', { name: 'Close scooter details' }).click();
+    await expect(page.locator('.sheet .dock-card')).toHaveCount(0);
+    // Longer than the dock takes to settle and the map to move.
+    await page.waitForTimeout(900);
+    expect((await marker.boundingBox())!.y).toBe(before.y);
+    expect((await pin.boundingBox())!.y).toBeGreaterThan((await dock.boundingBox())!.y);
+  });
+
   test('a phone on its side shows Near me as its icon alone, clear of the location card and the credits', async ({ page }) => {
     await page.setViewportSize({ width: 844, height: 390 });
     await page.goto('/');
