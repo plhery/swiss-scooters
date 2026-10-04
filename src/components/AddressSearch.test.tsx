@@ -121,6 +121,28 @@ describe('typing', () => {
     }));
   });
 
+  it('searches in the language the interface is shown in, and names a city’s country in it', async () => {
+    localStorage.setItem('scooters-locale', 'de');
+    const fetcher = answer(PARADEPLATZ);
+    vi.stubGlobal('fetch', fetcher);
+    const lyon = COVERED_CITIES.filter(city => city.id === 'fr:Lyon');
+    const { input, onSelect } = renderSearch({ nearbyCities: lyon });
+    // The stored language applies right after the first render.
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(input).toHaveAccessibleName('Stadt oder Adresse');
+
+    await type(input, 'Genf');
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith('/api/geocode', expect.objectContaining({
+      body: JSON.stringify({ q: 'Genf', lang: 'de' }),
+    }));
+
+    await type(input, '');
+    fireEvent.click(within(screen.getByRole('group', { name: 'Städte mit Scootern' })).getByRole('button', { name: 'Lyon' }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      title: 'Lyon', subtitle: 'Frankreich', display_name: 'Lyon, Frankreich',
+    }));
+  });
+
   it('shows each place with a title and a second line, and tags the ones without scooter data', async () => {
     vi.stubGlobal('fetch', answer(PARADEPLATZ));
     const { input } = renderSearch();
