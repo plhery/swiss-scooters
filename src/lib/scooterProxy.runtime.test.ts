@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { Miniflare, Response as RuntimeResponse } from 'miniflare';
+import { convertV4MiniflareOptions, Miniflare, Response as RuntimeResponse } from 'miniflare';
 import { expect, it } from 'vitest';
 
 it('proxies authenticated requests and rejects redirects in the Workers runtime', async () => {
@@ -17,7 +17,7 @@ it('proxies authenticated requests and rejects redirects in the Workers runtime'
   });
   const authorizations: Array<string | null> = [];
   let redirect = false;
-  const runtime = new Miniflare({
+  const runtime = new Miniflare(convertV4MiniflareOptions({
     modules: true, compatibilityDate: '2026-07-13', script: bundle.outputFiles[0].text,
     outboundService(request) {
       expect(new URL(request.url).hostname).toBe('origin.example');
@@ -29,7 +29,7 @@ it('proxies authenticated requests and rejects redirects in the Workers runtime'
           'X-Scooter-Public-Cache-Control': 'public, max-age=30',
         } });
     },
-  });
+  }));
   try {
     const url = 'https://map.example/api/scooters?south=47.36&west=8.52&north=47.39&east=8.57&zoom=16';
     const response = await runtime.dispatchFetch(url);

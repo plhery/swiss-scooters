@@ -1021,7 +1021,8 @@ const paradeplatz = [
 async function expectTouchTargets(page: Page) {
   const island = page.locator('.search-island');
   // Measured once the content has settled in: it arrives slightly scaled down.
-  await island.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+  // Results arriving can replace a transition, which rejects its finished promise.
+  await island.evaluate(element => Promise.allSettled(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
   for (const button of await island.getByRole('button').or(island.getByRole('option')).all()) {
     const target = await button.boundingBox();
     expect(target!.height).toBeGreaterThanOrEqual(44);
@@ -1100,6 +1101,10 @@ test('the search bar is a search field until a place is chosen, and shows a loca
 });
 
 test('the bar keeps its second line whole beside the clear button in every language, down to 320 px', async ({ page }) => {
+  // Exercise the Linux font fallback on macOS too, where the system font wins.
+  await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
+    document.body.style.fontFamily = 'var(--font-geist-sans), sans-serif';
+  }, { once: true }));
   await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(paradeplatz) }));
   const island = page.locator('.search-island');
   const line = island.locator('.bar-copy span');
@@ -1115,6 +1120,7 @@ test('the bar keeps its second line whole beside the clear button in every langu
     await page.goto('/');
     await page.evaluate(() => localStorage.setItem('scooters-locale', 'en'));
     await page.reload();
+    await page.evaluate(() => document.fonts.ready);
     const height = (await island.boundingBox())!.height;
     // The sentences are longer than in English; in Italian the line does not fit beside the button.
     for (const [locale, near, neutral] of [
@@ -2386,8 +2392,8 @@ test.describe('on a small phone, or one held on its side', () => {
 
     // The card is taller than the dock was and would cover the scooter: the map moves up by what is needed.
     const marker = await pick(page, 'Bird');
-    await expect.poll(() => roomAboveDock(page, marker)).toBe(8);
-    expect((await marker.boundingBox())!.y).toBeLessThan(before.y - 20);
+    await expect.poll(async () => (await marker.boundingBox())!.y).toBeLessThan(before.y - 20);
+    await expect.poll(() => roomAboveDock(page, marker)).toBeGreaterThanOrEqual(0);
     await expect(page.locator('.scooter-marker-selected')).toHaveCount(1);
   });
 

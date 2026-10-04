@@ -33,7 +33,7 @@ Worker secrets if future features require them.
 
 ```bash
 npm ci
-npm audit --audit-level=moderate
+npm run check:dependencies
 npm run check:providers
 npm run check:api-contract
 npm run lint

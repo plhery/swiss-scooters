@@ -4,7 +4,7 @@
 
 ## Validation
 
-- [ ] `npm audit --audit-level=moderate`
+- [ ] `npm run check:dependencies`
 - [ ] `npm run lint`
 - [ ] `npm test`
 - [ ] `npm run build`

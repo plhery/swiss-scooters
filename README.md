@@ -67,6 +67,7 @@ environment variables, API keys, databases, or accounts.
 To run the checks:
 
 ```bash
+npm run check:dependencies
 npm run check:providers
 npm run check:api-contract
 npm run lint
@@ -74,6 +75,15 @@ npm test
 npm run test:e2e
 npm run build
 ```
+
+The dependency check fails on moderate or higher npm advisories. Its only
+exception is [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+in the development-only `eslint-config-next → @next/eslint-plugin-next →
+fast-glob → micromatch → braces@3.0.3` chain: upstream has no patched release,
+and these tools read repository-controlled glob patterns during linting. The
+exception also covers npm's inherited findings along that chain, but rejects
+other advisories and any production dependency affected by this advisory.
+Remove the exception when a patched upstream release is available.
 
 Provider metadata shared by the web and iPhone apps is generated from
 `data/providers.json`; the same generator includes Swiss, French, German and Italian service-area
