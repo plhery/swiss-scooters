@@ -7,6 +7,7 @@ import { flushSync } from 'react-dom';
 import { BATTERY_PRESETS, batteryPresetLabel, snapBatteryPreset } from '@/lib/battery';
 import type { MapStyleName, ThemeName } from '@/lib/clientParams';
 import { SUPPORTED_LOCALES, useI18n, type AppLocale, type TranslationKey } from '@/lib/i18n';
+import { isSingular } from '@/lib/uiText';
 import { PROVIDERS, PROVIDER_KEYS } from '@/lib/types';
 import { providerSurfaceColor } from '@/lib/providerColor';
 import { selectionFeedback } from '@/lib/feedback';
@@ -135,9 +136,7 @@ export default function ControlSheet({
         <button type="button" className="sheet-primary" aria-live="polite" onClick={tap(onClose)}>
           {showCount === null
             ? t('dock.finding')
-            : showCount === 1
-              ? t('filter.show.one')
-              : t('filter.show.other', { count: formatNumber(showCount) })}
+            : t(isSingular(showCount, locale) ? 'filter.show.one' : 'filter.show.other', { count: formatNumber(showCount) })}
         </button>
       ) : undefined}
       onClose={onClose}

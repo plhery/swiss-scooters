@@ -151,6 +151,23 @@ describe('ControlSheet filters', () => {
     expect(props.onResetFilters).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['fr', 'Afficher 0 trottinette', 'Afficher 1 trottinette', 'Afficher 2 trottinettes'],
+    ['de', '0 Scooter anzeigen', '1 Scooter anzeigen', '2 Scooter anzeigen'],
+    ['it', 'Mostra 0 monopattini', 'Mostra 1 monopattino', 'Mostra 2 monopattini'],
+    ['en', 'Show 0 scooters', 'Show 1 scooter', 'Show 2 scooters'],
+  ])('counts none, one and two scooters as %s does', async (locale, none, one, two) => {
+    localStorage.setItem('scooters-locale', locale);
+    const { rerender, container } = renderSheet({ showCount: 0 });
+    // French takes the singular for none; the other three the plural.
+    const show = container.querySelector('.sheet-primary')!;
+    await vi.waitFor(() => expect(show).toHaveTextContent(none));
+    rerender({ showCount: 1 });
+    expect(show).toHaveTextContent(one);
+    rerender({ showCount: 2 });
+    expect(show).toHaveTextContent(two);
+  });
+
   it('ends with a button that says what the map will show and closes the sheet', () => {
     const { props, rerender } = renderSheet();
     const dialog = screen.getByRole('dialog', { name: 'Filters' });

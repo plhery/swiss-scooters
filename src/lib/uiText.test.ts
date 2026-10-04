@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TranslationKey } from '@/lib/i18n';
-import { formatClockTime, formatUiText, type UiTextFormatter } from '@/lib/uiText';
+import { formatClockTime, formatUiText, isSingular, type UiTextFormatter } from '@/lib/uiText';
 
 // Echoes the key and its values, so the test shows what reaches the dictionary.
 const i18n: UiTextFormatter = {
@@ -41,5 +41,30 @@ describe('formatUiText', () => {
 
   it('turns the time into a clock time', () => {
     expect(formatUiText({ key: 'dock.refreshFailed', time: AT }, i18n)).toBe('dock.refreshFailed time=14:02');
+  });
+
+  it('takes the singular form of a sentence about a count where the language uses it', () => {
+    const scooters = (count: number) => ({ key: 'dock.onMap.other', one: { key: 'dock.onMap.one', count } }) as const;
+    const french = { ...i18n, locale: 'fr' } as const;
+    // German: one, and nothing else.
+    expect(formatUiText(scooters(1), i18n)).toBe('dock.onMap.one');
+    expect(formatUiText(scooters(0), i18n)).toBe('dock.onMap.other');
+    expect(formatUiText(scooters(2), i18n)).toBe('dock.onMap.other');
+    // French: none as well, "0 trottinette sur cette carte".
+    expect(formatUiText(scooters(0), french)).toBe('dock.onMap.one');
+    expect(formatUiText(scooters(1), french)).toBe('dock.onMap.one');
+    expect(formatUiText(scooters(2), french)).toBe('dock.onMap.other');
+    expect(formatUiText(scooters(5412), french)).toBe('dock.onMap.other');
+  });
+});
+
+describe('isSingular', () => {
+  it('is true for one in every app language, and for none only in French', () => {
+    for (const locale of ['en', 'de', 'fr', 'it'] as const) {
+      expect(isSingular(1, locale)).toBe(true);
+      expect(isSingular(2, locale)).toBe(false);
+      expect(isSingular(1000, locale)).toBe(false);
+      expect(isSingular(0, locale)).toBe(locale === 'fr');
+    }
   });
 });

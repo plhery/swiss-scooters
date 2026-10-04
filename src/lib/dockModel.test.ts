@@ -10,7 +10,7 @@ import {
 } from '@/lib/dockModel';
 import type { TranslationKey } from '@/lib/i18n';
 import type { ScooterResponseMeta } from '@/lib/types';
-import type { UiTextFormatter } from '@/lib/uiText';
+import { formatUiText, type UiTextFormatter } from '@/lib/uiText';
 
 const NOW = Date.parse('2026-10-03T12:03:00.000Z');
 const ALL = ['bolt', 'bird', 'dott', 'hopp', 'lime', 'voi', 'pony', 'publibike'];
@@ -74,13 +74,19 @@ describe('originInViewport', () => {
 
 describe('dock count', () => {
   it('says "nearby" while the origin is in the viewport and "on this map" otherwise', () => {
-    expect(summary({ originInViewport: true }).count).toEqual({ value: 22, label: { key: 'dock.nearby.other' } });
-    expect(summary().count).toEqual({ value: 22, label: { key: 'dock.onMap.other' } });
+    expect(summary({ originInViewport: true }).count)
+      .toEqual({ value: 22, label: { key: 'dock.nearby.other', one: { key: 'dock.nearby.one', count: 22 } } });
+    expect(summary().count).toEqual({ value: 22, label: { key: 'dock.onMap.other', one: { key: 'dock.onMap.one', count: 22 } } });
   });
 
   it('has singular forms', () => {
-    expect(summary({ count: 1, originInViewport: true }).count).toEqual({ value: 1, label: { key: 'dock.nearby.one' } });
-    expect(summary({ count: 1 }).count).toEqual({ value: 1, label: { key: 'dock.onMap.one' } });
+    // The model offers both forms with the count; the language decides which count takes the singular.
+    const english: UiTextFormatter = { locale: 'en', t: key => key, formatNumber: String };
+    const nearby = summary({ count: 1, originInViewport: true }).count;
+    expect(nearby).toEqual({ value: 1, label: { key: 'dock.nearby.other', one: { key: 'dock.nearby.one', count: 1 } } });
+    expect(formatUiText(nearby.label, english)).toBe('dock.nearby.one');
+    expect(formatUiText(summary({ count: 1 }).count.label, english)).toBe('dock.onMap.one');
+    expect(formatUiText(summary({ count: 2 }).count.label, english)).toBe('dock.onMap.other');
   });
 
   it('reads "Finding scooters…" on the first load, with nothing else', () => {
@@ -292,6 +298,16 @@ describe('dock notices', () => {
     const finding = summary({ ...nearby, count: 0, providerCounts: {} });
     expect(finding.phase).toBe('finding');
     expect(finding.chips?.providers[0]).toMatchObject({ provider: 'bird', down: true });
+  });
+
+  it('counts nothing in the singular in French, and in the plural in the other languages', () => {
+    const empty = summary({ count: 0, providerCounts: {}, originInViewport: true }).count.label;
+    const key = (locale: UiTextFormatter['locale']) => formatUiText(empty, { locale, t: text => text, formatNumber: String });
+    // "0 trottinette à proximité", but "0 scooters nearby", "0 Scooter in der Nähe", "0 monopattini nelle vicinanze".
+    expect(key('fr')).toBe('dock.nearby.one');
+    expect(key('en')).toBe('dock.nearby.other');
+    expect(key('de')).toBe('dock.nearby.other');
+    expect(key('it')).toBe('dock.nearby.other');
   });
 
   it('stays vague about sources it cannot name and silent about providers elsewhere', () => {

@@ -110,6 +110,20 @@ describe('BottomSheet', () => {
     expect(count()).toHaveTextContent(/^1\s*scooter nearby$/);
   });
 
+  it('counts nothing in the singular in French', async () => {
+    localStorage.setItem('scooters-locale', 'fr');
+    const empty = { count: 0, originInViewport: true, providerCounts: {} };
+    const sheet = renderSheet({ dock: dock(empty) });
+    await vi.waitFor(() => expect(count()).toHaveTextContent(/^0\s*trottinette à proximité$/));
+    sheet.update({ dock: dock({ ...empty, count: 2, providerCounts: { lime: 2 } }) });
+    expect(count()).toHaveTextContent(/^2\s*trottinettes à proximité$/);
+  });
+
+  it('keeps the plural for nothing in English', () => {
+    renderSheet({ dock: dock({ count: 0, providerCounts: {} }) });
+    expect(count()).toHaveTextContent(/^0\s*scooters on this map$/);
+  });
+
   it('says it is finding scooters on the first load, without a count, status or chips', () => {
     renderSheet({ dock: dock({ hasData: false, loading: 'load', meta: null, lastUpdated: null }) });
 

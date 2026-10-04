@@ -320,7 +320,8 @@ export function dockModel(input: DockInput): DockModel {
     phase: 'ready',
     count: {
       value: input.count,
-      label: { key: `dock.${scope}.${input.count === 1 ? 'one' : 'other'}` },
+      // Which counts take the singular depends on the language: French says "0 trottinette".
+      label: { key: `dock.${scope}.other`, one: { key: `dock.${scope}.one`, count: input.count } },
     },
     ...dockStatus(input),
     busy,
