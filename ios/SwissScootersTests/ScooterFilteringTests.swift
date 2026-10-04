@@ -626,6 +626,29 @@ extension ScooterFilteringTests {
         XCTAssertEqual(ScooterBatteryFilter.label(for: 60), "60%+")
     }
 
+    /// "Indifférent" is the longest word for "Any". Side by side until the text
+    /// is very large, the presets must hold it on one line.
+    @MainActor
+    func testTheLongestBatteryPresetFitsItsSegmentAtTheLargestStandardTextSize() throws {
+        // A 375 pt phone: 20 pt margins, 4 pt inside the control and three 4 pt gaps.
+        let segment: CGFloat = (375 - 40 - 8 - 12) / 4
+        let traits = UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
+        let pointSize = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).pointSize
+        let smallest = UIFont.systemFont(
+            ofSize: pointSize * ScooterFilterSheet.presetMinimumScale,
+            weight: .semibold
+        )
+
+        for language in ["en", "de", "fr", "it"] {
+            let strings = try XCTUnwrap(
+                Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:))
+            )
+            let any = strings.localizedString(forKey: "Any", value: nil, table: nil)
+            let width = (any as NSString).size(withAttributes: [.font: smallest]).width
+            XCTAssertLessThanOrEqual(width, segment, "\(language): \(any)")
+        }
+    }
+
     func testVisibleSummaryAlsoCountsWhatTheFiltersHide() {
         let scooters = [
             scooter(id: "lime-inside", provider: "lime", battery: 80),

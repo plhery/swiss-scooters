@@ -1298,9 +1298,13 @@ struct ScooterFilterSheet: View {
             model.setMinimumBattery(Double(preset))
         } label: {
             // "30%+" reads the same in every language; only "Any" is translated.
+            // "Indifférent" outgrows its segment before the presets stack: it
+            // shrinks a little rather than break in the middle of the word.
             Text(verbatim: ScooterBatteryFilter.label(for: preset))
                 .font(.subheadline.weight(selected ? .semibold : .regular))
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(Self.presetMinimumScale)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .background {
                     if selected {
@@ -1319,6 +1323,9 @@ struct ScooterFilterSheet: View {
         )
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
+
+    /// How far the label of a battery preset may shrink to stay on one line.
+    static let presetMinimumScale = 0.75
 
     /// The raised segment of the chosen minimum, as in a segmented control.
     private static let selectedPresetFill = Color(uiColor: UIColor { traits in
@@ -1926,7 +1933,7 @@ struct MapStatusBanner: View {
 
     var body: some View {
         Group {
-            if dynamicTypeSize.isAccessibilitySize {
+            if stacks {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .top, spacing: 9) {
                         statusIndicator
@@ -1946,8 +1953,8 @@ struct MapStatusBanner: View {
             }
         }
         .padding(.leading, 14)
-        .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 14 : 5)
-        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 10 : 2)
+        .padding(.trailing, stacks ? 14 : 5)
+        .padding(.vertical, stacks ? 10 : 2)
         // As wide as the search bar above it, whatever the length of the sentence.
         .frame(maxWidth: 560)
         .background {
@@ -1961,8 +1968,15 @@ struct MapStatusBanner: View {
         }
     }
 
+    /// Beside the button a German or French reason already takes three lines
+    /// at the standard text size on a narrow phone. Any larger, the button
+    /// goes under the sentence, which is never cut short.
+    private var stacks: Bool {
+        dynamicTypeSize >= .xLarge
+    }
+
     private var bannerCornerRadius: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 22 : 999
+        stacks ? 22 : 999
     }
 
     private var statusIndicator: some View {
@@ -1974,7 +1988,6 @@ struct MapStatusBanner: View {
     private var statusMessage: some View {
         Text(message)
             .font(.caption.weight(.semibold))
-            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
             .fixedSize(horizontal: false, vertical: true)
     }
 

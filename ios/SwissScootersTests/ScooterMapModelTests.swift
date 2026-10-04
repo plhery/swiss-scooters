@@ -2462,6 +2462,20 @@ extension ScooterMapModelTests {
             )
         }
 
+        // German has the longest reasons and the longest button.
+        if let german = Bundle.main.path(forResource: "de", ofType: "lproj").flatMap(Bundle.init(path:)) {
+            for failure in ScooterLoadFailure.allCases {
+                assertRenders(
+                    MapStatusBanner(
+                        message: german.localizedString(forKey: failure.message, value: nil, table: nil),
+                        actionTitle: german.localizedString(forKey: "Try again", value: nil, table: nil),
+                        action: {}
+                    ),
+                    "German banner: \(failure.rawValue)"
+                )
+            }
+        }
+
         for issue in [ScooterLocationIssue.denied, .restricted, .notFound] {
             assertRenders(
                 LocationIssueCard(issue: issue, onOpenSettings: {}, onSearchPlace: {}, onRetry: {}, onDismiss: {}),
@@ -2474,22 +2488,56 @@ extension ScooterMapModelTests {
     }
 
     /// Draws the view off screen in light appearance at the standard text
-    /// size, and in dark appearance with very large text.
+    /// size, in dark appearance with very large text, and on a narrow phone at
+    /// the largest size before the layouts for very large text take over.
     private func assertRenders(
         _ view: some View,
         _ name: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        for (scheme, size) in [(ColorScheme.light, DynamicTypeSize.large), (.dark, .accessibility3)] {
+        let passes: [(ColorScheme, DynamicTypeSize, CGFloat)] = [
+            (.light, .large, 390), (.dark, .accessibility3, 390), (.light, .xxxLarge, 375)
+        ]
+        for (scheme, size, width) in passes {
             let renderer = ImageRenderer(
                 content: view
-                    .frame(width: 390)
+                    .frame(width: width)
                     .environment(\.colorScheme, scheme)
                     .environment(\.dynamicTypeSize, size)
             )
             let image = renderer.uiImage
             XCTAssertGreaterThan(image?.size.height ?? 0, 0, "\(name), \(scheme), \(size)", file: file, line: line)
+        }
+    }
+
+    /// Beside its button a long reason was cut after three lines as soon as the
+    /// text was larger than standard.
+    func testTheLoadFailedBannerShowsItsWholeSentenceAtEveryTextSize() throws {
+        let german = try XCTUnwrap(Bundle.main.path(forResource: "de", ofType: "lproj").flatMap(Bundle.init(path:)))
+        let sentence = german.localizedString(
+            forKey: "Scooters is busy right now. Try again in a moment.", value: nil, table: nil
+        )
+        let button = german.localizedString(forKey: "Try again", value: nil, table: nil)
+        XCTAssertTrue(sentence.hasPrefix("Scooters ist"), sentence)
+
+        // A 375 pt phone leaves the banner 351 pt.
+        func height(_ message: String, _ size: DynamicTypeSize) -> CGFloat {
+            ImageRenderer(
+                content: MapStatusBanner(message: message, actionTitle: button, action: {})
+                    .frame(width: 351)
+                    .environment(\.dynamicTypeSize, size)
+            ).uiImage?.size.height ?? 0
+        }
+
+        let standard = height(sentence, .large)
+        XCTAssertGreaterThan(standard, height("Kurz.", .large), "Three lines beside the button")
+        for size in [DynamicTypeSize.xLarge, .xxLarge, .xxxLarge, .accessibility3] {
+            XCTAssertGreaterThan(height(sentence, size), standard, "\(size)")
+        }
+        // Nothing caps the lines: twice the text is taller at every size.
+        for size in DynamicTypeSize.allCases {
+            XCTAssertGreaterThan(height("\(sentence) \(sentence)", size), height(sentence, size), "\(size)")
         }
     }
 }
