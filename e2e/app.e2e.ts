@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -583,20 +584,41 @@ test('installs the production service worker and reloads offline', async ({
 });
 
 test('every link gets the same page, without the parameters of the link in it', async ({ request }) => {
-  const shell = async (path: string) => {
-    const response = await request.get(path);
-    const nonce = response.headers()['content-security-policy'].match(/'nonce-([^']+)'/)![1];
-    return (await response.text()).replaceAll(nonce, '');
+  const shell = async (path: string, headers: Record<string, string> = {}) => {
+    const response = await request.get(path, { headers });
+    const nonce = response.headers()['content-security-policy']?.match(/'nonce-([^']+)'/)?.[1];
+    const body = await response.text();
+    // Served as it was built, not rendered for this request.
+    expect(response.headers()['x-nextjs-cache'], path).toBe('HIT');
+    return nonce ? body.replaceAll(nonce, '') : body;
   };
   const plain = await shell('/');
   expect(plain).toContain('class="app-shell"');
-  // Requests that arrive together share one render on the server: a visitor must
-  // never be handed the page of someone else's link, with its coordinates.
-  const shells = await Promise.all(Array.from({ length: 8 }, (_, index) => shell(
-    index % 2 ? '/' : `/?origin=47.3769,8.5417&theme=dark&run=${index}`
-  )));
-  expect(shells.filter(html => html !== plain)).toHaveLength(0);
+  // A render shared between requests that arrive together would hand a visitor
+  // the page of someone else's request: a link with coordinates, the router's
+  // own request with its parameter, or a crawler's, which is rendered differently.
+  const router = { RSC: '1', 'Next-Router-Prefetch': '1' };
+  // The parameter the server expects beside those two headers.
+  const checked = createHash('sha256').update('1,0,0,0').digest().subarray(0, 12).toString('base64url');
+  const rounds = await Promise.all(Array.from({ length: 4 }, async (_, round) => {
+    const [first, link, , second, crawler, , third] = await Promise.all([
+      shell('/'),
+      shell(`/?origin=47.3769,8.5417&theme=dark&run=${round}`),
+      shell(`/?origin=47.3769,8.5417&_rsc=${checked}`, router),
+      shell('/'),
+      shell('/?origin=47.3769,8.5417', { 'User-Agent': 'Twitterbot/1.0' }),
+      shell(`/?_rsc=${checked}`, router),
+      shell('/'),
+    ]);
+    return [first, link, second, crawler, third];
+  }));
+  expect(rounds.flat().filter(html => html !== plain)).toHaveLength(0);
   expect(plain).not.toContain('47.3769');
+  expect(plain).not.toContain('_rsc');
+  // What the router is sent says nothing of the link either.
+  const flight = await shell(`/?origin=47.3769,8.5417&_rsc=${checked}`, router);
+  expect(flight).not.toContain('47.3769');
+  expect(flight).not.toContain('class="app-shell"');
 });
 
 test('opening a link under the service worker does not look like a new version and reload', async ({

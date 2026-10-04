@@ -73,9 +73,12 @@ releases. Update the secret on both sides before any planned rotation cutover.
 
 OpenNext builds `.open-next/worker.js`; `worker.ts` applies the legacy-host
 redirect, proxies `/api/scooters` to `SCOOTER_SNAPSHOT_API_URL`, and delegates
-other requests to that generated Worker. Pages are rendered without the
-parameters of the link (the browser reads them), so every link gets the same
-page and no link's coordinates are written into it. Wrangler
+other requests to that generated Worker. Every page is prerendered at build
+time and served as built, from the Worker's static assets
+(`open-next.config.ts`): after a deploy, `curl -sI https://scooters.plhery.com/`
+must show `x-nextjs-cache: HIT`. The Worker also drops the parameters of the
+link before a page is looked up (the browser reads them), so every link gets
+the same page and no link's coordinates are written into it. Wrangler
 uploads the bundle and static assets, creates the `scooters.plhery.com`
 custom domain, and keeps both legacy hostnames attached to the same Worker.
 

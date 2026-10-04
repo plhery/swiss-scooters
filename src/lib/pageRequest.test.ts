@@ -35,9 +35,27 @@ describe('the request a page is rendered with', () => {
     expect(pageRequest(request)).toBe(request);
   });
 
-  it('keeps the parameters the router sends with its own requests', () => {
+  it('keeps the parameter the router sends with its own requests', () => {
     const request = new Request(`${ORIGIN}/?_rsc=1a2b3`, { headers: { RSC: '1' } });
     expect(pageRequest(request)).toBe(request);
+  });
+
+  it.each([
+    ['/?origin=47.3769,8.5417&_rsc=Zm9v-YmFy_w', '/?_rsc=Zm9v-YmFy_w'],
+    ['/?_rsc=1a2b3&theme=dark', '/?_rsc=1a2b3'],
+    ['/?origin=47.3769,8.5417', '/'],
+    ['/privacy?_rsc=a%26b&x=1', '/privacy?_rsc=a%26b'],
+  ])('leaves a request that claims to be the router\'s only that parameter: %s', (link, rendered) => {
+    const request = new Request(`${ORIGIN}${link}`, { headers: { RSC: '1', 'Next-Router-Prefetch': '1' } });
+    const result = pageRequest(request);
+
+    expect(result.url).toBe(`${ORIGIN}${rendered}`);
+    expect(result.headers.get('RSC')).toBe('1');
+    expect(result.headers.get('Next-Router-Prefetch')).toBe('1');
+  });
+
+  it('does not take the router\'s parameter from a plain page load', () => {
+    expect(pageRequest(new Request(`${ORIGIN}/?_rsc=1a2b3&origin=47.3769,8.5417`)).url).toBe(`${ORIGIN}/`);
   });
 
   it('keeps anything that is not a read as it is', () => {
