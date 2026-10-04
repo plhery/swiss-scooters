@@ -780,7 +780,6 @@ extension ScooterModelsTests {
 
         XCTAssertNil(ScooterSearchBarState.empty.subtitle)
         XCTAssertNil(ScooterSearchBarState.locating.subtitle)
-        XCTAssertNotNil(ScooterSearchBarState.nearYou.subtitle)
         XCTAssertEqual(ScooterSearchBarState.place(place).title, "Zürich HB")
         XCTAssertNotNil(ScooterSearchBarState.place(place).subtitle)
         XCTAssertTrue(ScooterSearchBarState.place(place).accessibilityLabel.contains("Zürich HB"))
@@ -791,7 +790,7 @@ extension ScooterModelsTests {
     func testSearchBarPromisesScootersOnlyWhereThereIsScooterData() throws {
         let zurich = MapDestination(title: "Zürich HB", point: GeoPoint(latitude: 47.3782, longitude: 8.5402))
         let lungern = MapDestination(title: "Paradeplatz", point: GeoPoint(latitude: 46.7741, longitude: 8.1558))
-        let neutral = try XCTUnwrap(ScooterSearchBarState.nearYou.subtitle)
+        let neutral = String(localized: "Tap to search a city or address")
 
         // The service areas bundled with the app decide when the search did not say.
         XCTAssertTrue(zurich.isCovered)

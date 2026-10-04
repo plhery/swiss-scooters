@@ -84,11 +84,9 @@
 
 /* UX alignment: search bar */
 "Search city or address" = "Search city or address";
-"Near you" = "Near you";
 "Tap to search a city or address" = "Tap to search a city or address";
 "Scooters near this place" = "Scooters near this place";
 "Clear place" = "Clear place";
-"Showing scooters near you. Search a city or address." = "Showing scooters near you. Search a city or address.";
 "Showing scooters near %@. Search another place." = "Showing scooters near %@. Search another place.";
 
 /* UX alignment: search panel */

@@ -1960,7 +1960,9 @@ extension ScooterMapModelTests {
         XCTAssertTrue(defaults.bool(forKey: "has-located-once"))
         XCTAssertEqual(model.focusRequest?.latitudinalMeters, 350)
         XCTAssertEqual(model.focusRequest?.longitudinalMeters, 350)
-        XCTAssertEqual(model.searchBarState, .nearYou)
+        // Located: the bar is a search field again, and the map has the dot.
+        XCTAssertEqual(model.searchBarState, .empty)
+        XCTAssertNotNil(model.userLocation)
 
         let restored = ScooterMapModel(
             api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
@@ -1996,7 +1998,7 @@ extension ScooterMapModelTests {
         XCTAssertEqual(model.userLocation, GeoPoint(zurichFix.coordinate))
 
         model.clearAddressSearch()
-        XCTAssertEqual(model.searchBarState, .nearYou)
+        XCTAssertEqual(model.searchBarState, .empty)
 
         // Near me is a new wish and moves the map again.
         model.focusOnUser()
@@ -2036,7 +2038,7 @@ extension ScooterMapModelTests {
             XCTAssertTrue(model.hasLocatedOnce)
 
             model.clearAddressSearch()
-            XCTAssertEqual(model.searchBarState, .nearYou)
+            XCTAssertEqual(model.searchBarState, .empty)
         }
     }
 
@@ -2440,12 +2442,12 @@ extension ScooterMapModelTests {
             subtitle: "Lungern OW",
             point: GeoPoint(latitude: 46.7741, longitude: 8.1558)
         )
-        for state in [ScooterSearchBarState.empty, .nearYou, .place(covered), .place(uncovered), .locating] {
+        for state in [ScooterSearchBarState.empty, .place(covered), .place(uncovered), .locating] {
             assertRenders(
                 ScooterSearchIsland(
                     state: state,
                     isSearching: .constant(false),
-                    hasActiveFilters: state == .nearYou,
+                    hasActiveFilters: state == .locating,
                     onSelect: { _ in },
                     onClear: {},
                     onUseCurrentLocation: {},

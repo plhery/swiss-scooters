@@ -1126,10 +1126,9 @@ enum ScooterLocationIssue: Equatable, Sendable {
 
 /// What the collapsed search bar shows.
 enum ScooterSearchBarState: Equatable, Sendable {
-    /// Nothing chosen: search icon and "Search city or address".
+    /// No place chosen: search icon and "Search city or address". Also once
+    /// you are located: the dot on the map says where you are.
     case empty
-    /// Using your location: "Near you" / "Tap to search a city or address".
-    case nearYou
     /// A searched place: its title / "Scooters near this place", with a clear
     /// button. A place no operator serves gets the neutral second line instead.
     case place(MapDestination)
@@ -1139,7 +1138,6 @@ enum ScooterSearchBarState: Equatable, Sendable {
     var title: String {
         switch self {
         case .empty: String(localized: "Search city or address")
-        case .nearYou: String(localized: "Near you")
         case let .place(destination): destination.title
         case .locating: String(localized: "Finding your location…")
         }
@@ -1148,8 +1146,6 @@ enum ScooterSearchBarState: Equatable, Sendable {
     /// The second line; nil when there is only one.
     var subtitle: String? {
         switch self {
-        case .nearYou:
-            String(localized: "Tap to search a city or address")
         case let .place(destination):
             // "Scooters near this place" would be untrue where there is no scooter data.
             destination.isCovered
@@ -1162,8 +1158,6 @@ enum ScooterSearchBarState: Equatable, Sendable {
 
     var accessibilityLabel: String {
         switch self {
-        case .nearYou:
-            String(localized: "Showing scooters near you. Search a city or address.")
         case let .place(destination) where destination.isCovered:
             String(format: String(localized: "Showing scooters near %@. Search another place."), destination.title)
         case let .place(destination):

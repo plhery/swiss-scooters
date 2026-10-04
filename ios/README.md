@@ -38,9 +38,10 @@ from street level. Tapping a city or a cluster zooms in.
 pill; after that, a round button. Locating zooms the map to about 350 m across.
 When location access was granted earlier, the app locates by itself on launch.
 
-**Search bar.** It says what the map is based on: nothing yet, **Near you**, or
-the place you searched, with a button to clear it. A place where no operator
-shares data does not promise scooters.
+**Search bar.** It reads as a search field until you search a place, also once
+you are located: the dot on the map says where you are. A searched place shows
+in the bar with a button to clear it, and a place where no operator shares data
+does not promise scooters.
 
 **Search.** It opens on the field. Before you type: **Use my location**, the
 places chosen in this session and the six nearest cities with scooters. Typing

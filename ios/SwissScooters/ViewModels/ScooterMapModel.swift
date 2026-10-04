@@ -280,7 +280,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     var searchBarState: ScooterSearchBarState {
         if let searchedDestination { return .place(searchedDestination) }
         if isLocating { return .locating }
-        return userLocation == nil ? .empty : .nearYou
+        // Once located the bar stays a search field: the dot on the map says where you are.
+        return .empty
     }
 
     /// The six covered cities nearest to the map centre, for "Cities with scooters".

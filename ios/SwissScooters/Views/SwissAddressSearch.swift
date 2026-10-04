@@ -147,8 +147,8 @@ struct ScooterSearchIsland: View {
         }
     }
 
-    /// What leads the bar: a search icon, a tile for your location or the
-    /// place, or a spinner while locating.
+    /// What leads the bar: a search icon, a tile for the place, or a spinner
+    /// while locating.
     @ViewBuilder
     private var barIndicator: some View {
         switch state {
@@ -157,8 +157,6 @@ struct ScooterSearchIsland: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(ScooterPalette.secondaryText)
                 .frame(width: 34, height: 34)
-        case .nearYou:
-            SearchSymbolTile(systemImage: "location.fill")
         case .place:
             SearchSymbolTile(systemImage: "mappin.and.ellipse")
         case .locating:

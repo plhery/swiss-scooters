@@ -84,11 +84,9 @@
 
 /* UX alignment: search bar */
 "Search city or address" = "Cerca città o indirizzo";
-"Near you" = "Vicino a te";
 "Tap to search a city or address" = "Tocca per cercare un luogo";
 "Scooters near this place" = "Monopattini vicino a questo luogo";
 "Clear place" = "Rimuovi il luogo";
-"Showing scooters near you. Search a city or address." = "Stai vedendo i monopattini vicino a te. Cerca una città o un indirizzo.";
 "Showing scooters near %@. Search another place." = "Stai vedendo i monopattini vicino a %@. Cerca un altro luogo.";
 
 /* UX alignment: search panel */
