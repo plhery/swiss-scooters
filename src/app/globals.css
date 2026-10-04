@@ -346,6 +346,9 @@ svg {
   gap: 10px;
   padding: 0 2px 11px;
 }
+.sheet-title-row:last-child {
+  padding-bottom: 2px;
+}
 .dock-summary {
   min-width: 0;
 }
@@ -357,6 +360,10 @@ svg {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+.sheet-count > .mini-spinner {
+  align-self: center;
+  margin-right: 3px;
 }
 .sheet-count-num {
   display: inline-block;
@@ -370,10 +377,14 @@ svg {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--ink-2);
   margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-sub-warning {
+  color: var(--warning-ink);
 }
 .freshness-dot {
   width: 6px;
@@ -383,26 +394,72 @@ svg {
   background: var(--success-ink);
   box-shadow: 0 0 0 2px var(--success-bg);
 }
-.sheet-health {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 4px;
-  color: var(--warning-ink);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.35;
+/* "Try again" exists only where a failure is shown. While the request runs
+   a spinner takes the place of the label, so the button keeps its size. */
+.dock-retry {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  color: var(--blue-ink);
+  font-size: 13px;
+  font-weight: 650;
 }
-.sheet-health > span {
+.retry-button {
+  position: relative;
+}
+.retry-button > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: opacity 120ms ease;
+}
+.retry-button[aria-busy='true'] > span {
+  opacity: 0;
+}
+.retry-button[aria-busy='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
   width: 14px;
   height: 14px;
-  display: inline-grid;
-  place-items: center;
-  flex-shrink: 0;
+  margin: auto;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
   border-radius: 50%;
-  background: var(--warning-bg);
-  font-size: 10px;
-  font-weight: 750;
+  animation: spin 800ms linear infinite;
+}
+/* Calm lines: a small icon and secondary text. */
+.dock-notes {
+  display: grid;
+  gap: 4px;
+  margin-top: -5px;
+  padding: 0 2px 10px;
+}
+.dock-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.dock-note > svg {
+  margin-top: 2px;
+  color: var(--warning-ink);
+}
+.dock-hint {
+  padding: 10px 2px 0;
+}
+.dock-hint > svg {
+  margin-top: 1px;
+  color: inherit;
 }
 .chips {
   display: flex;
@@ -467,103 +524,100 @@ svg {
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 9%, transparent);
 }
-.empty-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 2px 0;
-  color: var(--ink-2);
-  font-size: 12px;
-  line-height: 1.4;
-}
-.empty-hint span {
-  flex: 1;
-}
-.empty-hint button {
-  min-height: 44px;
-  padding: 4px;
-  border: 0;
-  border-radius: 9px;
+/* A provider that is not sharing data and has nothing in view. */
+.chip-down {
+  border-style: dashed;
+  border-color: var(--ink-3);
   background: transparent;
-  color: var(--blue);
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--ink-2);
+}
+.chip-down .chip-dot {
+  opacity: 0.45;
+}
+.chip-warning {
+  color: var(--warning-ink);
 }
 
-/* Scooter details stay in the dock instead of obscuring the map. */
-.vehicle-card {
-  padding: 15px 2px 2px;
-  margin-top: 9px;
-  border-top: 1px solid var(--hairline);
+/* Cards take the place of the count and the chips: a selected scooter, or
+   the reason there is nothing to show. */
+.dock-card {
+  padding: 2px 0;
   animation: content-in 260ms var(--spring);
 }
-.vehicle-card-head {
+/* Trouble with the data, above the card of a selected scooter or bay. */
+.dock-issue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+/* With "Try again" the line is as tall as the button; it moves closer to the edges. */
+.dock-issue:has(.dock-retry) {
+  margin: -4px 0 10px;
+  padding-bottom: 6px;
+}
+.dock-issue .sheet-sub {
+  margin-top: 0;
+}
+.card-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 60px;
 }
-.walking-summary {
-  display: grid;
-  flex-shrink: 0;
-  gap: 2px;
-  padding-right: 13px;
-  border-right: 1px solid var(--hairline);
-}
-.walking-summary strong {
-  font-size: 24px;
-  font-weight: 750;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-}
-.walking-summary small {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-.walking-summary > span {
-  color: var(--ink-2);
-  font-size: 11px;
-}
-.walking-summary .walking-distance {
-  font-size: 10px;
-}
-.vehicle-card-copy {
-  flex: 1;
-  min-width: 0;
-}
-.vehicle-card-copy strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 16px;
-  letter-spacing: -0.025em;
-}
-.vehicle-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-.vehicle-stats > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.vehicle-symbol {
+.card-symbol {
   display: grid;
   place-items: center;
   flex-shrink: 0;
   width: 48px;
   height: 48px;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--provider-color) 10%, transparent);
-  color: var(--ink-2);
+  background: color-mix(in srgb, var(--provider-color) 14%, transparent);
+  color: var(--ink);
 }
-.vehicle-card-close {
+.card-title {
+  flex: 1;
+  min-width: 0;
+}
+.card-title h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+.card-title p {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+/* The text button that stands in for the walking time. The line stays
+   compact; the area to tap is 44 px tall. */
+.card-link {
+  position: relative;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--blue-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+.card-link::before {
+  content: '';
+  position: absolute;
+  inset: 50% -6px auto;
+  height: 44px;
+  transform: translateY(-50%);
+}
+.card-close {
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -573,33 +627,147 @@ svg {
   border-radius: 50%;
   background: var(--fill-quaternary);
   color: var(--ink-2);
-  animation: content-in 200ms var(--spring);
 }
-.vehicle-actions {
+.card-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--fill-quaternary);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pill-good {
+  color: var(--success-ink);
+  background: var(--success-bg);
+}
+.pill-low {
+  color: var(--warning-ink);
+  background: var(--warning-bg);
+}
+.pill-critical {
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+}
+/* The ride length is chosen with the system's own picker, laid invisibly
+   over the pill and a little taller, so that it is 44 px to tap. */
+.pill-choice {
+  position: relative;
+}
+.pill-choice select {
+  position: absolute;
+  top: -7px;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 14px);
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px;
+}
+.pill-choice:has(select:focus-visible) {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.card-actions {
   display: flex;
   gap: 9px;
-  margin-top: 13px;
+  margin-top: 14px;
 }
-.vehicle-actions a {
+.card-actions > :where(a, button) {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 46px;
+  gap: 8px;
   box-sizing: border-box;
-  padding: 9px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 0;
   border-radius: 16px;
   background: var(--fill-tertiary);
   color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
   text-align: center;
   text-decoration: none;
-  font-size: 13px;
-  font-weight: 600;
 }
-.vehicle-actions a.vehicle-action-primary {
+.card-actions > .card-action-primary {
+  flex: 1.3;
   color: #fff;
   background: #0070eb;
+}
+.card-footnote {
+  margin: 10px 0 0;
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+.state-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.state-symbol {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+}
+.state-symbol-info {
+  background: color-mix(in srgb, var(--blue) 11%, transparent);
+  color: var(--blue);
+}
+.state-symbol-warning {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+.state-copy {
+  flex: 1;
+  min-width: 0;
+}
+.state-copy h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+.state-copy p {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.state-label {
+  margin: 14px 2px 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.city-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.city-chips .chip {
+  gap: 6px;
+  padding: 0 14px;
 }
 
 /* Search suggestions */
@@ -1328,9 +1496,6 @@ svg {
   background: transparent;
   color: var(--ink-2);
 }
-.load-banner button[aria-busy='true'] {
-  opacity: 0.6;
-}
 
 :where(
   .icon-button,
@@ -1340,11 +1505,12 @@ svg {
   .field-btn,
   .fab,
   .near-me,
-  .vehicle-card-close,
+  .card-close,
+  .dock-retry,
   .search-actions button,
   .load-banner button,
   .location-card button,
-  .vehicle-actions a,
+  .card-actions > *,
   .map-style-options > button
 ) {
   transition:
@@ -1360,11 +1526,12 @@ svg {
     .field-btn,
     .fab,
     .near-me,
-    .vehicle-card-close,
+    .card-close,
+    .dock-retry,
     .search-actions button,
     .load-banner button,
     .location-card button,
-    .vehicle-actions a,
+    .card-actions > *,
     .map-style-options > button,
     .chip
   ):active:not(:disabled) {
@@ -1388,11 +1555,18 @@ svg {
   .chip-selected:hover {
     background: color-mix(in srgb, var(--blue) 16%, var(--raised-bg));
   }
-  .location-card-close:hover {
+  .location-card-close:hover,
+  .card-close:hover,
+  .pill-choice:hover {
     background: var(--fill-tertiary);
   }
-  .vehicle-actions a:hover,
+  .chip-down:hover {
+    background: var(--fill-quaternary);
+  }
+  .card-actions > *:hover,
   .near-me:hover:not(:disabled),
+  .dock-retry:hover,
+  .card-link:hover,
   .load-banner button:hover,
   .location-card-actions button:hover {
     opacity: 0.88;
@@ -1455,8 +1629,13 @@ svg {
   .origin-copy span {
     font-size: 10px;
   }
-  .vehicle-symbol {
-    display: none;
+  .card-symbol {
+    width: 40px;
+    height: 40px;
+    border-radius: 13px;
+  }
+  .card-head {
+    gap: 10px;
   }
   .search-actions {
     flex-wrap: wrap;

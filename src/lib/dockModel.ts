@@ -170,7 +170,9 @@ export interface DockInput {
   unfilteredCount: number | null;
 }
 
-function dockStatus(input: DockInput): { status: DockStatus | null; retry: boolean } {
+type StatusInput = Pick<DockInput, 'failure' | 'meta' | 'lastUpdated' | 'now'>;
+
+function dockStatus(input: StatusInput): { status: DockStatus | null; retry: boolean } {
   const { failure, meta, lastUpdated, now } = input;
   if (lastUpdated === null) return { status: null, retry: false };
   if (failure) {
@@ -179,8 +181,9 @@ function dockStatus(input: DockInput): { status: DockStatus | null; retry: boole
       retry: true,
     };
   }
-  if (meta?.overview) return { status: { kind: 'overview', text: { key: 'dock.cityTotals' } }, retry: false };
+  // Delayed data says so at every zoom, city totals included.
   if (meta?.stale) return { status: { kind: 'delayed', text: { key: 'dock.delayed', time: lastUpdated } }, retry: false };
+  if (meta?.overview) return { status: { kind: 'overview', text: { key: 'dock.cityTotals' } }, retry: false };
   const age = Math.max(0, now - lastUpdated);
   if (age < LIVE_MAX_AGE_MS) return { status: { kind: 'live', text: { key: 'dock.live' } }, retry: false };
   return {
@@ -192,6 +195,26 @@ function dockStatus(input: DockInput): { status: DockStatus | null; retry: boole
     },
     retry: false,
   };
+}
+
+export interface DockIssue {
+  /** The failure or delayed status, with the same text as the dock's status line. */
+  status: DockStatus;
+  /** Show "Try again" beside it. */
+  retry: boolean;
+  busy: boolean;
+}
+
+/**
+ * The card of a selected scooter or parking bay hides the count and the status
+ * line. Trouble with the data then moves to one line above the card; healthy
+ * data shows nothing there.
+ */
+export function dockIssue(input: StatusInput & Pick<DockInput, 'loading' | 'outOfDate'>): DockIssue | null {
+  if (input.outOfDate) return null;
+  const { status, retry } = dockStatus(input);
+  if (status?.kind !== 'failure' && status?.kind !== 'delayed') return null;
+  return { status, retry, busy: input.loading !== null };
 }
 
 function dockNotices(input: DockInput, health: ReturnType<typeof providerHealth>): DockNotice[] {

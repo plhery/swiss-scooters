@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   dockChips,
+  dockIssue,
   dockModel,
   formatCoverageCity,
   originInViewport,
@@ -157,11 +158,16 @@ describe('dock status', () => {
       .toEqual({ kind: 'delayed', text: { key: 'dock.delayed', time: NOW - 30_000 } });
   });
 
-  it('describes the city overview without an age, also when stale', () => {
+  it('describes the city overview without an age', () => {
     const overview = meta({ overview: true, mode: 'clusters', zoom: 8 });
     expect(summary({ meta: overview, lastUpdated: NOW - 50 * 60_000 }).status)
       .toEqual({ kind: 'overview', text: { key: 'dock.cityTotals' } });
-    expect(summary({ meta: { ...overview, stale: true } }).status?.kind).toBe('overview');
+  });
+
+  it('says that city totals are delayed, as at every other zoom', () => {
+    const overview = meta({ overview: true, mode: 'clusters', zoom: 8, stale: true });
+    expect(summary({ meta: overview, lastUpdated: NOW - 4 * 3_600_000 }).status)
+      .toEqual({ kind: 'delayed', text: { key: 'dock.delayed', time: NOW - 4 * 3_600_000 } });
   });
 
   it('puts a failed refresh first, with the time of the data and a retry', () => {
@@ -408,5 +414,41 @@ describe('dock cards', () => {
     expect(dockModel(input({ count: 0, viewportProviders: [], viewportCenter: LUNGERN, loading: 'refresh' })).kind)
       .toBe('outsideCoverage');
     expect(dockModel(input({ count: 0, minBattery: 30, unfilteredCount: 9, loading: 'refresh' })).kind).toBe('filtersHideAll');
+  });
+});
+
+describe('dock issue, for the line above a card', () => {
+  it('is nothing while the data is healthy', () => {
+    expect(dockIssue(input())).toBeNull();
+    expect(dockIssue(input({ lastUpdated: NOW - 20 * 60_000 }))).toBeNull();
+    expect(dockIssue(input({ meta: meta({ overview: true, mode: 'clusters', zoom: 8 }) }))).toBeNull();
+  });
+
+  it('repeats a failed refresh with the same words and a retry', () => {
+    const failed = input({ failure: 'timeout', loading: 'refresh' });
+    expect(dockIssue(failed)).toEqual({
+      status: summary({ failure: 'timeout' }).status,
+      retry: true,
+      busy: true,
+    });
+    expect(dockIssue(input({ failure: 'offline' }))).toEqual({
+      status: { kind: 'failure', text: { key: 'dock.offline', time: NOW - 30_000 } },
+      retry: true,
+      busy: false,
+    });
+  });
+
+  it('repeats delayed data without a retry, also where a card has replaced the count', () => {
+    const hidden = input({ count: 0, minBattery: 30, unfilteredCount: 9, meta: meta({ stale: true }) });
+    expect(dockModel(hidden).kind).toBe('filtersHideAll');
+    expect(dockIssue(hidden)).toEqual({
+      status: { kind: 'delayed', text: { key: 'dock.delayed', time: NOW - 30_000 } },
+      retry: false,
+      busy: false,
+    });
+  });
+
+  it('leaves the explanation to the out-of-date card', () => {
+    expect(dockIssue(input({ outOfDate: true, hasData: false, failure: 'offline' }))).toBeNull();
   });
 });

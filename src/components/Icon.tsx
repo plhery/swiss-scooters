@@ -84,6 +84,25 @@ const paths = {
       <path d="M4 4l16 16" />
     </>
   ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  map: (
+    <>
+      <path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2-6-2Z" />
+      <path d="M9 4v14M15 6v14" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v5h-5" />
+    </>
+  ),
+  upDown: <path d="m8 9 4-4 4 4M8 15l4 4 4-4" />,
 } as const;
 
 export default function Icon({

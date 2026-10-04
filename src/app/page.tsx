@@ -5,7 +5,8 @@ import { track } from '@/lib/analytics';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import MapWrapper from '@/components/MapWrapper';
-import BottomSheet, { type SelectedVehicle } from '@/components/BottomSheet';
+import BottomSheet from '@/components/BottomSheet';
+import type { SelectedVehicle } from '@/components/ScooterCard';
 import MapControls from '@/components/MapControls';
 import MapCredits from '@/components/MapCredits';
 import MapNotices from '@/components/MapNotices';
@@ -23,23 +24,30 @@ import {
   type MapStyleName,
   type ThemeName,
 } from '@/lib/clientParams';
-import { scooterDataHealthNotice } from '@/lib/dataHealth';
+import type { NearbyCoveredCity } from '@/lib/coveredCities';
+import { dockIssue, dockModel, originInViewport, type DockInput } from '@/lib/dockModel';
+import { failureSurface } from '@/lib/loadFailure';
+import { unfilteredCountInView } from '@/lib/nothingToShow';
+import { toPlace } from '@/lib/places';
 import { useScooterData, type ScooterDataQuery } from '@/lib/useScooterData';
 import { mapRepresentationsMatch, providersForViewport } from '@/lib/mapCoverage';
-import { useI18n } from '@/lib/i18n';
 import {
   boundsContainBounds,
   boundsContainPoint,
   expandBounds,
-  haversineM,
 } from '@/lib/geo';
 import { useLiveLocation } from '@/lib/useLiveLocation';
+import { walkEstimate, type WalkOrigin } from '@/lib/walking';
 import { requestHeadingPermission, type HeadingPermission } from '@/lib/deviceHeading';
 
 const SWITZERLAND_CENTER: [number, number] = [46.8182, 8.2275];
 const INITIAL_ZOOM = 8;
 // About 350 m across on a phone, as the iOS app shows after locating.
 const LOCATE_ZOOM = 17;
+// Where a city's scooters show as clusters, the same as a tap on its total.
+const CITY_ZOOM = 13;
+// How often the age of the data in the dock is worked out again.
+const CLOCK_TICK_MS = 30_000;
 const VIEWPORT_FETCH_PADDING = 0.25;
 
 const STORAGE_KEY = 'scooters-params';
@@ -114,7 +122,6 @@ function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
 }
 
 export default function Home() {
-  const { t, formatNumber } = useI18n();
   const [initialCenter, setInitialCenter] = useState<[number, number]>(SWITZERLAND_CENTER);
   const {
     location: userLocation,
@@ -145,11 +152,12 @@ export default function Home() {
   const [locatedOnce, setLocatedOnce] = useState<boolean | null>(null);
   const [locationNoticeDismissed, setLocationNoticeDismissed] = useState(false);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const initializedRef = useRef(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const mapQueryRef = useRef<ScooterMapQuery | null>(null);
 
-  const startLocating = useCallback(() => {
+  const startLocating = useCallback((moveMap = true) => {
     setLocationNoticeDismissed(false);
     // Asked within the tap, before waiting for GPS. Without a tap the browser
     // cannot prompt, and the direction is then simply not drawn.
@@ -157,7 +165,11 @@ export default function Home() {
     locate((coords) => {
       try { localStorage.setItem(LOCATED_ONCE_STORAGE_KEY, '1'); } catch {}
       setLocatedOnce(true);
-      setFocusRequest(current => ({ location: coords, zoom: LOCATE_ZOOM, version: current.version + 1 }));
+      // Walking times are from your location again, not from a searched place.
+      setSearchedAddress(null);
+      if (moveMap) {
+        setFocusRequest(current => ({ location: coords, zoom: LOCATE_ZOOM, version: current.version + 1 }));
+      }
     });
   }, [locate]);
 
@@ -227,6 +239,17 @@ export default function Home() {
 
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // The dock says how old the data is; the clock also catches up after a pause in the background.
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const interval = window.setInterval(tick, CLOCK_TICK_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
+
   // Clustered responses are filtered by the server; single scooters by the client.
   const scooterQuery = useMemo<ScooterDataQuery | null>(
     () => mapQuery && { ...mapQuery, minBattery: mapQuery.zoom <= 15 ? minBattery : 0 },
@@ -238,16 +261,13 @@ export default function Home() {
     clusters,
     parking,
     meta: responseMeta,
-    lastUpdated: lastUpdatedAt,
-    loading: loadingState,
+    lastUpdated,
+    hasData,
+    loading,
     failure,
+    outOfDate,
     refresh,
   } = useScooterData(scooterQuery, { onOutOfDate: clearSelection });
-  const loading = loadingState !== null;
-  const lastUpdated = useMemo(
-    () => lastUpdatedAt === null ? null : new Date(lastUpdatedAt),
-    [lastUpdatedAt]
-  );
 
   const handleProviderToggle = (provider: string) => {
     track('provider_filter', { provider, enabled: !enabledProviders.has(provider), source: 'filters' });
@@ -290,6 +310,12 @@ export default function Home() {
   const handleLocateMe = useCallback(() => {
     track('locate');
     startLocating();
+  }, [startLocating]);
+
+  // Asked from a card for its walking time: the map stays where it is, so the card stays open.
+  const handleLocateFromCard = useCallback(() => {
+    track('locate');
+    startLocating(false);
   }, [startLocating]);
 
   // The only manual refresh: "Try again" where a failure is shown.
@@ -355,19 +381,14 @@ export default function Home() {
     0
   );
 
-  const dataHealthNotice = useMemo(
-    () => scooterDataHealthNotice(responseMeta, representedVehicleCount, {
-      cached: t('data.cached'),
-      parkingUnavailable: t('parking.unavailable'),
-      parkingStale: t('parking.stale'),
-      partial: t('data.partial'),
-      truncated: (shown, total) => t('data.truncated', {
-        shown: formatNumber(shown),
-        total: formatNumber(total),
-      }),
-    }),
-    [formatNumber, representedVehicleCount, responseMeta, t]
-  );
+  // With the title and the coverage the search answered, or the client's own for an older answer.
+  const searchedPlace = useMemo(() => searchedAddress && toPlace(searchedAddress), [searchedAddress]);
+
+  // A searched place wins over your location until it is cleared.
+  const walkOrigin = useMemo<WalkOrigin | null>(() => {
+    if (searchedPlace) return { point: [searchedPlace.lat, searchedPlace.lng], place: searchedPlace.title };
+    return userLocation ? { point: userLocation, place: null } : null;
+  }, [searchedPlace, userLocation]);
 
   const selectedVehicle = useMemo<SelectedVehicle | null>(() => {
     if (!selectedVehicleKey) return null;
@@ -378,18 +399,42 @@ export default function Home() {
       return key === selectedVehicleKey;
     });
     if (!vehicle) return null;
-    return {
-      vehicle,
-      distanceM: userLocation
-        ? haversineM(userLocation[0], userLocation[1], vehicle.lat, vehicle.lng)
-        : null,
-    };
-  }, [selectedVehicleKey, userLocation, viewportData.visibleVehicles]);
+    return { vehicle, walk: walkEstimate(walkOrigin, vehicle.lat, vehicle.lng) };
+  }, [selectedVehicleKey, viewportData.visibleVehicles, walkOrigin]);
 
   const availableProviders = viewportBounds
     ? [...new Set([...providersForViewport(viewportBounds), ...Object.keys(viewportData.providerCounts)])]
     : Object.keys(PROVIDERS);
   const hasActiveFilters = minBattery > 0 || availableProviders.some(provider => !enabledProviders.has(provider));
+
+  const dockInput: DockInput = {
+    count: viewportData.totalCount,
+    originInViewport: originInViewport(walkOrigin?.point ?? null, viewportBounds),
+    loading,
+    failure,
+    outOfDate,
+    hasData,
+    meta: responseMeta,
+    lastUpdated,
+    now,
+    representedCount: representedVehicleCount,
+    viewportProviders: availableProviders,
+    viewportCenter: viewportBounds && [
+      (viewportBounds.south + viewportBounds.north) / 2,
+      (viewportBounds.west + viewportBounds.east) / 2,
+    ],
+    providerCounts: viewportData.providerCounts,
+    enabledProviders,
+    minBattery,
+    unfilteredCount: unfilteredCountInView({
+      meta: responseMeta,
+      vehicles,
+      clusters,
+      viewport: viewportBounds,
+      serverMinBattery: scooterQuery?.minBattery ?? 0,
+    }),
+  };
+  const dock = dockModel(dockInput);
 
   const openPanel = (panel: 'filters' | 'settings') => {
     track(panel === 'filters' ? 'filters_open' : 'settings_open');
@@ -403,6 +448,10 @@ export default function Home() {
     track('search_open');
     // Commit within the tap so mobile Safari can focus the newly mounted input.
     flushSync(() => setSearchExpanded(true));
+  };
+
+  const handleCitySelect = (city: NearbyCoveredCity) => {
+    setFocusRequest(current => ({ location: city.center, zoom: CITY_ZOOM, version: current.version + 1 }));
   };
 
   const handleQuickProviderToggle = (provider: string) => {
@@ -427,7 +476,7 @@ export default function Home() {
         clustered={responseMeta?.mode === 'clusters'}
         origin={initialCenter}
         initialZoom={INITIAL_ZOOM}
-        distanceOrigin={userLocation}
+        distanceOrigin={walkOrigin?.point ?? null}
         tileLayer={tileLayer}
         userLocation={userLocation}
         headingEnabled={headingPermission === 'granted' && locationError !== 'denied'}
@@ -449,6 +498,7 @@ export default function Home() {
 
       <SearchIsland
         address={searchedAddress}
+        placeHasData={searchedPlace?.covered !== false && dock.kind !== 'outsideCoverage'}
         hasLocation={Boolean(userLocation)}
         expanded={searchExpanded}
         hasActiveFilters={hasActiveFilters}
@@ -461,8 +511,8 @@ export default function Home() {
       />
 
       <MapNotices
-        loadFailure={failure}
-        loading={loading}
+        loadFailure={failureSurface({ failure, hasData, outOfDate }) === 'banner' ? failure : null}
+        loading={loading !== null}
         locationError={locating || locationNoticeDismissed ? null : locationError}
         hidden={searchExpanded}
         onRetryLoad={retryLoad}
@@ -481,20 +531,18 @@ export default function Home() {
       <MapCredits />
 
       <BottomSheet
-        minBattery={minBattery}
-        enabledProviders={enabledProviders}
-        providerCounts={viewportData.providerCounts}
-        availableProviders={availableProviders}
-        totalCount={viewportData.totalCount}
-        loading={loading}
-        lastUpdated={lastUpdated}
-        dataHealthNotice={dataHealthNotice}
+        dock={dock}
+        issue={dockIssue(dockInput)}
         selectedVehicle={selectedVehicle}
         hidden={searchExpanded}
         onShowAllProviders={handleShowAllProviders}
         onProviderToggle={handleQuickProviderToggle}
         onClearSelection={() => { track('vehicle_dismiss'); setSelectedVehicleKey(null); }}
         onResetFilters={resetFilters}
+        onEditFilters={() => openPanel('filters')}
+        onRetry={retryLoad}
+        onCitySelect={handleCitySelect}
+        onLocate={handleLocateFromCard}
       />
 
       <ControlSheet

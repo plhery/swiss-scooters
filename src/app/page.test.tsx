@@ -7,18 +7,21 @@ import type { MapBounds, ParkingLocation, ScooterResponse, Vehicle } from '@/lib
 import Home from './page';
 import { I18nProvider } from '@/lib/i18n';
 
-vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({ onViewportChange, vehicles, parking, focusLocation, focusZoom }: {
-  onViewportChange: (bounds: MapBounds, zoom: number) => void; vehicles: Vehicle[]; parking: ParkingLocation[];
-  focusLocation: [number, number] | null; focusZoom: number | null;
+const viewport = vi.hoisted(() => ({ bounds: { south: 47.36, west: 8.52, north: 47.39, east: 8.57 } }));
+vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({ onViewportChange, onVehicleSelect, vehicles, parking, focusLocation, focusZoom }: {
+  onViewportChange: (bounds: MapBounds, zoom: number) => void; onVehicleSelect: (vehicle: Vehicle) => void;
+  vehicles: Vehicle[]; parking: ParkingLocation[]; focusLocation: [number, number] | null; focusZoom: number | null;
 }) {
-  useEffect(() => onViewportChange({ south: 47.36, west: 8.52, north: 47.39, east: 8.57 }, 16), [onViewportChange]);
+  useEffect(() => onViewportChange(viewport.bounds, 16), [onViewportChange]);
   return <><span data-testid="vehicles">{vehicles.length}</span><span data-testid="parking">{parking.length}</span>
-    <span data-testid="focus">{focusLocation ? `${focusLocation.join(',')} zoom ${focusZoom}` : 'none'}</span></>;
+    <span data-testid="focus">{focusLocation ? `${focusLocation.join(',')} zoom ${focusZoom}` : 'none'}</span>
+    {vehicles.map(vehicle => <button key={vehicle.vehicle_id} onClick={() => onVehicleSelect(vehicle)}>Marker {vehicle.vehicle_id}</button>)}</>;
 } }));
-vi.mock('@/components/BottomSheet', () => ({ default: ({ enabledProviders, onProviderToggle }: {
-  enabledProviders: Set<string>; onProviderToggle: (provider: string) => void;
-}) => <button onClick={() => onProviderToggle('lime')}>Providers: {[...enabledProviders].sort().join(',')}</button> }));
-vi.mock('@/components/SearchIsland', () => ({ default: () => null }));
+vi.mock('@/components/SearchIsland', () => ({ default: ({ onSelect, onClear, placeHasData }: {
+  onSelect: (place: object) => void; onClear: () => void; placeHasData: boolean;
+}) => <><button onClick={() => onSelect({ lat: 47.3779, lng: 8.5403, display_name: 'Zürich HB, Train', title: 'Zürich HB', subtitle: 'Train', covered: true })}>Search Zürich HB</button>
+  <button onClick={() => onSelect({ lat: 46.7741, lng: 8.1558, display_name: 'Lungern, OW', title: 'Lungern', subtitle: 'OW', covered: false })}>Search Lungern</button>
+  <button onClick={onClear}>Clear the place</button><span data-testid="place-has-data">{String(placeHasData)}</span></> }));
 vi.mock('@/components/ControlSheet', () => ({ default: () => null }));
 vi.mock('@/components/MapCredits', () => ({ default: () => null }));
 
@@ -45,9 +48,12 @@ function stubGeolocation(fix: GeolocationPosition | null) {
   return getCurrentPosition;
 }
 
+const dockCount = () => document.querySelector('.sheet-count');
+
 beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
+  viewport.bounds = { south: 47.36, west: 8.52, north: 47.39, east: 8.57 };
   window.history.replaceState(null, '', '/');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -100,10 +106,139 @@ it('explains a real load failure under the search bar and clears it when Try aga
   mount();
   await act(async () => vi.advanceTimersByTimeAsync(180));
   expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t load scooters.');
+  // Nothing has loaded: no count and no chips to filter by.
+  expect(dockCount()).toHaveTextContent(/^Waiting for scooter data$/);
+  expect(screen.queryByRole('group', { name: 'Filter scooters by provider' })).toBeNull();
   await act(async () => { fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Try again' })); });
   expect(fetcher).toHaveBeenCalledTimes(2);
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+  expect(screen.getByText('Live')).toBeVisible();
+});
+
+it('keeps the scooters and says so in the dock when a refresh fails, then shows the out-of-date card once they expire', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json(response())).mockRejectedValue(new Error('down'));
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  const shown = new Date().toLocaleTimeString('en-CH', { hour: '2-digit', minute: '2-digit' });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Marker one' })); });
+  expect(screen.getByRole('heading', { name: 'Lime' })).toBeVisible();
+
+  // The refresh after a minute fails; the data is good for another minute.
+  await act(async () => vi.advanceTimersByTimeAsync(61_000));
+  expect(fetcher.mock.calls.length).toBeGreaterThanOrEqual(2);
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
+  expect(screen.queryByRole('alert')).toBeNull();
+  // The card hides the status line, so the failure sits above it with its own way to try again.
+  const issue = document.querySelector('.dock-issue') as HTMLElement;
+  expect(issue).toHaveTextContent(`Couldn’t refresh · showing ${shown}`);
+  expect(within(issue).getByRole('button', { name: 'Try again' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Close scooter details' }));
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+  expect(screen.getByText(`Couldn’t refresh · showing ${shown}`)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Lime, 1. Shown.' })).toBeVisible();
+
+  // Past expiry with the retries still failing: the scooters go, and the dock says why.
+  await act(async () => vi.advanceTimersByTimeAsync(70_000));
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('0');
+  expect(screen.getByRole('heading', { name: 'These positions are out of date' })).toBeVisible();
+  expect(screen.getByRole('alert')).toHaveTextContent(`Last update ${shown}. Couldn’t load scooters.`);
+  expect(dockCount()).toBeNull();
+  expect(screen.queryByRole('group', { name: 'Filter scooters by provider' })).toBeNull();
+
+  fetcher.mockImplementation(async () => Response.json(response()));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })); });
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+  expect(screen.getByText('Live')).toBeVisible();
+});
+
+it('measures walking time from a searched place until locating or clearing it', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  stubGeolocation(position);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+  expect(screen.getByTestId('place-has-data')).toHaveTextContent('true');
+
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Marker one' })); });
+  expect(dockCount()).toBeNull();
+  expect(screen.getByRole('button', { name: 'Turn on location to see walking time' })).toBeVisible();
+
+  // The place is the origin: some 160 m from the scooter, and inside the viewport.
+  fireEvent.click(screen.getByRole('button', { name: 'Search Zürich HB' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Marker one' })); });
+  expect(screen.getByText(/^≈3 min walk from Zürich HB · 16\d m$/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Close scooter details' }));
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter nearby$/);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear the place' }));
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+
+  // A place without scooter data: the search bar is told at once, before the map has arrived there.
+  fireEvent.click(screen.getByRole('button', { name: 'Search Lungern' }));
+  expect(screen.getByTestId('place-has-data')).toHaveTextContent('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Clear the place' }));
+  expect(screen.getByTestId('place-has-data')).toHaveTextContent('true');
+
+  // Locating from the card: your location replaces the place as the origin.
+  fireEvent.click(screen.getByRole('button', { name: 'Search Zürich HB' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Marker one' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
+  expect(screen.getByText(/^≈1 min walk · \d+ m$/)).toBeVisible();
+  expect(screen.queryByText(/Zürich HB ·/)).toBeNull();
+});
+
+it('locates from the scooter card without moving the map away from the scooter', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  stubGeolocation(position);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Marker one' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Turn on location to see walking time' })); });
+  expect(screen.getByText(/^≈1 min walk · \d+ m$/)).toBeVisible();
+  expect(screen.getByTestId('focus')).toHaveTextContent('none');
+  expect(localStorage.getItem('scooters-located-once')).toBe('1');
+
+  // The locate button still brings the map to you.
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Go to my location' })); });
+  expect(screen.getByTestId('focus')).toHaveTextContent('47.3769,8.5417 zoom 17');
+});
+
+it('explains an area without scooter data and flies to the closest city', async () => {
+  // Lungern: no operator serves it.
+  viewport.bounds = { south: 46.76, west: 8.13, north: 46.79, east: 8.18 };
+  const body = response();
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ...body, vehicles: [], parking: [], providers: {},
+    meta: { ...body.meta, totalVehicles: 0 } })));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(screen.getByRole('heading', { name: 'No scooter data here yet' })).toBeVisible();
+  expect(dockCount()).toBeNull();
+  // The search bar must not promise scooters near a place while the dock says this.
+  expect(screen.getByTestId('place-has-data')).toHaveTextContent('false');
+  const cities = within(screen.getByRole('group', { name: 'Closest cities' })).getAllByRole('button');
+  expect(cities.map(city => city.textContent)).toEqual([
+    expect.stringMatching(/^Zug · \d+ km$/), expect.stringMatching(/ km$/), expect.stringMatching(/ km$/),
+  ]);
+  fireEvent.click(cities[0]);
+  expect(screen.getByTestId('focus')).toHaveTextContent(/^47\.\d+,8\.\d+ zoom 13$/);
+});
+
+it('says how many scooters the filters hide and brings them back', async () => {
+  localStorage.setItem('scooters-providers', JSON.stringify(['hopp']));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('0');
+  expect(screen.getByRole('heading', { name: '1 scooter hidden by your filters' })).toBeVisible();
+  expect(screen.getByText('Hopp only')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
+  expect(screen.getByTestId('vehicles')).toHaveTextContent('1');
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
 });
 
 it('times out a stalled request, says so, and recovers with the next automatic refresh', async () => {
@@ -245,8 +380,9 @@ it('restores and saves provider preferences without overwriting them during hydr
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
   const first = mount();
   await act(async () => vi.advanceTimersByTimeAsync(180));
-  expect(screen.getByRole('button', { name: 'Providers: lime' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Providers: lime' }));
+  expect(screen.getByRole('button', { name: 'Lime, 1. Shown.' })).toHaveClass('chip-selected');
+  expect(screen.getByRole('button', { name: 'Bolt, 0. Hidden.' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Lime, 1. Shown.' }));
   const saved = localStorage.getItem('scooters-providers');
   expect(JSON.parse(saved!)).toContain('bird');
   first.unmount();

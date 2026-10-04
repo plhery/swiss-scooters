@@ -60,8 +60,8 @@ export default function MapNotices({
         <div className="load-banner glass" role="alert">
           <Icon name="warning" size={17} strokeWidth={2.2} />
           <span>{t(failureReasonKey(loadFailure))}</span>
-          <button type="button" aria-busy={loading} onClick={tap(onRetryLoad)}>
-            {t('dock.tryAgain')}
+          <button type="button" className="retry-button" aria-busy={loading} onClick={tap(onRetryLoad)}>
+            <span>{t('dock.tryAgain')}</span>
           </button>
         </div>
       )}

@@ -9,6 +9,8 @@ import { selectionFeedback } from '@/lib/feedback';
 
 interface SearchIslandProps {
   address: AddressResult | null;
+  /** False while the dock says there is no scooter data around the searched place. */
+  placeHasData: boolean;
   hasLocation: boolean;
   expanded: boolean;
   hasActiveFilters: boolean;
@@ -22,6 +24,7 @@ interface SearchIslandProps {
 
 export default function SearchIsland({
   address,
+  placeHasData,
   hasLocation,
   expanded,
   hasActiveFilters,
@@ -126,7 +129,8 @@ export default function SearchIsland({
               </span>
               <span className="origin-copy">
                 <strong>{title}</strong>
-                <span>{t('search.change')}</span>
+                {/* "Scooters near this place" would be untrue where there is no data. */}
+                <span>{t(address ? (placeHasData ? 'bar.place.sub' : 'bar.near.sub') : 'search.change')}</span>
               </span>
               <Icon name="search" size={17} />
             </button>

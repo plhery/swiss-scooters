@@ -95,6 +95,8 @@ const scooterResponse = {
       range_m: 14_000,
       vehicle_id: 'lime-1',
       deep_link: null,
+      rental_uris: { ios: 'https://li.me/ride', android: 'https://li.me/ride', web: 'https://li.me/ride' },
+      pricing: { currency: 'CHF', unlock_fee_minor_units: 100, minute_fee_minor_units: 35 },
       distance_m: 8,
     },
     {
@@ -199,13 +201,236 @@ test('does not invent a distance without location and offers walking directions'
   await focusFixtureArea(page);
   await zoomTo(page, 16);
 
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
   await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
-  await expect(page.locator('.vehicle-card')).toBeVisible();
-  await expect(page.locator('.walking-summary')).toHaveCount(0);
-  await expect(page.locator('.vehicle-card').getByRole('link', { name: 'Walk there' })).toHaveAttribute(
-    'href',
-    /travelmode=walking/
-  );
+  const card = page.locator('.dock-card');
+  await expect(card.getByRole('heading', { name: 'Bird' })).toBeVisible();
+  await expect(card.getByText(/min walk/)).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Turn on location to see walking time' })).toBeVisible();
+  await expect(card.getByText('64%')).toBeVisible();
+  await expect(card.getByText('Price shown in the Bird app')).toBeVisible();
+  // No rental link for this scooter: directions alone, and a footnote that says where to rent.
+  await expect(card.getByRole('link')).toHaveCount(1);
+  await expect(card.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /travelmode=walking/);
+  await expect(card.getByText('Open the Bird app to rent this scooter.')).toBeVisible();
+  // While a scooter is selected the dock shows only its card.
+  await expect(page.locator('.sheet-count')).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toHaveCount(0);
+  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await card.getByRole('button', { name: 'Close scooter details' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
+});
+
+test('scooter card shows the walk, the battery and a ride estimate whose duration is remembered', async ({ page }) => {
+  await page.goto('/');
+  await allowLocationWithCompass(page, 'granted');
+  await page.getByRole('button', { name: 'Near me', exact: true }).click();
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  // Your location is on screen, so the count says nearby.
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters nearby$/);
+  // The fixtures share one spot; isolate Lime so that its marker takes the click.
+  await page.getByRole('button', { name: 'Lime, 1. Shown.', exact: true }).click();
+  await page.getByRole('button', { name: /^Lime scooter/ }).click();
+
+  const card = page.locator('.dock-card');
+  await expect(card.getByRole('heading', { name: 'Lime' })).toBeVisible();
+  await expect(card.getByText(/^≈1 min walk · \d+ m$/)).toBeVisible();
+  await expect(card.getByText('82%')).toHaveClass(/pill-good/);
+  await expect(card.getByText('14 km')).toBeVisible();
+  // One franc to unlock and 35 centimes a minute.
+  await expect(card.getByText(/for 10 min/)).toHaveText(/^≈ CHF\s4\.50 for 10 min$/);
+  const picker = card.getByRole('combobox', { name: 'Ride estimate, 10 minutes. Change duration.' });
+  // Measured once the card has settled in: it arrives slightly scaled down.
+  await card.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+  const target = await picker.boundingBox();
+  expect(target!.height).toBeGreaterThanOrEqual(44);
+  expect(target!.width).toBeGreaterThanOrEqual(44);
+  await picker.selectOption('20');
+  await expect(card.getByText(/for 20 min/)).toHaveText(/^≈ CHF\s8\.00 for 20 min$/);
+  await expect(card.getByRole('combobox', { name: 'Ride estimate, 20 minutes. Change duration.' })).toHaveValue('20');
+  expect(await page.evaluate(() => localStorage.getItem('scooters-ride-minutes'))).toBe('20');
+
+  const open = card.getByRole('link', { name: 'Open in Lime' });
+  await expect(open).toHaveAttribute('href', 'https://li.me/ride');
+  // The app's blue on every provider, never the provider's colour.
+  expect(await open.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(0, 112, 235)');
+  await expect(card.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /destination=47\.3769%2C8\.5417/);
+  await expect(card.getByText('Opens the Lime app. It won’t reserve the scooter.')).toBeVisible();
+  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  // The chosen duration is still there for the next scooter and the next visit.
+  await page.reload();
+  await expect(page.locator('.scooter-marker')).toHaveCount(0);
+  await focusFixtureArea(page);
+  await zoomTo(page, 16);
+  // The provider choice is remembered as well, so Lime is still on its own.
+  await expect(page.locator('.scooter-marker')).toHaveCount(1);
+  await page.getByRole('button', { name: /^Lime scooter/ }).click();
+  await expect(page.locator('.dock-card').getByText(/for 20 min/)).toHaveText(/^≈ CHF\s8\.00 for 20 min$/);
+});
+
+test('a refresh that fails keeps the scooters, says so in the dock and recovers with Try again', async ({ page }) => {
+  let fail = false;
+  await page.route('**/api/scooters?**', async route => {
+    if (fail) await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    else await route.fallback();
+  });
+  await page.goto('/?origin=47.3769,8.5417');
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '16');
+
+  // A new view needs a new answer, and there is none.
+  fail = true;
+  await zoomTo(page, 15);
+  const status = page.getByRole('status').filter({ hasText: /^Couldn’t refresh · showing \d\d:\d\d$/ });
+  await expect(status).toBeVisible();
+  // What was loaded stays on the map, not faded, and nothing is shown under the search bar.
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
+  await expect(page.locator('.map-notices')).toBeEmpty();
+  const retry = page.locator('.sheet').getByRole('button', { name: 'Try again' });
+  expect((await retry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  // With a scooter selected the card hides the status line, so the failure moves above it.
+  await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
+  await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
+  const issue = page.locator('.dock-issue');
+  await expect(issue).toHaveText(/Couldn’t refresh · showing \d\d:\d\d/);
+  await expect(page.locator('.dock-card').getByRole('heading', { name: 'Bird' })).toBeVisible();
+
+  fail = false;
+  await issue.getByRole('button', { name: 'Try again' }).click();
+  await expect(issue).toHaveCount(0);
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  await expect(status).toHaveCount(0);
+  await expect(page.locator('.sheet').getByRole('button', { name: 'Try again' })).toHaveCount(0);
+});
+
+test('a provider that is not sharing data gets a dashed chip after All and a calm notice', async ({ page }) => {
+  await page.route('**/api/scooters?**', async route => {
+    const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      ...scooterResponse,
+      vehicles: scooterResponse.vehicles.filter(vehicle => vehicle.provider !== 'bird'),
+      providers: { lime: 1, bolt: 1 },
+      meta: { ...scooterResponse.meta, partial: true, failedSources: ['national:bird_zurich'],
+        mode: 'vehicles', totalVehicles: 2, zoom },
+    }) });
+  });
+  await page.goto('/?origin=47.3769,8.5417');
+  await expect(page.locator('.scooter-marker')).toHaveCount(2);
+  await expect(page.getByText('Bird isn’t sharing data right now.')).toBeVisible();
+  const chips = page.getByRole('group', { name: 'Filter scooters by provider' }).getByRole('button');
+  await expect(chips.nth(0)).toHaveAccessibleName('All providers, 2. Show all.');
+  await expect(chips.nth(1)).toHaveAccessibleName('Bird: not sharing data right now');
+  expect(await chips.nth(1).evaluate(element => getComputedStyle(element).borderTopStyle)).toBe('dashed');
+  // Then by count; ties keep the catalogue order.
+  await expect(chips.nth(2)).toHaveAccessibleName('Bolt, 1. Shown.');
+  await expect(chips.nth(3)).toHaveAccessibleName('Lime, 1. Shown.');
+  // Calm: nothing in the app is announced as an alert, and nothing is shown under the search bar.
+  await expect(page.locator('.app-shell').getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.map-notices')).toBeEmpty();
+  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+});
+
+test('an area without scooter data offers the closest cities and flies to the one chosen', async ({ page }) => {
+  await page.route('**/api/scooters?**', async route => {
+    const url = new URL(route.request().url());
+    // Nothing around Lungern; the fixtures everywhere else.
+    if (Number(url.searchParams.get('north')) > 47) return route.fallback();
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      ...scooterResponse, vehicles: [], clusters: [], providers: {},
+      meta: { ...scooterResponse.meta, totalVehicles: 0, zoom: Number(url.searchParams.get('zoom')) },
+    }) });
+  });
+  await page.goto('/?origin=46.7741,8.1558');
+  const dock = page.locator('.sheet');
+  await expect(dock.getByRole('heading', { name: 'No scooter data here yet' })).toBeVisible();
+  await expect(dock.getByText('Scooters covers selected cities in France, Switzerland, Germany and Italy.')).toBeVisible();
+  await expect(page.locator('.sheet-count')).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toHaveCount(0);
+  const cities = dock.getByRole('group', { name: 'Closest cities' }).getByRole('button');
+  await expect(cities).toHaveCount(3);
+  await expect(cities.first()).toHaveText(/^Zug · 5\d km$/);
+  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await cities.first().click();
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
+  await expect(dock.getByRole('heading', { name: 'No scooter data here yet' })).toHaveCount(0);
+  await expect(page.locator('.sheet-count')).toHaveText(/scooters on this map$/);
+});
+
+test('the search bar does not promise scooters near a searched place without scooter data', async ({ page }) => {
+  await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify([
+    { lat: 46.7741, lng: 8.1558, display_name: 'Lungern, OW', title: 'Lungern', subtitle: 'OW', covered: false },
+  ]) }));
+  await page.route('**/api/scooters?**', async route => {
+    const url = new URL(route.request().url());
+    // Nothing around Lungern; the fixtures everywhere else.
+    if (Number(url.searchParams.get('north')) > 47) return route.fallback();
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      ...scooterResponse, vehicles: [], clusters: [], providers: {},
+      meta: { ...scooterResponse.meta, totalVehicles: 0, zoom: Number(url.searchParams.get('zoom')) },
+    }) });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /^Origin:/ }).click();
+  const input = page.getByRole('combobox');
+  await input.fill('Lungern');
+  await expect(page.getByRole('option', { name: 'Lungern, OW' })).toBeVisible();
+  await input.press('Enter');
+
+  await expect(page.locator('.sheet').getByRole('heading', { name: 'No scooter data here yet' })).toBeVisible();
+  const bar = page.getByRole('button', { name: /^Origin: Lungern/ });
+  await expect(bar).toContainText('Tap to search a city or address');
+  await expect(bar).not.toContainText('Scooters near this place');
+});
+
+test('says how many scooters the filters hide, and shows them again or opens the filters', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) localStorage.setItem('scooters-providers', JSON.stringify(['hopp']));
+    sessionStorage.setItem('seeded', 'true');
+  });
+  await page.goto('/?origin=47.3769,8.5417');
+  const dock = page.locator('.sheet');
+  await expect(dock.getByRole('heading', { name: '3 scooters hidden by your filters' })).toBeVisible();
+  await expect(dock.getByText('Hopp only')).toBeVisible();
+  await expect(page.locator('.scooter-marker')).toHaveCount(0);
+  await expect(page.locator('.sheet-count')).toHaveCount(0);
+  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await dock.getByRole('button', { name: 'Edit filters' }).click();
+  const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+  await expect(filters).toBeVisible();
+  await filters.getByRole('button', { name: 'Done' }).click();
+  await expect(filters).not.toBeVisible();
+
+  await dock.getByRole('button', { name: 'Show all 3' }).click();
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
+});
+
+test('an empty covered area keeps the count and the chips and says what to do', async ({ page }) => {
+  await page.route('**/api/scooters?**', async route => {
+    const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      ...scooterResponse, vehicles: [], clusters: [], providers: {},
+      meta: { ...scooterResponse.meta, totalVehicles: 0, mode: 'vehicles', zoom },
+    }) });
+  });
+  await page.goto('/?origin=47.3769,8.5417');
+  await expect(page.locator('.sheet-count')).toHaveText(/^0\s*scooters on this map$/);
+  await expect(page.getByText('No scooters here right now. Zoom out or move the map.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Lime, 0\./ })).toBeVisible();
 });
 
 test('installs the production service worker and reloads offline', async ({
@@ -277,6 +502,9 @@ test('a load that fails says why under the search bar and recovers with Try agai
   const banner = page.getByRole('alert').filter({ hasText: 'Scooters is having trouble. Try again in a moment.' });
   await expect(banner).toBeVisible();
   await expect(page.locator('.cluster-marker')).toHaveCount(0);
+  // Nothing has loaded: the dock has no count and no chips to offer.
+  await expect(page.locator('.sheet-count')).toHaveText('Waiting for scooter data');
+  await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toHaveCount(0);
   const accessibility = await new AxeBuilder({ page }).include('.map-notices').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
 
@@ -284,6 +512,7 @@ test('a load that fails says why under the search bar and recovers with Try agai
   await banner.getByRole('button', { name: 'Try again' }).click();
   await expect(banner).toHaveCount(0);
   await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
 });
 
 test('clusters at zoom 15 and separates scooters above it', async ({ page }) => {
@@ -308,17 +537,26 @@ test('city overview drills directly into the city and preserves unchanged marker
       ...scooterResponse, vehicles: [],
       clusters: [{ id: 'city:ch:zurich', city: 'Zürich', lat: 47.3769, lng: 8.5417, count: 3,
         providers: { lime: 1, bird: 1, bolt: 1 } }],
-      meta: { ...scooterResponse.meta, mode: 'clusters', overview: true, refreshAfterSeconds: 3600, zoom },
+      meta: { ...scooterResponse.meta, generatedAt: new Date().toISOString(), mode: 'clusters', zoom,
+        // City totals up to zoom 10, as the server answers.
+        ...(zoom <= 10 ? { overview: true, refreshAfterSeconds: 3600 } : {}) },
     }) });
   });
   await page.goto('/');
   const marker = page.locator('.cluster-marker-wrap');
   await expect(marker).toHaveCount(1);
+  // The dock says what the numbers are and how to get further; no age for hourly totals.
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
+  await expect(page.getByText('City totals · refreshed hourly')).toBeVisible();
+  await expect(page.getByText('Tap a city to see its scooters.')).toBeVisible();
+  await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
   const original = await marker.elementHandle();
   await marker.click();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
-  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on map$/);
+  await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
   await expect(page.getByText('City totals · refreshed hourly')).toHaveCount(0);
+  await expect(page.getByText('Tap a city to see its scooters.')).toHaveCount(0);
+  await expect(page.getByText('Live', { exact: true })).toBeVisible();
   expect(await original?.evaluate(node => node.isConnected)).toBe(true);
 });
 
@@ -372,6 +610,7 @@ test('search island manages keyboard focus and keeps the dock out of interaction
   await input.press('Enter');
   await expect(page.locator('.sheet')).not.toHaveAttribute('inert');
   await expect(page.getByRole('button', { name: /^Origin: Zürich HB/ })).toBeFocused();
+  await expect(page.getByRole('button', { name: /^Origin: Zürich HB/ })).toContainText('Scooters near this place');
   await expect(page.locator('.destination-marker')).toBeVisible();
 });
 
@@ -599,13 +838,13 @@ test('compass rotates the map, preserves marker interaction and resets north', a
   // overlapping scooter cannot intercept the click after rotation.
   await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
   await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
-  await expect(page.locator('.vehicle-card')).toBeVisible();
+  await expect(page.locator('.dock-card')).toBeVisible();
   const accessibility = await new AxeBuilder({ page }).include('.map-navigation').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
   await compass.click();
   await expect(compass).toHaveAttribute('data-bearing', '0');
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
-  await expect(page.locator('.vehicle-card')).toBeVisible();
+  await expect(page.locator('.dock-card')).toBeVisible();
   if (touch) await expect(compass).toBeHidden();
   else await expect(compass).toBeVisible();
 
