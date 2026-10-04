@@ -693,6 +693,22 @@ extension ScooterModelsTests {
         XCTAssertTrue(["en", "de", "fr", "it"].contains(ScooterPlural.language))
     }
 
+    func testPercentagesAndTheShownStateReadAsOnTheWeb() throws {
+        for language in ["en", "de", "fr", "it"] {
+            let strings = try XCTUnwrap(
+                Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:))
+            )
+            // "82%" and "Akku ab 60%", like the presets "60%+" beside them.
+            XCTAssertEqual(strings.localizedString(forKey: "%lld%%", value: nil, table: nil), "%lld%%", language)
+            let summary = strings.localizedString(forKey: "battery %lld%% or more", value: nil, table: nil)
+            XCTAssertTrue(summary.contains("%lld%%"), "\(language): \(summary)")
+            XCTAssertFalse(summary.contains(" %%"), "\(language): \(summary)")
+        }
+        let german = try XCTUnwrap(Bundle.main.path(forResource: "de", ofType: "lproj").flatMap(Bundle.init(path:)))
+        XCTAssertEqual(german.localizedString(forKey: "Shown", value: nil, table: nil), "Eingeblendet")
+        XCTAssertEqual(german.localizedString(forKey: "Hidden", value: nil, table: nil), "Ausgeblendet")
+    }
+
     func testFrenchAndItalianNameTheOperatorWithOneWordAndFrenchShowsNothingInTheSingular() throws {
         func strings(_ language: String) throws -> Bundle {
             try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)))

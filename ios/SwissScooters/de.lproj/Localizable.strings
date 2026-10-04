@@ -25,13 +25,13 @@
 
 /* Scooter details */
 "Centers this scooter on the map" = "Zentriert diesen Scooter auf der Karte";
-"%lld%%" = "%lld %%";
+"%lld%%" = "%lld%%";
 "Done" = "Fertig";
 "Filters" = "Filter";
 "Providers" = "Anbieter";
 "Show all" = "Alle anzeigen";
 "%@, %lld scooters" = "%@, %lld Scooter";
-"Shown" = "Angezeigt";
+"Shown" = "Eingeblendet";
 "Hidden" = "Ausgeblendet";
 "Map" = "Karte";
 "Appearance" = "Darstellung";
@@ -143,7 +143,7 @@
 "Show all %lld" = "Alle %lld anzeigen";
 "Edit filters" = "Filter bearbeiten";
 "%@ only" = "Nur %@";
-"battery %lld%% or more" = "Akku ab %lld %%";
+"battery %lld%% or more" = "Akku ab %lld%%";
 
 /* UX alignment: scooter card */
 "≈%1$lld min walk · %2$@" = "≈%1$lld Min. zu Fuss · %2$@";

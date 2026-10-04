@@ -25,7 +25,7 @@
 
 /* Scooter details */
 "Centers this scooter on the map" = "Centre la carte sur cette trottinette";
-"%lld%%" = "%lld %%";
+"%lld%%" = "%lld%%";
 "Done" = "Terminé";
 "Filters" = "Filtres";
 "Providers" = "Opérateurs";
@@ -143,7 +143,7 @@
 "Show all %lld" = "Tout afficher (%lld)";
 "Edit filters" = "Modifier les filtres";
 "%@ only" = "%@ uniquement";
-"battery %lld%% or more" = "batterie %lld %% ou plus";
+"battery %lld%% or more" = "batterie %lld%% ou plus";
 
 /* UX alignment: scooter card */
 "≈%1$lld min walk · %2$@" = "≈%1$lld min à pied · %2$@";
