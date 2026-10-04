@@ -1989,9 +1989,11 @@ svg {
     font-size: 12px;
   }
 }
+/* A phone on its side: the dock may reach up to the search bar and whatever notice is under
+   it, so that a card is shown whole rather than cut off above its last line. */
 @media (max-height: 500px) {
   .sheet-content {
-    max-height: 48dvh;
+    max-height: calc(100dvh - var(--sat) - var(--dock-bottom) - 82px - var(--notices-h, 0px));
   }
 }
 /* The desktop layout: a wide window with a mouse or trackpad. The dock is a
