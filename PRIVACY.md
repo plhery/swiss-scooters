@@ -12,8 +12,8 @@ searches.
   the app is shown in, to the Swiss federal geo.admin.ch service. The name of a
   city in the Scooters catalogue is answered without contacting it.
 - OpenStreetMap receives normal tile requests from the user's device, with the website origin as the referrer (no page path or query string).
-- Language, filters, appearance, map style and the ride length chosen for price
-  estimates are stored locally, as is the fact that the device has found its
+- Language, filters, appearance, map style, the ride length chosen for price
+  estimates and, in the iOS app, the ride passes entered are stored locally, as is the fact that the device has found its
   location before (a yes or no, never the position). Precise map origins are not
   persisted, and the places chosen in the search are kept in memory only, until
   the app is closed.
