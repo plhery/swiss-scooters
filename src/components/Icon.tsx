@@ -8,12 +8,6 @@ const paths = {
     </>
   ),
   location: <path d="m21 3-7.5 18-3-7.5L3 10.5 21 3Z" />,
-  origin: (
-    <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="m16 8-3 8-2-3-3-2 8-3Z" />
-    </>
-  ),
   filters: (
     <>
       <path d="M4 6h16M7 12h10M10 18h4" />

@@ -1214,8 +1214,7 @@ svg {
 .settings-section:first-child {
   margin-top: 14px;
 }
-.settings-section h3,
-.section-title {
+.settings-section h3 {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink-2);
@@ -2237,9 +2236,6 @@ svg {
   to {
     transform: rotate(360deg);
   }
-}
-.spin {
-  animation: spin 1s linear infinite;
 }
 .mini-spinner {
   width: 12px;

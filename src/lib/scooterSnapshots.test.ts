@@ -3,7 +3,7 @@ import { buildCityOverview, overviewNeedsRefresh, querySnapshot, VEHICLE_MAX_AGE
 import { ScooterFeedsUnavailableError } from './scooterFeeds';
 import { providersForViewport, mapRepresentationsMatch } from './mapCoverage';
 import type { Vehicle } from './types';
-import { scooterDataHealthNotice } from './dataHealth';
+import { providerHealth, providersDownNotice } from './dataHealth';
 
 const now = Date.parse('2026-09-08T12:00:00Z');
 const lyon = { south: 45.70, west: 4.7, north: 45.9, east: 5.0 };
@@ -82,7 +82,10 @@ describe('persistent map snapshots', () => {
     expect(response.vehicles).toHaveLength(2);
     expect(response.meta).toMatchObject({ partial: true, stale: false,
       failedSources: ['france:voi'], expiresAt: new Date(now + 60_000).toISOString() });
-    expect(scooterDataHealthNotice(response.meta, response.vehicles.length)).toBe('Some providers unavailable');
+    // The dock would name Voi, which shows nothing here, and say nothing about Dott.
+    expect(providersDownNotice(providerHealth({
+      meta: response.meta, viewportProviders: ['dott', 'voi'], inView: new Set(['dott']),
+    }))).toEqual({ key: 'dock.down.one', values: { name: 'Voi' } });
     expect(() => querySnapshot(cached, query, 16, now + 60_001)).toThrow(ScooterFeedsUnavailableError);
   });
 
