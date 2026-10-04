@@ -115,7 +115,7 @@ enum ScooterLoadFailure: String, CaseIterable, Equatable, Sendable {
     }
 }
 
-enum ScooterAPIError: LocalizedError {
+enum ScooterAPIError: Error {
     case invalidURL
     case offline
     case timedOut
@@ -124,11 +124,6 @@ enum ScooterAPIError: LocalizedError {
     case invalidData(Error)
     case network(Error)
 
-    var statusCode: Int? {
-        guard case let .httpStatus(statusCode) = self else { return nil }
-        return statusCode
-    }
-
     var loadFailure: ScooterLoadFailure {
         switch self {
         case .offline: .offline
@@ -136,32 +131,6 @@ enum ScooterAPIError: LocalizedError {
         case .httpStatus(429): .busy
         case let .httpStatus(statusCode) where (500 ... 599).contains(statusCode): .unavailable
         default: .failed
-        }
-    }
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidURL:
-            String(localized: "The scooter service URL is invalid.")
-        case .offline:
-            String(localized: "You appear to be offline. Check your connection and try again.")
-        case .timedOut:
-            String(localized: "The scooter service took too long to respond. Please try again.")
-        case .invalidResponse:
-            String(localized: "The scooter service returned an invalid response.")
-        case let .httpStatus(statusCode) where statusCode == 429:
-            String(localized: "The scooter service is receiving too many requests (HTTP 429). Please try again shortly.")
-        case let .httpStatus(statusCode) where (500 ... 599).contains(statusCode):
-            String(format: String(localized: "The scooter service is temporarily unavailable (HTTP %lld)."), statusCode)
-        case let .httpStatus(statusCode):
-            String(format: String(localized: "The scooter request failed (HTTP %lld)."), statusCode)
-        case .invalidData:
-            String(localized: "The scooter data could not be read.")
-        case let .network(error):
-            String(
-                format: String(localized: "A network error prevented the scooter update: %@"),
-                error.localizedDescription
-            )
         }
     }
 }

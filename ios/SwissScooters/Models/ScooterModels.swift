@@ -379,14 +379,6 @@ struct ScooterParking: Identifiable, Equatable, Sendable {
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
-    var title: String {
-        "\(ScooterProvider(rawValue: provider)?.name ?? provider) · \(String(localized: "Parking"))"
-    }
-    var guidance: String {
-        let rule = mandatory ? String(localized: "Designated parking is required in this zone.")
-            : String(localized: "Designated scooter parking.")
-        return "\(rule)\n\(String(localized: "Check the operator app to confirm you can end your ride here."))"
-    }
 
     var providerInfo: ScooterProvider? {
         ScooterProvider(rawValue: provider)

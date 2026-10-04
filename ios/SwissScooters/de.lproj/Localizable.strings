@@ -1,152 +1,57 @@
-"Retry" = "Erneut versuchen";
 "Settings" = "Einstellungen";
 "Finding your location…" = "Standort wird gesucht…";
-"Collapse controls" = "Steuerung schliessen";
-"Expand controls" = "Steuerung öffnen";
-"Tap or drag vertically" = "Tippen oder vertikal ziehen";
-"Collapse scooter controls" = "Scooter-Steuerung schliessen";
-"Expand scooter controls" = "Scooter-Steuerung öffnen";
 "scooter" = "Scooter";
 "scooters" = "Scooter";
 "All" = "Alle";
-"selected" = "ausgewählt";
-"not selected" = "nicht ausgewählt";
 "Battery" = "Akku";
 "Estimated" = "Geschätzt";
-"Walk there" = "Zu Fuss dorthin";
-"Rent" = "Mieten";
-"Minimum battery" = "Mindestakku";
 "Any" = "Beliebig";
-"Apple Maps style" = "Apple-Kartenstil";
-"Mobility data: opentransportdata.swiss and Hopp" = "Mobilitätsdaten: opentransportdata.swiss und Hopp";
 "Address data © swisstopo" = "Adressdaten © swisstopo";
 "Privacy" = "Datenschutz";
-"Updating nearby vehicles…" = "Fahrzeuge in der Nähe werden aktualisiert…";
-"On this map" = "Auf dieser Karte";
 "Go to my location" = "Zu meinem Standort";
-"Refresh scooters" = "Scooter aktualisieren";
-"Scooters refreshed" = "Scooter aktualisiert";
-"Just now" = "Gerade eben";
 "Standard" = "Standard";
 "Quiet" = "Ruhig";
 "Satellite" = "Satellit";
-"Showing cached data" = "Zwischengespeicherte Daten werden angezeigt";
-"Some providers are unavailable" = "Einige Anbieter sind nicht verfügbar";
-"Location access is off. Enable it in Settings to find scooters near you." = "Der Standortzugriff ist deaktiviert. Aktiviere ihn in den Einstellungen, um Scooter in deiner Nähe zu finden.";
-"Location access is restricted on this device. You can still browse the map manually." = "Der Standortzugriff ist auf diesem Gerät eingeschränkt. Du kannst die Karte weiterhin manuell durchsuchen.";
-"one or more data sources" = "einer oder mehreren Datenquellen";
-"The scooter service URL is invalid." = "Die URL des Scooter-Dienstes ist ungültig.";
-"You appear to be offline. Check your connection and try again." = "Du scheinst offline zu sein. Prüfe deine Verbindung und versuche es erneut.";
-"The scooter service took too long to respond. Please try again." = "Der Scooter-Dienst hat zu lange nicht geantwortet. Versuche es erneut.";
-"The scooter service returned an invalid response." = "Der Scooter-Dienst hat eine ungültige Antwort geliefert.";
-"The scooter service is receiving too many requests (HTTP 429). Please try again shortly." = "Der Scooter-Dienst erhält zu viele Anfragen (HTTP 429). Versuche es gleich nochmals.";
-"The scooter data could not be read." = "Die Scooter-Daten konnten nicht gelesen werden.";
 "Shows scooter details" = "Zeigt Scooter-Details";
 "Zooms in to show individual scooters" = "Vergrössert die Karte, um einzelne Scooter anzuzeigen";
 "Updated %@" = "Aktualisiert um %@";
-"Data status: %@" = "Datenstatus: %@";
-"Straight-line distance, %@" = "Luftliniendistanz, %@";
-"All providers, %@ scooters, %@" = "Alle Anbieter, %@ Scooter, %@";
-"%@, %@ scooters, %@" = "%@, %@ Scooter, %@";
 "%lld percent" = "%lld Prozent";
 "%@ scooter" = "%@-Scooter";
 "%@ scooters" = "%@ Scooter";
-"Showing %@ of %@ results" = "%@ von %@ Ergebnissen werden angezeigt";
-"Scooter data from %@ is temporarily unavailable. Keeping the last complete map." = "Scooter-Daten von %@ sind vorübergehend nicht verfügbar. Die letzte vollständige Karte bleibt sichtbar.";
-"The scooter service is temporarily unavailable (HTTP %lld)." = "Der Scooter-Dienst ist vorübergehend nicht verfügbar (HTTP %lld).";
-"The scooter request failed (HTTP %lld)." = "Die Scooter-Anfrage ist fehlgeschlagen (HTTP %lld).";
-"A network error prevented the scooter update: %@" = "Ein Netzwerkfehler hat die Scooter-Aktualisierung verhindert: %@";
-"Address search" = "Adresssuche";
 "City or address" = "Stadt oder Adresse";
-"Clear address search" = "Adresssuche löschen";
-"Searching addresses…" = "Adressen werden gesucht…";
-"No addresses or cities found." = "Keine Adressen oder Städte gefunden.";
-"Address search is unavailable. Try again." = "Die Adresssuche ist nicht verfügbar. Versuche es erneut.";
-"Find a scooter nearby" = "Scooter in der Nähe finden";
-"Use your location for nearby distances, or search for a city or address." = "Nutze deinen Standort oder suche eine unterstützte Stadt oder Adresse.";
 "Use my location" = "Meinen Standort nutzen";
-"Browse the map" = "Karte erkunden";
 "Finding scooters…" = "Scooter werden gesucht…";
-"Filters active" = "Filter aktiv";
 "Close scooter details" = "Scooter-Details schliessen";
-"Reset filters" = "Filter zurücksetzen";
-"Scooters without battery data are hidden." = "Scooter ohne Akkuangabe werden ausgeblendet.";
-"No scooters match these filters here." = "Hier passen keine Scooter zu diesen Filtern.";
-"No scooters on this part of the map." = "In diesem Kartenausschnitt sind keine Scooter verfügbar.";
 
 /* Scooter details */
 "Centers this scooter on the map" = "Zentriert diesen Scooter auf der Karte";
-"Walk" = "Zu Fuss";
-"Open %@" = "%@ öffnen";
 "%lld%%" = "%lld %%";
-"≈%lld" = "≈%lld";
-"min" = "Min.";
-"walk" = "zu Fuss";
-"away" = "entfernt";
-"Approximately %lld minutes walking" = "Etwa %lld Minuten zu Fuss";
-"Distance unavailable" = "Entfernung nicht verfügbar";
-"Choose an origin" = "Startpunkt wählen";
 "Done" = "Fertig";
-"Selected" = "Ausgewählt";
-"Reset all filters" = "Alle Filter zurücksetzen";
 "Filters" = "Filter";
 "Providers" = "Anbieter";
 "Show all" = "Alle anzeigen";
 "%@, %lld scooters" = "%@, %lld Scooter";
 "Shown" = "Angezeigt";
 "Hidden" = "Ausgeblendet";
-"30%+" = "Ab 30 %";
-"60%+" = "Ab 60 %";
-"Fine tune" = "Feinabstimmung";
 "Map" = "Karte";
 "Appearance" = "Darstellung";
-"Use current location" = "Aktuellen Standort nutzen";
-"Refresh availability" = "Verfügbarkeit aktualisieren";
-"Live data" = "Live-Daten";
-"Status" = "Status";
 "Mobility data sources" = "Mobilitätsdatenquellen";
 "About" = "Über";
-"Availability is refreshed automatically. Opening a provider app does not reserve a scooter." = "Die Verfügbarkeit wird automatisch aktualisiert. Das Öffnen einer Anbieter-App reserviert keinen Scooter.";
-"More" = "Mehr";
-"Updating…" = "Wird aktualisiert…";
-"Waiting for live data" = "Warten auf Live-Daten";
 "Live" = "Live";
-"Search nearby" = "In der Nähe suchen";
-"Search or change origin" = "Startpunkt suchen oder ändern";
-"Origin: %@. Search or change origin." = "Startpunkt: %@. Startpunkt suchen oder ändern.";
 "Filters, active" = "Filter, aktiv";
-"More options" = "Weitere Optionen";
-"Current location" = "Aktueller Standort";
-"scooters in view" = "Scooter im Kartenausschnitt";
 "%lld percent or more" = "%lld Prozent oder mehr";
-"Not selected" = "Nicht ausgewählt";
 "All providers" = "Alle Anbieter";
 "Shows only this provider" = "Zeigt nur diesen Anbieter";
 "Shows all providers" = "Zeigt alle Anbieter";
 "Hides this provider" = "Blendet diesen Anbieter aus";
 "Adds this provider" = "Fügt diesen Anbieter hinzu";
-"Tap a marker for details" = "Tippe auf eine Markierung für Details";
-"No selected providers here" = "Keine ausgewählten Anbieter hier";
-"scooter on map" = "Scooter auf der Karte";
-"scooters on map" = "Scooter auf der Karte";
-"Approximately one minute walking" = "Etwa eine Minute zu Fuss";
 "%@, one scooter" = "%@, ein Scooter";
 "≈%lld min walk" = "≈%lld Min. zu Fuss";
-"%@ away" = "%@ entfernt";
 "One address suggestion" = "Ein Adressvorschlag";
 "%lld address suggestions" = "%lld Adressvorschläge";
 
 /* Fahrpreise und Pässe */
-"Ride estimate" = "Fahrtkostenschätzung";
-"Choose an estimated ride duration" = "Geschätzte Fahrtdauer wählen";
-"%lld min estimate" = "%lld Min. geschätzt";
-"%@ unlock + %@/min" = "%@ Entsperren + %@/Min.";
-"%@ unlock" = "%@ Entsperren";
-"%@/min" = "%@/Min.";
-"Included with pass" = "Im Pass enthalten";
 "Pass applied" = "Pass berücksichtigt";
-"Check in %@" = "In %@ prüfen";
-"Open the provider app for current pricing." = "Aktuelle Preise in der Anbieter-App prüfen.";
 "Passes" = "Pässe";
 "Not set" = "Nicht eingerichtet";
 "Expired" = "Abgelaufen";
@@ -170,18 +75,10 @@
 "City totals · refreshed hourly" = "Stadtübersicht · stündlich aktualisiert";
 
 /* Scooter parking */
-"Designated parking is required in this zone." = "In dieser Zone muss auf ausgewiesenen Flächen geparkt werden.";
 "Designated scooter parking." = "Ausgewiesener Scooter-Parkplatz.";
-"Check the operator app to confirm you can end your ride here." = "Prüfe in der Anbieter-App, ob du die Fahrt hier beenden kannst.";
-"Directions to parking" = "Weg zum Parkplatz";
-"Parking data is temporarily unavailable" = "Parkplatzdaten sind vorübergehend nicht verfügbar";
-"Parking data may be out of date" = "Parkplatzdaten sind möglicherweise veraltet";
 "Parking" = "Parkplatz";
 
-"Availability has expired. Refresh to see current scooters." = "Die Verfügbarkeiten sind veraltet. Aktualisiere, um aktuelle Scooter zu sehen.";
-
 // Self-hosted usage analytics
-"Analytics" = "Nutzungsstatistik";
 "Share anonymous usage" = "Anonyme Nutzung teilen";
 "Helps improve Scooters. No addresses or precise locations are sent." = "Hilft, Scooters zu verbessern. Adressen und genaue Standorte werden nicht gesendet.";
 
@@ -195,17 +92,14 @@
 "Showing scooters near %@. Search another place." = "Scooter in der Nähe von %@ werden angezeigt. Anderen Ort suchen.";
 
 /* UX alignment: search panel */
-"City, street or station" = "Stadt, Strasse oder Bahnhof";
 "Cancel" = "Abbrechen";
 "Recent" = "Zuletzt gesucht";
 "Cities with scooters" = "Städte mit Scootern";
 "No data" = "Keine Daten";
 "Searching…" = "Suche läuft…";
-"No places found" = "Keine Orte gefunden";
 "No places found. Outside Switzerland, search by city." = "Keine Orte gefunden. Suche ausserhalb der Schweiz nach einer Stadt.";
 "Search isn’t available right now." = "Die Suche ist gerade nicht verfügbar.";
 "Try again" = "Erneut versuchen";
-"Suggestions" = "Vorschläge";
 "Clear search" = "Suche löschen";
 
 /* UX alignment: dock */
@@ -232,7 +126,6 @@
 /* UX alignment: refresh and load failures */
 "These positions are out of date" = "Diese Positionen sind veraltet";
 "Last update %@." = "Letzte Aktualisierung um %@.";
-"Refresh" = "Aktualisieren";
 "You’re offline. Check your connection." = "Du bist offline. Prüfe deine Verbindung.";
 "Scooters took too long to respond." = "Scooters hat zu lange nicht geantwortet.";
 "Scooters is busy right now. Try again in a moment." = "Scooters ist gerade ausgelastet. Versuche es gleich nochmals.";
@@ -290,14 +183,7 @@
 "Show %lld scooters" = "%lld Scooter anzeigen";
 
 /* UX alignment: settings */
-"Automatic" = "Automatisch";
-"Light" = "Hell";
-"Dark" = "Dunkel";
-"Calm" = "Ruhig";
-"Detailed" = "Detailliert";
-"Language" = "Sprache";
 "Map & data credits" = "Karten- & Datenquellen";
-"Privacy notice" = "Datenschutzerklärung";
 "Read the privacy notice" = "Datenschutzerklärung lesen";
 "Source code on GitHub" = "Quellcode auf GitHub";
 "Availability refreshes automatically. Opening a provider app doesn’t reserve a scooter." = "Die Verfügbarkeit wird automatisch aktualisiert. Das Öffnen einer Anbieter-App reserviert keinen Scooter.";

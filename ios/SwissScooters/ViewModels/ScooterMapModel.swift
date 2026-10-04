@@ -27,24 +27,6 @@ enum ScooterLocationPolicy {
     }
 }
 
-enum LocationAuthorizationIssue: Equatable {
-    case denied
-    case restricted
-
-    var message: String {
-        switch self {
-        case .denied:
-            String(localized: "Location access is off. Enable it in Settings to find scooters near you.")
-        case .restricted:
-            String(localized: "Location access is restricted on this device. You can still browse the map manually.")
-        }
-    }
-
-    var canOpenSettings: Bool {
-        self == .denied
-    }
-}
-
 enum NearbyOrigin: Equatable, Sendable {
     case searchedDestination(MapDestination)
     case userLocation(GeoPoint)
@@ -55,15 +37,6 @@ enum NearbyOrigin: Equatable, Sendable {
             destination.point
         case let .userLocation(point):
             point
-        }
-    }
-
-    var title: String {
-        switch self {
-        case let .searchedDestination(destination):
-            destination.title
-        case .userLocation:
-            String(localized: "Current location")
         }
     }
 }
@@ -294,23 +267,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return mapParking.first { $0.id == selectedParkingID }
     }
 
-    /// The reason sentence of the current load issue, for the banner the views show today.
-    var errorMessage: String? {
-        loadIssue?.failure.message
-    }
-
     /// The location card under the search bar, unless it was dismissed. The
     /// next locate attempt brings it back.
     var locationIssue: ScooterLocationIssue? {
         locationIssueDismissed ? nil : locationProblem
-    }
-
-    var locationAuthorizationIssue: LocationAuthorizationIssue? {
-        switch locationProblem {
-        case .denied: .denied
-        case .restricted: .restricted
-        case .notFound, nil: nil
-        }
     }
 
     var searchBarState: ScooterSearchBarState {
@@ -339,15 +299,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         return nil
     }
 
-    var activeOriginTitle: String? {
-        activeOrigin?.title
-    }
-
     var visibleCount: Int { visibleScooterCount }
-
-    var isShowingClusterSummary: Bool {
-        responseMetadata?.mode == "clusters" && mapScooters.isEmpty && !mapClusters.isEmpty
-    }
 
     var allProvidersSelected: Bool {
         Set(availableProviders).isSubset(of: enabledProviders)
@@ -383,12 +335,6 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             metadata: responseMetadata,
             shownCount: representedVehicleCount
         )
-    }
-
-    /// The dock notices on one line, for the status label the views show today.
-    var dataHealthMessage: String? {
-        let notices = dockNotices
-        return notices.isEmpty ? nil : notices.map(\.text).joined(separator: " · ")
     }
 
     func count(for provider: ScooterProvider) -> Int {
@@ -428,10 +374,6 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             }
             .map(\.element)
         return entries.filter(\.isDown) + sharing
-    }
-
-    var quickProviderOrder: [ScooterProvider] {
-        dockChips.map(\.provider)
     }
 
     /// What the filter sheet's "Show n scooters" button promises: filters apply
@@ -682,8 +624,8 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         userHeading = nil
     }
 
-    /// Refreshes when the data is due or has expired. The model schedules this
-    /// itself while the app is active, so calling it is only ever a nudge.
+    /// What the refresh timer does when it fires: bays past their time go, and
+    /// the scooters are fetched again once they are due or have expired.
     func autoRefreshIfNeeded() {
         expireParkingIfNeeded()
         refreshIfDue(respectingAttemptGap: true)
@@ -739,7 +681,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self else { return }
             refreshTimerTask = nil
-            refreshIfDue(respectingAttemptGap: true)
+            autoRefreshIfNeeded()
         }
     }
 
@@ -879,19 +821,6 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         if recentPlaces.count > Self.maximumRecentPlaces {
             recentPlaces.removeLast(recentPlaces.count - Self.maximumRecentPlaces)
         }
-    }
-
-    func focusOnSwitzerland() {
-        ScooterAnalytics.shared.track("browse_map")
-        selectedScooterID = nil
-        selectedParkingID = nil
-        focusToken += 1
-        focusRequest = MapFocusRequest(
-            point: Self.switzerlandCenter,
-            token: focusToken,
-            latitudinalMeters: 300_000,
-            longitudinalMeters: 500_000
-        )
     }
 
     /// The card header: centres the scooter and leaves the zoom as it is.

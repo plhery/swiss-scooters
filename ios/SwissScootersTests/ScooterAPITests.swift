@@ -67,14 +67,16 @@ final class ScooterAPITests: XCTestCase {
             _ = try await api.scooters(bounds: bounds, zoom: 16, minimumBattery: 0)
             XCTFail("Expected an HTTP status error")
         } catch let error as ScooterAPIError {
-            XCTAssertEqual(error.statusCode, 503)
-            XCTAssertFalse(error.localizedDescription.isEmpty)
+            guard case .httpStatus(503) = error else {
+                return XCTFail("Expected HTTP 503, got \(error)")
+            }
+            XCTAssertEqual(error.loadFailure, .unavailable)
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
     }
 
-    func testOfflineErrorGetsActionableMessage() async {
+    func testOfflineErrorIsToldApart() async {
         let api = makeAPI(urlError: .notConnectedToInternet)
 
         do {
@@ -84,13 +86,13 @@ final class ScooterAPITests: XCTestCase {
             guard case .offline = error else {
                 return XCTFail("Expected offline, got \(error)")
             }
-            XCTAssertFalse(error.localizedDescription.isEmpty)
+            XCTAssertEqual(error.loadFailure, .offline)
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
     }
 
-    func testTimeoutGetsSpecificMessage() async {
+    func testTimeoutIsToldApart() async {
         let api = makeAPI(urlError: .timedOut)
 
         do {
@@ -100,13 +102,13 @@ final class ScooterAPITests: XCTestCase {
             guard case .timedOut = error else {
                 return XCTFail("Expected timedOut, got \(error)")
             }
-            XCTAssertFalse(error.localizedDescription.isEmpty)
+            XCTAssertEqual(error.loadFailure, .timeout)
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
     }
 
-    func testInvalidJSONGetsDataMessage() async {
+    func testInvalidJSONIsToldApart() async {
         let api = makeAPI(responseStatus: 200, data: Data("{}".utf8))
 
         do {
@@ -116,7 +118,7 @@ final class ScooterAPITests: XCTestCase {
             guard case .invalidData = error else {
                 return XCTFail("Expected invalidData, got \(error)")
             }
-            XCTAssertFalse(error.localizedDescription.isEmpty)
+            XCTAssertEqual(error.loadFailure, .failed)
         } catch {
             XCTFail("Unexpected error: \(error)")
         }

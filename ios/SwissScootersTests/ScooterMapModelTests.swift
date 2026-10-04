@@ -44,7 +44,7 @@ final class ScooterMapModelTests: XCTestCase {
         let selected = model.enabledProviders
         model.viewport = GeoBounds(south: 45.72, west: 4.79, north: 45.80, east: 4.90)
         XCTAssertEqual(model.availableProviders, [.dott])
-        XCTAssertFalse(model.quickProviderOrder.contains(.publibike))
+        XCTAssertFalse(model.dockChips.contains { $0.provider == .publibike })
         XCTAssertEqual(model.enabledProviders, selected)
         model.viewport = GeoBounds(south: 47.3, west: 8.4, north: 47.5, east: 8.7)
         XCTAssertTrue(model.availableProviders.contains(.publibike))
@@ -110,12 +110,12 @@ final class ScooterMapModelTests: XCTestCase {
         model.refresh()
 
         let partialRefreshFinished = await waitUntil {
-            model.dataHealthMessage != nil && !model.isLoading
+            !model.dockNotices.isEmpty && !model.isLoading
         }
         XCTAssertTrue(partialRefreshFinished)
         XCTAssertEqual(model.mapScooters.map(\.vehicleID), ["voi-new"])
-        XCTAssertNil(model.errorMessage)
-        XCTAssertNotNil(model.dataHealthMessage)
+        XCTAssertNil(model.loadIssue)
+        XCTAssertEqual(model.dockNotices, [.someProvidersDown])
     }
 
     func testAcceptedDegradedResponseExposesADataHealthMessage() async throws {
@@ -136,8 +136,7 @@ final class ScooterMapModelTests: XCTestCase {
         let loadingFinished = await waitUntil { model.lastUpdated != nil && !model.isLoading }
         XCTAssertTrue(loadingFinished)
         XCTAssertEqual(model.dockNotices, [.someProvidersDown, .truncated(shown: 1, total: 5_100)])
-        let message = try XCTUnwrap(model.dataHealthMessage)
-        XCTAssertEqual(message, model.dockNotices.map(\.text).joined(separator: " · "))
+        let message = try XCTUnwrap(model.dockNotices.last?.text)
         XCTAssertTrue(message.contains(1.formatted()))
         XCTAssertTrue(message.contains(5_100.formatted()))
     }
@@ -173,7 +172,6 @@ final class ScooterMapModelTests: XCTestCase {
         XCTAssertEqual(model.mapClusters.count, 1)
         XCTAssertEqual(model.mapScooters.count + model.mapClusters.count, 1)
         XCTAssertEqual(model.visibleCount, 9_000)
-        XCTAssertTrue(model.isShowingClusterSummary)
         let snapshot = await api.snapshot()
         XCTAssertEqual(snapshot.lastZoom, 8)
         XCTAssertEqual(snapshot.lastMinimumBattery, 0)
@@ -390,13 +388,13 @@ final class ScooterMapModelTests: XCTestCase {
     }
 
     func testOnlyDeniedLocationAccessOffersASettingsShortcut() {
-        XCTAssertTrue(LocationAuthorizationIssue.denied.canOpenSettings)
-        XCTAssertFalse(LocationAuthorizationIssue.restricted.canOpenSettings)
-        XCTAssertFalse(LocationAuthorizationIssue.denied.message.isEmpty)
-        XCTAssertFalse(LocationAuthorizationIssue.restricted.message.isEmpty)
+        XCTAssertTrue(ScooterLocationIssue.denied.canOpenSettings)
+        XCTAssertFalse(ScooterLocationIssue.restricted.canOpenSettings)
+        XCTAssertFalse(ScooterLocationIssue.denied.message.isEmpty)
+        XCTAssertFalse(ScooterLocationIssue.restricted.message.isEmpty)
         XCTAssertNotEqual(
-            LocationAuthorizationIssue.denied.message,
-            LocationAuthorizationIssue.restricted.message
+            ScooterLocationIssue.denied.message,
+            ScooterLocationIssue.restricted.message
         )
     }
 
@@ -445,12 +443,10 @@ final class ScooterMapModelTests: XCTestCase {
         model.userLocation = userLocation
 
         XCTAssertEqual(model.activeOrigin, .userLocation(userLocation))
-        XCTAssertEqual(model.activeOriginTitle, String(localized: "Current location"))
 
         model.focusOnAddress(destination)
 
         XCTAssertEqual(model.activeOrigin, .searchedDestination(destination))
-        XCTAssertEqual(model.activeOriginTitle, destination.title)
         XCTAssertEqual(
             model.formattedDistance(for: candidate),
             candidate.formattedDistance(from: destination.point)
@@ -542,13 +538,13 @@ final class ScooterMapModelTests: XCTestCase {
             origin: origin
         )
 
-        XCTAssertEqual(Array(model.quickProviderOrder.prefix(4)), [.bolt, .bird, .dott, .lime])
-        XCTAssertEqual(Array(model.quickProviderOrder.dropFirst(4).prefix(2)), [.hopp, .voi])
+        XCTAssertEqual(model.dockChips.prefix(4).map(\.provider), [.bolt, .bird, .dott, .lime])
+        XCTAssertEqual(model.dockChips.dropFirst(4).prefix(2).map(\.provider), [.hopp, .voi])
 
         // Choosing providers highlights their chips without moving them.
         model.showProviders([.lime, .voi])
 
-        XCTAssertEqual(Array(model.quickProviderOrder.prefix(4)), [.bolt, .bird, .dott, .lime])
+        XCTAssertEqual(model.dockChips.prefix(4).map(\.provider), [.bolt, .bird, .dott, .lime])
         XCTAssertEqual(model.dockChips.filter(\.isSelected).map(\.provider), [.lime, .voi])
         XCTAssertEqual(model.dockChips.first?.count, 2)
     }
@@ -909,7 +905,6 @@ extension ScooterMapModelTests {
 
         XCTAssertTrue(failed)
         XCTAssertEqual(model.loadIssue, .firstLoadFailed(.unavailable))
-        XCTAssertEqual(model.errorMessage, ScooterLoadFailure.unavailable.message)
         XCTAssertEqual(model.dock, .waiting)
         XCTAssertNil(model.lastUpdated)
 
@@ -918,7 +913,6 @@ extension ScooterMapModelTests {
         let recovered = await waitUntil { model.loadIssue == nil && model.lastUpdated != nil }
 
         XCTAssertTrue(recovered)
-        XCTAssertNil(model.errorMessage)
         guard case .summary = model.dock else { return XCTFail("Expected the dock summary") }
     }
 
@@ -1277,7 +1271,6 @@ extension ScooterMapModelTests {
         XCTAssertEqual(chips[0].count, 0)
         XCTAssertFalse(chips[0].downLabel.isEmpty)
         XCTAssertEqual(chips[1].count, 2)
-        XCTAssertEqual(model.quickProviderOrder, chips.map(\.provider))
 
         // A chip that is down is never drawn as selected.
         model.showProviders([.bird, .lime])
@@ -1764,7 +1757,6 @@ extension ScooterMapModelTests {
         XCTAssertTrue(timedOut)
         XCTAssertFalse(model.isLocating)
         XCTAssertFalse(model.hasLocatedOnce)
-        XCTAssertNil(model.locationAuthorizationIssue)
 
         model.dismissLocationIssue()
         XCTAssertNil(model.locationIssue)
@@ -1813,7 +1805,6 @@ extension ScooterMapModelTests {
 
         model.focusOnUser()
         XCTAssertEqual(model.locationIssue, .denied)
-        XCTAssertEqual(model.locationAuthorizationIssue, .denied)
         XCTAssertFalse(model.isLocating)
         XCTAssertEqual(model.searchBarState, .empty)
 
