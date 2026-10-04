@@ -25,6 +25,8 @@ enum ScooterPalette {
         light: UIColor(red: 0.7, green: 0.15, blue: 0.12, alpha: 1),
         dark: .systemRed
     )
+    /// Red under white text.
+    static let criticalFill = Color(red: 0.76, green: 0.15, blue: 0.14)
 
     private static func adaptive(light: UIColor, dark: UIColor) -> Color {
         Color(uiColor: UIColor { traits in
@@ -1546,29 +1548,53 @@ private struct ProviderRidePassEditor: View {
     }
 }
 
+/// The locate button above the dock. Until this device has located once it
+/// is a labelled blue pill; after that the round icon button is enough.
 struct FloatingMapControls: View {
-    @Bindable var model: ScooterMapModel
-    let onLocationIntent: () -> Void
+    let model: ScooterMapModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Button {
-            onLocationIntent()
-            model.focusOnUser()
-        } label: {
-            ZStack {
-                Image(systemName: "location.fill")
-                    .opacity(model.isLocating ? 0 : 1)
-                if model.isLocating {
-                    ProgressView()
-                        .controlSize(.small)
+        Group {
+            if model.hasLocatedOnce {
+                Button(action: model.focusOnUser) {
+                    indicator
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 50, height: 50)
                 }
+                .buttonStyle(.glass)
+                .accessibilityLabel(String(localized: "Go to my location"))
+            } else {
+                Button(action: model.focusOnUser) {
+                    HStack(spacing: 8) {
+                        indicator
+                        Text("Near me")
+                    }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .frame(minHeight: 40)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(ScooterPalette.actionFill)
+                .shadow(color: ScooterPalette.actionFill.opacity(0.28), radius: 7, y: 6)
             }
-            .font(.system(size: 18, weight: .semibold))
-            .frame(width: 50, height: 50)
         }
-        .buttonStyle(.glass)
         .disabled(model.isLocating)
-        .accessibilityLabel(String(localized: "Go to my location"))
+        .accessibilityValue(model.isLocating ? String(localized: "Finding your location…") : "")
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: model.hasLocatedOnce)
+    }
+
+    private var indicator: some View {
+        ZStack {
+            Image(systemName: "location.fill")
+                .opacity(model.isLocating ? 0 : 1)
+            if model.isLocating {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -1637,17 +1663,13 @@ private struct LiveIndicator: View {
     }
 }
 
-enum MapStatusBannerStyle: Equatable {
-    case progress
-    case error
-    case location
-}
-
+/// The banner under the search bar while nothing has loaded and the load
+/// failed: the reason and a filled Try again button.
 struct MapStatusBanner: View {
     let message: String
-    let style: MapStatusBannerStyle
-    let actionTitle: String?
-    let action: (() -> Void)?
+    let actionTitle: String
+    var isBusy = false
+    let action: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -1659,13 +1681,8 @@ struct MapStatusBanner: View {
                         statusMessage
                     }
 
-                    if let actionTitle, let action {
-                        Button(actionTitle, action: action)
-                            .font(.caption.weight(.bold))
-                            .buttonStyle(.borderedProminent)
-                            .tint(style == .error ? .red : .blue)
-                            .frame(maxWidth: .infinity)
-                    }
+                    statusAction
+                        .frame(maxWidth: .infinity)
                 }
             } else {
                 HStack(spacing: 9) {
@@ -1676,42 +1693,30 @@ struct MapStatusBanner: View {
             }
         }
         .padding(.leading, 14)
-        .padding(.trailing, action == nil || dynamicTypeSize.isAccessibilitySize ? 14 : 5)
-        .padding(.vertical, action == nil || dynamicTypeSize.isAccessibilitySize ? 10 : 5)
+        .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 14 : 5)
+        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 10 : 5)
+        .background {
+            TopChromeTapShield(cornerRadius: bannerCornerRadius)
+        }
         .glassEffect(
             .regular,
-            in: RoundedRectangle(
-                cornerRadius: dynamicTypeSize.isAccessibilitySize ? 22 : 999,
-                style: .continuous
-            )
+            in: RoundedRectangle(cornerRadius: bannerCornerRadius, style: .continuous)
         )
         .shadow(color: .black.opacity(0.07), radius: 9, y: 4)
-        .task(id: announcementSignature) {
+        .task(id: message) {
             guard UIAccessibility.isVoiceOverRunning else { return }
             UIAccessibility.post(notification: .announcement, argument: message)
         }
     }
 
-    private var announcementSignature: String {
-        "\(style)|\(message)"
+    private var bannerCornerRadius: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 22 : 999
     }
 
-    @ViewBuilder
     private var statusIndicator: some View {
-        switch style {
-        case .progress:
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityHidden(true)
-        case .error:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-                .accessibilityHidden(true)
-        case .location:
-            Image(systemName: "location.slash.fill")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-        }
+        Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundStyle(ScooterPalette.critical)
+            .accessibilityHidden(true)
     }
 
     private var statusMessage: some View {
@@ -1721,14 +1726,118 @@ struct MapStatusBanner: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    @ViewBuilder
     private var statusAction: some View {
-        if let actionTitle, let action {
-            Button(actionTitle, action: action)
-                .font(.caption.weight(.bold))
-                .buttonStyle(.borderedProminent)
-                .tint(style == .error ? .red : .blue)
+        Button(actionTitle, action: action)
+            .font(.caption.weight(.bold))
+            .buttonStyle(.borderedProminent)
+            .tint(ScooterPalette.criticalFill)
+            .disabled(isBusy)
+    }
+}
+
+/// The dismissible card under the search bar when locating did not work:
+/// what happened and the ways forward.
+struct LocationIssueCard: View {
+    let issue: ScooterLocationIssue
+    let onOpenSettings: () -> Void
+    let onSearchPlace: () -> Void
+    let onRetry: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            DockSymbolTile(
+                systemImage: "location.slash",
+                foreground: ScooterPalette.warning,
+                tint: ScooterPalette.warning,
+                size: 40
+            )
+            .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let title = issue.title {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                        Text(issue.message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(issue.message)
+                            .font(.subheadline.weight(.medium))
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 44, alignment: .leading)
+                .accessibilityElement(children: .combine)
+
+                FlowLayout(spacing: 20, lineSpacing: 0) {
+                    if issue.canOpenSettings {
+                        action("Open Settings", perform: onOpenSettings)
+                    }
+                    if issue.canSearchPlace {
+                        action("Search a place", perform: onSearchPlace)
+                    }
+                    if issue.canRetry {
+                        action("Try again", perform: onRetry)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Dismiss"))
         }
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+        .frame(maxWidth: 560)
+        .background {
+            TopChromeTapShield(cornerRadius: 24)
+        }
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+        .task(id: issue) {
+            guard UIAccessibility.isVoiceOverRunning else { return }
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: [issue.title, issue.message].compactMap { $0 }.joined(separator: " ")
+            )
+        }
+    }
+
+    private func action(_ title: LocalizedStringKey, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ScooterPalette.actionText)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Taps on the empty parts of a banner or card stay there instead of
+/// reaching the map underneath.
+private struct TopChromeTapShield: View {
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.clear)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .onTapGesture { }
+            .accessibilityHidden(true)
     }
 }
 

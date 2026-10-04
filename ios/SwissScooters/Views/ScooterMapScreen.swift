@@ -8,7 +8,6 @@ struct ScooterMapScreen: View {
     @State private var settingsPresented = false
     @State private var dockHeight: CGFloat = 128
     @State private var topChromeFrame = CGRect.null
-    @State private var showLocationIntro = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -29,7 +28,7 @@ struct ScooterMapScreen: View {
                     selectedScooterID: model.selectedScooterID,
                     interactionExclusionFrame: topChromeFrame,
                     onRegionChange: model.updateViewport,
-                    onSelectionChange: handleSelection,
+                    onSelectionChange: model.selectScooter,
                     userHeading: model.userHeading,
                     showsMapCompass: !searchIsExpanded,
                     parking: model.mapParking,
@@ -39,35 +38,37 @@ struct ScooterMapScreen: View {
                 .ignoresSafeArea()
 
                 VStack(spacing: 8) {
-                    OriginSearchIsland(
-                        title: model.activeOriginTitle ?? String(localized: "Choose an origin"),
-                        isSearching: $searchIsExpanded,
-                        hasActiveFilters: model.hasActiveFilters,
-                        onSelect: { destination in
-                            showLocationIntro = false
-                            model.focusOnAddress(destination)
-                        },
-                        onClear: model.clearAddressSearch,
-                        onUseCurrentLocation: {
-                            showLocationIntro = false
-                            model.focusOnUser()
-                        },
-                        onShowFilters: {
-                            searchIsExpanded = false
-                            filtersPresented = true
-                        },
-                        onShowSettings: {
-                            searchIsExpanded = false
-                            settingsPresented = true
+                    // The search bar and what sits under it shield the map
+                    // from taps, and the compass stays clear of them.
+                    VStack(spacing: 8) {
+                        OriginSearchIsland(
+                            title: model.searchBarState.title,
+                            isSearching: $searchIsExpanded,
+                            hasActiveFilters: model.hasActiveFilters,
+                            onSelect: model.focusOnAddress,
+                            onClear: model.clearAddressSearch,
+                            onUseCurrentLocation: model.focusOnUser,
+                            onShowFilters: {
+                                searchIsExpanded = false
+                                filtersPresented = true
+                            },
+                            onShowSettings: {
+                                searchIsExpanded = false
+                                settingsPresented = true
+                            }
+                        )
+
+                        if !searchIsExpanded {
+                            topNotices
                         }
-                    )
+                    }
                     .onGeometryChange(for: CGRect.self) { geometry in
                         geometry.frame(in: .global)
                     } action: { frame in
                         topChromeFrame = frame
                     }
-
-                    statusBanner
+                    .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: firstLoadFailure)
+                    .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: model.locationIssue)
 
                     Spacer(minLength: 0)
                 }
@@ -79,10 +80,7 @@ struct ScooterMapScreen: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        FloatingMapControls(
-                            model: model,
-                            onLocationIntent: { showLocationIntro = false }
-                        )
+                        FloatingMapControls(model: model)
                     }
                     .padding(.trailing, 12)
                     .padding(
@@ -95,22 +93,6 @@ struct ScooterMapScreen: View {
                 .allowsHitTesting(!searchIsExpanded)
                 .accessibilityHidden(searchIsExpanded)
                 .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: searchIsExpanded)
-
-                if showLocationIntro,
-                   model.userLocation == nil,
-                   model.searchedDestination == nil,
-                   !searchIsExpanded {
-                    VStack {
-                        Spacer()
-                        locationIntroCard
-                            .padding(.horizontal, 16)
-                            .padding(
-                                .bottom,
-                                dockHeight + max(proxy.safeAreaInsets.bottom, 8) + 18
-                            )
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
 
                 VStack {
                     Spacer()
@@ -153,9 +135,6 @@ struct ScooterMapScreen: View {
         .onDisappear { model.becameInactive() }
         .onChange(of: searchIsExpanded) { _, expanded in
             ScooterAnalytics.shared.track(expanded ? "search_open" : "search_close")
-            if expanded {
-                showLocationIntro = false
-            }
         }
         .onChange(of: filtersPresented) { _, open in
             ScooterAnalytics.shared.track(open ? "filters_open" : "panel_close")
@@ -171,13 +150,7 @@ struct ScooterMapScreen: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $settingsPresented) {
-            ScooterSettingsSheet(
-                model: model,
-                onUseCurrentLocation: {
-                    showLocationIntro = false
-                    model.focusOnUser()
-                }
-            )
+            ScooterSettingsSheet(model: model, onUseCurrentLocation: model.focusOnUser)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -185,98 +158,44 @@ struct ScooterMapScreen: View {
         .sensoryFeedback(.selection, trigger: model.selectedParkingID)
     }
 
+    /// Only a first load that failed is reported under the search bar; later
+    /// failures are the dock's to report, next to the data they concern.
+    private var firstLoadFailure: ScooterLoadFailure? {
+        guard case let .firstLoadFailed(failure) = model.loadIssue else { return nil }
+        return failure
+    }
+
     @ViewBuilder
-    private var statusBanner: some View {
-        // Only a first load that failed is reported here; later failures are
-        // the dock's to report, next to the data they concern.
-        if case let .firstLoadFailed(failure) = model.loadIssue {
+    private var topNotices: some View {
+        if let firstLoadFailure {
             MapStatusBanner(
-                message: failure.message,
-                style: .error,
+                message: firstLoadFailure.message,
                 actionTitle: String(localized: "Try again"),
+                isBusy: model.isLoading,
                 action: model.retryLoad
             )
             .transition(.move(edge: .top).combined(with: .opacity))
-        } else if model.locationAuthorizationIssue == .denied {
-            MapStatusBanner(
-                message: LocationAuthorizationIssue.denied.message,
-                style: .location,
-                actionTitle: String(localized: "Settings"),
-                action: openLocationSettings
-            )
-            .transition(.move(edge: .top).combined(with: .opacity))
-        } else if model.locationAuthorizationIssue == .restricted {
-            MapStatusBanner(
-                message: LocationAuthorizationIssue.restricted.message,
-                style: .location,
-                actionTitle: nil,
-                action: nil
-            )
-            .transition(.move(edge: .top).combined(with: .opacity))
-        } else if model.isLocating {
-            MapStatusBanner(
-                message: String(localized: "Finding your location…"),
-                style: .progress,
-                actionTitle: nil,
-                action: nil
+        }
+
+        if let issue = model.locationIssue {
+            LocationIssueCard(
+                issue: issue,
+                onOpenSettings: openLocationSettings,
+                onSearchPlace: {
+                    // Searching is the answer to the card, so it goes away.
+                    model.dismissLocationIssue()
+                    searchIsExpanded = true
+                },
+                onRetry: model.focusOnUser,
+                onDismiss: model.dismissLocationIssue
             )
             .transition(.move(edge: .top).combined(with: .opacity))
         }
-    }
-
-    private var locationIntroCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Find a scooter nearby")
-                    .font(.headline)
-                Text("Use your location for nearby distances, or search for a city or address.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(spacing: 8) {
-                    locationIntroActions
-                }
-            } else {
-                HStack(spacing: 8) {
-                    locationIntroActions
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: 390, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
-    }
-
-    @ViewBuilder
-    private var locationIntroActions: some View {
-        Button("Use my location") {
-            showLocationIntro = false
-            model.focusOnUser()
-        }
-        .buttonStyle(.glassProminent)
-        .font(.caption.weight(.semibold))
-        .frame(minHeight: 44)
-
-        Button("Browse the map") {
-            showLocationIntro = false
-            model.focusOnSwitzerland()
-        }
-        .buttonStyle(.glass)
-        .font(.caption.weight(.semibold))
-        .frame(minHeight: 44)
     }
 
     private func openLocationSettings() {
         guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(settingsURL)
-    }
-
-    private func handleSelection(_ id: String?) {
-        model.selectScooter(id)
     }
 }
 
