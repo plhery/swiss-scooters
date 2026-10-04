@@ -8,11 +8,15 @@ searches.
 - With permission, the app uses location coordinates on the device to focus the
   map and calculate distance. Its API receives the visible map bounds needed to
   find vehicles, not a separate user-location coordinate.
-- Address text is proxied in a non-cacheable request body to the Swiss federal
-  geo.admin.ch service.
+- Address text is proxied in a non-cacheable request body, with the language
+  the app is shown in, to the Swiss federal geo.admin.ch service. The name of a
+  city in the Scooters catalogue is answered without contacting it.
 - OpenStreetMap receives normal tile requests from the user's device, with the website origin as the referrer (no page path or query string).
-- Language, filters, appearance and map style are stored locally. Precise map
-  origins are not persisted.
+- Language, filters, appearance, map style and the ride length chosen for price
+  estimates are stored locally, as is the fact that the device has found its
+  location before (a yes or no, never the position). Precise map origins are not
+  persisted, and the places chosen in the search are kept in memory only, until
+  the app is closed.
 - Cloudflare hosts and protects the service. Persisted Worker invocation logs
   are disabled so full coordinate-bearing request URLs are not retained in the
   application's log stream.

@@ -5,7 +5,7 @@ export const ANALYTICS_HOST = 'scooters.plhery.com';
 export type AnalyticsEvent =
   | 'search_open' | 'search_close' | 'search_results' | 'search_error' | 'search_select' | 'search_clear'
   | 'filters_open' | 'settings_open' | 'panel_close' | 'provider_filter' | 'providers_all' | 'filters_reset'
-  | 'battery_filter' | 'map_style' | 'language_change' | 'locate' | 'location_result' | 'browse_map'
+  | 'battery_filter' | 'map_style' | 'language_change' | 'locate' | 'location_result'
   | 'vehicle_select' | 'vehicle_dismiss' | 'cluster_select' | 'parking_select' | 'directions_open' | 'rental_open'
   | 'map_zoom' | 'compass_reset' | 'refresh' | 'refresh_result' | 'data_error' | 'data_expired'
   | 'app_install' | 'app_open';

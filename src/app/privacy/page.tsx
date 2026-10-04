@@ -40,10 +40,11 @@ export default function PrivacyPage() {
 
         <h2>Address search</h2>
         <p>
-          Address search text is sent through the Scooters API to the Swiss federal
-          geo.admin.ch service operated by swisstopo. The current app sends search text in the
-          request body, and instructs browsers and intermediary caches not to store the request
-          or response.
+          Address search text is sent through the Scooters API, with the language the app is
+          shown in, to the Swiss federal geo.admin.ch service operated by swisstopo. The name of a
+          city in the Scooters catalogue is answered without contacting it. The current app sends
+          search text in the request body, and instructs browsers and intermediary caches not to
+          store the request or response.
         </p>
 
         <h2>Mobility data</h2>
@@ -77,8 +78,11 @@ export default function PrivacyPage() {
 
         <h2>Local storage and service worker</h2>
         <p>
-          Appearance, map style, language, and filters are stored locally on your device. Precise map
-          origins are not persisted. A service worker caches the application shell and static
+          Appearance, map style, language, filters and the ride length you choose for price
+          estimates are stored locally on your device, as is the fact that this device has found
+          your location before (a yes or no, never the position). Precise map origins are not
+          persisted, and the places you choose in the search are kept in memory only, until you
+          close the app. A service worker caches the application shell and static
           assets for faster and offline launches. You can remove this data through your browser
           or by deleting the app.
         </p>

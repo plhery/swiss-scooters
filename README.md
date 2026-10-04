@@ -23,10 +23,26 @@
   <img src="docs/swiss-scooters-map.png" width="390" alt="Scooters showing fictional demo scooters around Zürich on a phone">
 </p>
 
-Scooters brings the national shared-mobility feed, Swiss address search,
-provider and battery filters, and light/dark maps into one installable web app.
-It speaks German, French, Italian, and English. There is also a native SwiftUI
-app for iPhone.
+Scooters puts the shared scooters of eight providers on one map, in an
+installable web app. It speaks German, French, Italian, and English. There is
+also a native SwiftUI app for iPhone.
+
+- **Near you.** Tap *Near me*, or search a city or an address, and the dock
+  at the bottom of the map counts the scooters nearby and says how fresh the
+  data is. Street search works in Switzerland; elsewhere, search by city.
+- **One scooter.** Tap a marker for its battery and range, the walking time, an
+  estimate of what a ride costs, directions, and a button that opens the
+  provider's app. Opening the app does not reserve the scooter.
+- **Your choices.** Filter by provider and by battery. In Settings, pick the
+  language, an appearance that follows the system or stays light or dark, and a
+  calm or a detailed map.
+- **When something is off.** The app says so in plain words: a provider that is
+  not sharing data, positions that are out of date, an area without scooter
+  data and the closest cities that have it, location that is switched off and
+  how to turn it back on.
+- **On a desktop.** The providers form a legend, a scooter's card opens beside
+  its marker, hovering a marker shows a short tip, and `/`, `L`, `+`, `−` and
+  `Esc` work from the keyboard.
 
 **Supported providers:** Bolt, Bird, Dott, Hopp, Lime, Voi, Pony, and PubliBike / Velospot.
 

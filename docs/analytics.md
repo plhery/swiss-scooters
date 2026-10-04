@@ -16,17 +16,40 @@ native screen views use `/`, `/filters`, `/settings`.
 | Lifecycle | `app_open`, `app_install` (PWA), `app_foreground` (iOS) | platform |
 | Search | `search_open`, `search_close`, `search_results`, `search_error`, `search_select`, `search_clear` | result count only (`count` web, `value` iOS) |
 | Filters | `filters_open`, `provider_filter`, `providers_all`, `filters_reset`, `battery_filter` | provider, enabled/result, quick/filter source (web), value |
-| Preferences | `settings_open`, `panel_close`, `map_style`, `language_change` (web) | style/result, language |
-| Location | `locate`, `location_result`, `browse_map` | success/denied/unavailable |
+| Preferences | `settings_open`, `panel_close`, `map_style`, `language_change` (web) | style (web: the appearance `auto`/`light`/`dark` or the map `calm`/`detailed`; iOS: the map appearance, in `result`), language |
+| Location | `locate`, `location_result` | success/denied/unavailable |
 | Map/details | `vehicle_select`, `vehicle_dismiss`, `cluster_select`, `parking_select`, `map_zoom` (web), `compass_reset` (web) | provider; zoom direction |
 | Conversion intent | `directions_open`, `rental_open` | provider, vehicle/parking target |
-| Reliability | `refresh`, `refresh_result` (web), `data_error`, `data_expired` (web) | generic outcome only |
+| Reliability | `refresh`, `refresh_result` (web), `data_error`, `data_expired` (web) | generic outcome only (`success`/`error`; `timeout`/`request_failed`) |
 | Price tools (iOS) | `ride_duration`, `ride_pass_change` | duration, provider; never pass expiry or financial details |
 
 Useful funnel: `app_open` → `vehicle_select` → `rental_open`. A rental click is
 intent, not a confirmed ride. No provider callback exists to verify a booking.
-Automatic refreshes do not produce manual refresh events. Continuous map
-coordinates, motion/heading readings, typed searches, and vehicle IDs are excluded.
+Continuous map coordinates, motion/heading readings, typed searches, chosen
+places and vehicle IDs are excluded.
+
+What the events mean on the web:
+
+- `locate` is a request to be located: Near me or the locate button, "Use my
+  location" in the search, the `L` key, or "Turn on location to see walking
+  time" on a card. When the page locates by itself on load, because the browser
+  already has the permission, only `location_result` follows.
+- `search_select` covers a result, a recent place and a "Cities with scooters"
+  chip alike; `search_clear` is the × that removes the chosen place.
+- `refresh` is a tap on "Try again" where a failure is shown, and
+  `refresh_result` its outcome. Refreshing is otherwise automatic and sends
+  nothing. `data_error` is sent once when loading starts to fail, `data_expired`
+  when the positions on screen are removed as out of date.
+- `provider_filter` comes with `source: quick` from the chips and the desktop
+  legend, and with `source: filters` and `enabled` from the Filters sheet.
+  `filters_reset` is Reset in that sheet or "Show all" on the card that says
+  the filters hide every scooter.
+- `panel_close` closes Filters or Settings.
+- The desktop keys send the event of the control they stand for: `/` sends
+  `search_open`, `+` and `−` send `map_zoom`, Esc sends `search_close` or, on a
+  scooter card, `vehicle_dismiss`.
+- Not sent at all: opening the location help, closing a parking bay's card, the
+  ride length chosen for the price estimate, a "Closest cities" chip, hover tips.
 
 ## Delivery and privacy
 
@@ -40,7 +63,7 @@ See PRIVACY.md and the public privacy page for the user-facing notice.
 
 Web collection runs only on `scooters.plhery.com`, honors DNT/GPC and
 `localStorage['umami.disabled']`, and has an opt-out on `/privacy`.
-iOS has an opt-out in Settings. Simulators, previews and XCTest are disabled;
+iOS has an opt-out under Settings › About › Privacy. Simulators, previews and XCTest are disabled;
 launch a simulator with `-analytics-smoke-test` only for an intentional production
 collection check. Physical-device installations collect after rebuilding/installing
 this revision. Existing installed binaries cannot gain tracking through a web deploy.
