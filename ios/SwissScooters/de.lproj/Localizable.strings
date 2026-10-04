@@ -184,3 +184,117 @@
 "Analytics" = "Nutzungsstatistik";
 "Share anonymous usage" = "Anonyme Nutzung teilen";
 "Helps improve Scooters. No addresses or precise locations are sent." = "Hilft, Scooters zu verbessern. Adressen und genaue Standorte werden nicht gesendet.";
+
+/* UX alignment: search bar */
+"Search city or address" = "Stadt oder Adresse suchen";
+"Near you" = "In deiner Nähe";
+"Tap to search a city or address" = "Tippe, um einen Ort zu suchen";
+"Scooters near this place" = "Scooter in der Nähe dieses Orts";
+"Clear place" = "Ort entfernen";
+"Showing scooters near you. Search a city or address." = "Scooter in deiner Nähe werden angezeigt. Stadt oder Adresse suchen.";
+"Showing scooters near %@. Search another place." = "Scooter in der Nähe von %@ werden angezeigt. Anderen Ort suchen.";
+
+/* UX alignment: search panel */
+"City, street or station" = "Stadt, Strasse oder Bahnhof";
+"Cancel" = "Abbrechen";
+"Recent" = "Zuletzt gesucht";
+"Cities with scooters" = "Städte mit Scootern";
+"No data" = "Keine Daten";
+"Searching…" = "Suche läuft…";
+"No places found" = "Keine Orte gefunden";
+"Search isn’t available right now." = "Die Suche ist gerade nicht verfügbar.";
+"Try again" = "Erneut versuchen";
+"Suggestions" = "Vorschläge";
+"Clear search" = "Suche löschen";
+
+/* UX alignment: dock */
+"scooter nearby" = "Scooter in der Nähe";
+"scooters nearby" = "Scooter in der Nähe";
+"scooter on this map" = "Scooter auf dieser Karte";
+"scooters on this map" = "Scooter auf dieser Karte";
+"Waiting for scooter data" = "Warten auf Scooter-Daten";
+"Updated %lld min ago" = "Vor %lld Min. aktualisiert";
+"Tap a city to see its scooters." = "Tippe auf eine Stadt, um ihre Scooter zu sehen.";
+"Couldn’t refresh · showing %@" = "Nicht aktualisiert · Stand %@";
+"You’re offline · showing %@" = "Du bist offline · Stand %@";
+"Data delayed · showing %@" = "Daten verzögert · Stand %@";
+"%@ isn’t sharing data right now." = "%@ liefert gerade keine Daten.";
+"%1$@ and %2$@ aren’t sharing data right now." = "%1$@ und %2$@ liefern gerade keine Daten.";
+"%lld providers aren’t sharing data right now." = "%lld Anbieter liefern gerade keine Daten.";
+"Some providers aren’t sharing data right now." = "Einige Anbieter liefern gerade keine Daten.";
+"%@: not sharing data right now" = "%@: liefert gerade keine Daten";
+"Showing %1$@ of %2$@ — zoom in to see all" = "%1$@ von %2$@ angezeigt – vergrössern, um alle zu sehen";
+"Parking bays unavailable right now" = "Parkplatzdaten gerade nicht verfügbar";
+"Parking bays may be out of date" = "Parkplatzdaten sind möglicherweise veraltet";
+"No scooters here right now. Zoom out or move the map." = "Hier gibt es gerade keine Scooter. Verkleinere oder verschiebe die Karte.";
+
+/* UX alignment: refresh and load failures */
+"These positions are out of date" = "Diese Positionen sind veraltet";
+"Last update %@." = "Letzte Aktualisierung um %@.";
+"Refresh" = "Aktualisieren";
+"You’re offline. Check your connection." = "Du bist offline. Prüfe deine Verbindung.";
+"Scooters took too long to respond." = "Scooters hat zu lange nicht geantwortet.";
+"Scooters is busy right now. Try again in a moment." = "Scooters ist gerade ausgelastet. Versuche es gleich nochmals.";
+"Scooters is having trouble. Try again in a moment." = "Scooters hat gerade Probleme. Versuche es gleich nochmals.";
+"Couldn’t load scooters." = "Scooter konnten nicht geladen werden.";
+
+/* UX alignment: outside coverage and filters with nothing to show */
+"No scooter data here yet" = "Hier gibt es noch keine Scooter-Daten";
+"Scooters covers selected cities in France, Switzerland, Germany and Italy." = "Scooters deckt ausgewählte Städte in Frankreich, der Schweiz, Deutschland und Italien ab.";
+"Closest cities" = "Nächstgelegene Städte";
+"%1$@ · %2$@" = "%1$@ · %2$@";
+"1 scooter hidden by your filters" = "1 Scooter durch deine Filter ausgeblendet";
+"%lld scooters hidden by your filters" = "%lld Scooter durch deine Filter ausgeblendet";
+"No scooters match your filters here" = "Hier passen keine Scooter zu deinen Filtern";
+"Show all %lld" = "Alle %lld anzeigen";
+"Edit filters" = "Filter bearbeiten";
+"%@ only" = "Nur %@";
+"battery %lld%% or more" = "Akku ab %lld %%";
+
+/* UX alignment: scooter card */
+"≈%1$lld min walk · %2$@" = "≈%1$lld Min. zu Fuss · %2$@";
+"Turn on location to see walking time" = "Standort aktivieren, um Gehzeit zu sehen";
+"Directions" = "Route";
+"Open in %@" = "In %@ öffnen";
+"Opens the %@ app. It won’t reserve the scooter." = "Öffnet die %@-App. Reserviert den Scooter nicht.";
+"Open the %@ app to rent this scooter." = "Öffne die %@-App, um diesen Scooter zu mieten.";
+"≈ %1$@ for %2$lld min" = "≈ %1$@ für %2$lld Min.";
+"Price shown in the %@ app" = "Preis in der %@-App";
+"Ride estimate, %lld minutes. Change duration." = "Fahrtkostenschätzung, %lld Minuten. Dauer ändern.";
+"%lld min" = "%lld Min.";
+
+/* UX alignment: parking bay */
+"%@ parking bay" = "%@-Parkplatz";
+"You must park in a bay in this zone." = "In dieser Zone musst du auf einem ausgewiesenen Parkplatz parken.";
+"Check the %@ app before you end your ride." = "Prüfe die %@-App, bevor du die Fahrt beendest.";
+"Close parking details" = "Parkplatz-Details schliessen";
+
+/* UX alignment: location */
+"Near me" = "In meiner Nähe";
+"Location is off" = "Standort deaktiviert";
+"Turn it on in Settings, or search a place instead." = "Aktiviere ihn in den Einstellungen oder suche stattdessen einen Ort.";
+"Location is restricted on this device. Search a place instead." = "Der Standort ist auf diesem Gerät eingeschränkt. Suche stattdessen einen Ort.";
+"Open Settings" = "Einstellungen öffnen";
+"Search a place" = "Ort suchen";
+"Couldn’t find your location." = "Dein Standort konnte nicht ermittelt werden.";
+"Dismiss" = "Schliessen";
+
+/* UX alignment: filters sheet */
+"Reset" = "Zurücksetzen";
+"Scooters without battery info are hidden while a minimum is set." = "Scooter ohne Akkuangabe werden ausgeblendet, solange ein Mindestakku gewählt ist.";
+"Not sharing data right now" = "Liefert gerade keine Daten";
+"Show 1 scooter" = "1 Scooter anzeigen";
+"Show %lld scooters" = "%lld Scooter anzeigen";
+
+/* UX alignment: settings */
+"Automatic" = "Automatisch";
+"Light" = "Hell";
+"Dark" = "Dunkel";
+"Calm" = "Ruhig";
+"Detailed" = "Detailliert";
+"Language" = "Sprache";
+"Map & data credits" = "Karten- & Datenquellen";
+"Privacy notice" = "Datenschutzerklärung";
+"Read the privacy notice" = "Datenschutzerklärung lesen";
+"Source code on GitHub" = "Quellcode auf GitHub";
+"Availability refreshes automatically. Opening a provider app doesn’t reserve a scooter." = "Die Verfügbarkeit wird automatisch aktualisiert. Das Öffnen einer Anbieter-App reserviert keinen Scooter.";

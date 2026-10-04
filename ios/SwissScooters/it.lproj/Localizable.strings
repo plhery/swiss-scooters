@@ -184,3 +184,117 @@
 "Analytics" = "Statistiche";
 "Share anonymous usage" = "Condividi dati di utilizzo anonimi";
 "Helps improve Scooters. No addresses or precise locations are sent." = "Aiuta a migliorare Scooters. Non vengono inviati indirizzi o posizioni precise.";
+
+/* UX alignment: search bar */
+"Search city or address" = "Cerca città o indirizzo";
+"Near you" = "Vicino a te";
+"Tap to search a city or address" = "Tocca per cercare un luogo";
+"Scooters near this place" = "Monopattini vicino a questo luogo";
+"Clear place" = "Rimuovi il luogo";
+"Showing scooters near you. Search a city or address." = "Stai vedendo i monopattini vicino a te. Cerca una città o un indirizzo.";
+"Showing scooters near %@. Search another place." = "Stai vedendo i monopattini vicino a %@. Cerca un altro luogo.";
+
+/* UX alignment: search panel */
+"City, street or station" = "Città, via o stazione";
+"Cancel" = "Annulla";
+"Recent" = "Recenti";
+"Cities with scooters" = "Città con monopattini";
+"No data" = "Nessun dato";
+"Searching…" = "Ricerca…";
+"No places found" = "Nessun luogo trovato";
+"Search isn’t available right now." = "La ricerca non è disponibile al momento.";
+"Try again" = "Riprova";
+"Suggestions" = "Suggerimenti";
+"Clear search" = "Cancella la ricerca";
+
+/* UX alignment: dock */
+"scooter nearby" = "monopattino nelle vicinanze";
+"scooters nearby" = "monopattini nelle vicinanze";
+"scooter on this map" = "monopattino su questa mappa";
+"scooters on this map" = "monopattini su questa mappa";
+"Waiting for scooter data" = "In attesa dei dati sui monopattini";
+"Updated %lld min ago" = "Aggiornato %lld min fa";
+"Tap a city to see its scooters." = "Tocca una città per vedere i suoi monopattini.";
+"Couldn’t refresh · showing %@" = "Non aggiornato · dati delle %@";
+"You’re offline · showing %@" = "Sei offline · dati delle %@";
+"Data delayed · showing %@" = "Dati in ritardo · aggiornati alle %@";
+"%@ isn’t sharing data right now." = "%@ non condivide dati al momento.";
+"%1$@ and %2$@ aren’t sharing data right now." = "%1$@ e %2$@ non condividono dati al momento.";
+"%lld providers aren’t sharing data right now." = "%lld operatori non condividono dati al momento.";
+"Some providers aren’t sharing data right now." = "Alcuni operatori non condividono dati al momento.";
+"%@: not sharing data right now" = "%@: nessun dato condiviso al momento";
+"Showing %1$@ of %2$@ — zoom in to see all" = "%1$@ su %2$@ mostrati — ingrandisci per vederli tutti";
+"Parking bays unavailable right now" = "Dati sui parcheggi non disponibili al momento";
+"Parking bays may be out of date" = "I dati sui parcheggi potrebbero non essere aggiornati";
+"No scooters here right now. Zoom out or move the map." = "Nessun monopattino qui al momento. Riduci lo zoom o sposta la mappa.";
+
+/* UX alignment: refresh and load failures */
+"These positions are out of date" = "Queste posizioni non sono aggiornate";
+"Last update %@." = "Ultimo aggiornamento alle %@.";
+"Refresh" = "Aggiorna";
+"You’re offline. Check your connection." = "Sei offline. Controlla la connessione.";
+"Scooters took too long to respond." = "Scooters ha impiegato troppo tempo a rispondere.";
+"Scooters is busy right now. Try again in a moment." = "Scooters è molto richiesto in questo momento. Riprova tra poco.";
+"Scooters is having trouble. Try again in a moment." = "Scooters ha qualche problema. Riprova tra poco.";
+"Couldn’t load scooters." = "Impossibile caricare i monopattini.";
+
+/* UX alignment: outside coverage and filters with nothing to show */
+"No scooter data here yet" = "Qui non ci sono ancora dati sui monopattini";
+"Scooters covers selected cities in France, Switzerland, Germany and Italy." = "Scooters copre alcune città in Francia, Svizzera, Germania e Italia.";
+"Closest cities" = "Città più vicine";
+"%1$@ · %2$@" = "%1$@ · %2$@";
+"1 scooter hidden by your filters" = "1 monopattino nascosto dai tuoi filtri";
+"%lld scooters hidden by your filters" = "%lld monopattini nascosti dai tuoi filtri";
+"No scooters match your filters here" = "Nessun monopattino corrisponde ai tuoi filtri qui";
+"Show all %lld" = "Mostra tutti (%lld)";
+"Edit filters" = "Modifica filtri";
+"%@ only" = "Solo %@";
+"battery %lld%% or more" = "batteria %lld%% o più";
+
+/* UX alignment: scooter card */
+"≈%1$lld min walk · %2$@" = "≈%1$lld min a piedi · %2$@";
+"Turn on location to see walking time" = "Attiva la posizione per vedere il tempo a piedi";
+"Directions" = "Indicazioni";
+"Open in %@" = "Apri in %@";
+"Opens the %@ app. It won’t reserve the scooter." = "Apre l’app %@. Non riserva il monopattino.";
+"Open the %@ app to rent this scooter." = "Apri l’app %@ per noleggiare questo monopattino.";
+"≈ %1$@ for %2$lld min" = "≈ %1$@ per %2$lld min";
+"Price shown in the %@ app" = "Prezzo indicato nell’app %@";
+"Ride estimate, %lld minutes. Change duration." = "Stima della corsa, %lld minuti. Modifica la durata.";
+"%lld min" = "%lld min";
+
+/* UX alignment: parking bay */
+"%@ parking bay" = "Parcheggio %@";
+"You must park in a bay in this zone." = "In questa zona devi parcheggiare in uno spazio designato.";
+"Check the %@ app before you end your ride." = "Controlla l’app %@ prima di terminare la corsa.";
+"Close parking details" = "Chiudi i dettagli del parcheggio";
+
+/* UX alignment: location */
+"Near me" = "Vicino a me";
+"Location is off" = "Posizione disattivata";
+"Turn it on in Settings, or search a place instead." = "Attivala in Impostazioni oppure cerca un luogo.";
+"Location is restricted on this device. Search a place instead." = "La posizione è limitata su questo dispositivo. Cerca invece un luogo.";
+"Open Settings" = "Apri Impostazioni";
+"Search a place" = "Cerca un luogo";
+"Couldn’t find your location." = "Impossibile trovare la tua posizione.";
+"Dismiss" = "Chiudi";
+
+/* UX alignment: filters sheet */
+"Reset" = "Reimposta";
+"Scooters without battery info are hidden while a minimum is set." = "I monopattini senza dati sulla batteria sono nascosti finché è impostato un minimo.";
+"Not sharing data right now" = "Nessun dato condiviso al momento";
+"Show 1 scooter" = "Mostra 1 monopattino";
+"Show %lld scooters" = "Mostra %lld monopattini";
+
+/* UX alignment: settings */
+"Automatic" = "Automatico";
+"Light" = "Chiaro";
+"Dark" = "Scuro";
+"Calm" = "Essenziale";
+"Detailed" = "Dettagliata";
+"Language" = "Lingua";
+"Map & data credits" = "Fonti della mappa e dei dati";
+"Privacy notice" = "Informativa sulla privacy";
+"Read the privacy notice" = "Leggi l’informativa sulla privacy";
+"Source code on GitHub" = "Codice sorgente su GitHub";
+"Availability refreshes automatically. Opening a provider app doesn’t reserve a scooter." = "La disponibilità viene aggiornata automaticamente. Aprire l’app di un operatore non riserva un monopattino.";
