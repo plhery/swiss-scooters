@@ -165,6 +165,8 @@ struct ScooterSearchIsland: View {
                 .font(.subheadline.weight(state == .empty ? .medium : .semibold))
                 .foregroundStyle(state == .empty ? Color.secondary : Color.primary)
                 .lineLimit(usesAccessibilityLayout ? 2 : 1)
+                // "Recherche de votre position…" is a few points too long for one line.
+                .minimumScaleFactor(0.9)
                 .fixedSize(horizontal: false, vertical: usesAccessibilityLayout)
             if let subtitle = state.subtitle, !usesAccessibilityLayout {
                 Text(subtitle)
