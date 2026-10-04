@@ -966,30 +966,43 @@ test('the search bar says what the map is based on: nothing, a location on its w
   await expect(island).not.toContainText(/origin/i);
 });
 
-test('the bar keeps its second line whole beside the clear button in every language', async ({ page }) => {
+test('the bar keeps its second line whole beside the clear button in every language, down to 320 px', async ({ page }) => {
   await page.route('**/api/geocode', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(paradeplatz) }));
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
   const island = page.locator('.search-island');
-  const height = (await island.boundingBox())!.height;
-  // The sentences are longer than in English; in Italian the line does not fit beside the button.
-  for (const [locale, sentence] of [
-    ['de', 'Scooter in der Nähe dieses Orts'],
-    ['fr', 'Trottinettes près de ce lieu'],
-    ['it', 'Monopattini vicino a questo luogo'],
-  ]) {
-    await page.evaluate(language => localStorage.setItem('scooters-locale', language), locale);
-    await page.reload();
+  const line = island.locator('.bar-copy span');
+  const whole = () => line.evaluate(element =>
+    element.scrollHeight <= element.clientHeight + 1 && element.scrollWidth <= element.clientWidth + 1);
+  const choose = async (query: string, option: 'first' | 'last') => {
     await island.locator('.bar-button').click();
-    await page.getByRole('combobox').fill('Zürich HB');
-    await page.getByRole('option').first().click();
-    const line = island.locator('.bar-copy span');
-    await expect(line).toHaveText(sentence);
-    // It may take two lines; nothing of it is cut off, and the bar is as tall as before.
-    expect(await line.evaluate(element =>
-      element.scrollHeight <= element.clientHeight + 1 && element.scrollWidth <= element.clientWidth + 1)).toBe(true);
-    await expect.poll(async () => (await island.boundingBox())!.height).toBe(height);
-    await expect(island.locator('.bar-copy strong')).toHaveText('Zürich HB');
+    await page.getByRole('combobox').fill(query);
+    await page.getByRole('option')[option]().click();
+  };
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/');
+    await page.evaluate(() => localStorage.setItem('scooters-locale', 'en'));
+    await page.reload();
+    const height = (await island.boundingBox())!.height;
+    // The sentences are longer than in English; in Italian the line does not fit beside the button.
+    for (const [locale, near, neutral] of [
+      ['de', 'Scooter in der Nähe dieses Orts', 'Tippe, um einen Ort zu suchen'],
+      ['fr', 'Trottinettes près de ce lieu', 'Touchez pour rechercher un lieu'],
+      ['it', 'Monopattini vicino a questo luogo', 'Tocca per cercare un luogo'],
+    ]) {
+      await page.evaluate(language => localStorage.setItem('scooters-locale', language), locale);
+      await page.reload();
+      await choose('Zürich HB', 'first');
+      await expect(line).toHaveText(near);
+      // It may take two lines; nothing of it is cut off, and the bar is as tall as before.
+      expect(await whole()).toBe(true);
+      await expect.poll(async () => (await island.boundingBox())!.height).toBe(height);
+      await expect(island.locator('.bar-copy strong')).toHaveText('Zürich HB');
+      // The same for the line under a place without scooter data.
+      await choose('Paradeplatz', 'last');
+      await expect(line).toHaveText(neutral);
+      expect(await whole()).toBe(true);
+      await expect.poll(async () => (await island.boundingBox())!.height).toBe(height);
+    }
   }
 });
 

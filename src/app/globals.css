@@ -1947,8 +1947,15 @@ svg {
   }
 }
 @media (max-width: 360px) {
+  /* Room for "Touchez pour rechercher un lieu" in two lines beside the clear button. */
   .bar-button {
     gap: 6px;
+    padding-inline: 2px;
+  }
+  .bar-button .place-tile {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
   }
   .bar-copy strong,
   .bar-locating {
