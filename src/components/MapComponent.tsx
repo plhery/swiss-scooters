@@ -201,6 +201,8 @@ interface MapComponentProps {
   userLocation: [number, number] | null;
   headingEnabled: boolean;
   focusLocation: [number, number] | null;
+  /** The zoom to arrive at; null keeps the current zoom, or street level when further out. */
+  focusZoom: number | null;
   focusVersion: number;
   destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
@@ -220,6 +222,7 @@ export default function MapComponent({
   userLocation,
   headingEnabled,
   focusLocation,
+  focusZoom,
   focusVersion,
   destination,
   onViewportChange,
@@ -425,12 +428,12 @@ export default function MapComponent({
     const map = mapRef.current;
     if (!readyMap || !map || !focusLocation || focusVersion === 0) return;
     map.stop();
-    map.flyTo(focusLocation, Math.max(map.getZoom(), 16), {
+    map.flyTo(focusLocation, focusZoom ?? Math.max(map.getZoom(), 16), {
       animate: !prefersReducedMotion(),
       duration: 0.5,
       easeLinearity: 0.25,
     });
-  }, [focusLocation, focusVersion, readyMap]);
+  }, [focusLocation, focusVersion, focusZoom, readyMap]);
 
   useEffect(() => {
     const layer = destinationLayerRef.current;

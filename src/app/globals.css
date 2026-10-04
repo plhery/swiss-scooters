@@ -26,6 +26,11 @@
   --warning-bg: rgba(255, 149, 0, 0.14);
   --success-ink: #24833b;
   --success-bg: rgba(52, 199, 89, 0.13);
+  --danger: #c9252d;
+  --danger-ink: #b3261e;
+  --danger-bg: rgba(255, 59, 48, 0.12);
+  /* Blue text that keeps 4.5:1 on a blue tint and on glass. */
+  --blue-ink: #0058b8;
   --focus-ring: rgba(0, 122, 255, 0.5);
   --sab: env(safe-area-inset-bottom, 0px);
   --sat: env(safe-area-inset-top, 0px);
@@ -34,9 +39,8 @@
   --spring: cubic-bezier(0.22, 1, 0.36, 1);
   --z-scrim: 500;
   --z-map-actions: 900;
-  --z-intro: 940;
   --z-sheet: 1000;
-  --z-toast: 1100;
+  --z-top: 1100;
 }
 
 html,
@@ -97,6 +101,9 @@ body {
   --warning-bg: rgba(255, 214, 10, 0.14);
   --success-ink: #45d66b;
   --success-bg: rgba(48, 209, 88, 0.14);
+  --danger-ink: #ff6961;
+  --danger-bg: rgba(255, 69, 58, 0.18);
+  --blue-ink: #62b0ff;
   --focus-ring: rgba(64, 156, 255, 0.58);
 }
 .app-shell::after {
@@ -167,7 +174,7 @@ svg {
   right: 12px;
   max-width: 560px;
   margin-inline: auto;
-  z-index: var(--z-toast);
+  z-index: var(--z-top);
   border-radius: 24px;
   overflow: hidden;
   transition: height 320ms var(--spring);
@@ -1092,10 +1099,29 @@ svg {
 .fab:disabled {
   color: var(--ink-3);
 }
-.fab-success {
-  color: var(--success-ink);
+/* Before the first fix the locate button carries its label. */
+.near-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 26px;
+  background: #0070eb;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 107, 220, 0.28);
 }
-.refresh-check {
+.near-me .mini-spinner {
+  width: 15px;
+  height: 15px;
+  border-color: rgba(255, 255, 255, 0.36);
+  border-top-color: #fff;
+}
+.fab-stack > button {
   animation: content-in 240ms var(--spring);
 }
 .app-shell[data-searching='true'] .sheet,
@@ -1190,113 +1216,120 @@ svg {
 .app-shell[data-searching='true'] .map-attribution {
   --credits-bottom: var(--dock-bottom);
 }
-.location-intro-positioner {
-  position: fixed;
-  inset: calc(var(--sat) + 88px) 0 calc(var(--sheet-peek-h) + var(--dock-bottom) + 44px);
-  z-index: var(--z-intro);
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  pointer-events: none;
-}
-.location-intro {
-  box-sizing: border-box;
-  width: min(336px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
-  padding: 24px 24px 16px;
-  border-radius: 28px;
-  text-align: center;
-  pointer-events: auto;
-  animation: content-in 300ms var(--spring);
-}
-.location-intro-symbol {
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 14px;
-  border-radius: 18px;
-  color: var(--blue);
-  background: color-mix(in srgb, var(--blue) 11%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 8%, transparent);
-}
-.location-intro h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 650;
-  line-height: 1.2;
-  letter-spacing: -0.035em;
-}
-.location-intro p {
-  max-width: 28ch;
-  margin: 10px auto 0;
-  color: var(--ink-2);
-  font-size: 14px;
-  line-height: 1.5;
-}
-.location-intro-actions {
-  display: grid;
-  gap: 4px;
-  margin-top: 20px;
-}
-.location-intro-actions button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 10px;
-  border: 0;
-  border-radius: 16px;
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 13px;
-  font-weight: 500;
-}
-.location-intro-actions .intro-primary {
-  min-height: 48px;
-  background: #0070eb;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow: 0 3px 10px rgba(0, 107, 220, 0.16);
-}
-.toast {
+/* What went wrong, under the search bar. */
+.map-notices {
   position: fixed;
   top: calc(var(--sat) + 84px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--z-toast);
+  left: 12px;
+  right: 12px;
+  max-width: 560px;
+  margin-inline: auto;
+  z-index: var(--z-top);
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-  box-sizing: border-box;
-  width: max-content;
-  max-width: min(520px, calc(100vw - 96px));
-  padding: 10px 14px;
-  border-radius: 18px;
-  font-size: 12px;
-  line-height: 1.4;
-  font-weight: 500;
-  animation: toast-in 260ms var(--spring);
-}
-.app-shell[data-searching='true'] .toast {
-  opacity: 0;
   pointer-events: none;
+  transition: opacity 180ms ease;
 }
-.toast-error {
+.map-notices > * {
+  pointer-events: auto;
+  animation: content-in 260ms var(--spring);
+}
+.app-shell[data-searching='true'] .map-notices {
+  opacity: 0;
+}
+.load-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 5px 5px 5px 14px;
+  border-radius: 27px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.load-banner > svg {
+  color: var(--danger-ink);
+}
+.load-banner button {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.location-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 6px 10px 12px;
+  border-radius: 20px;
+}
+.location-card-symbol {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--warning-bg);
   color: var(--warning-ink);
 }
-.toast-error button {
-  min-height: 44px;
-  border: 0;
-  border-radius: 14px;
-  padding: 4px 10px;
-  background: var(--warning-bg);
-  color: inherit;
-  font-size: 12px;
+.location-card-copy {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+.location-card-copy strong {
+  display: block;
+  font-size: 13px;
   font-weight: 650;
+  line-height: 1.35;
+}
+.location-card-copy p {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.location-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  margin-top: 2px;
+}
+.location-card-actions button {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--blue-ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+.location-card-close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-2);
+}
+.load-banner button[aria-busy='true'] {
+  opacity: 0.6;
 }
 
 :where(
@@ -1306,9 +1339,11 @@ svg {
   .done-button,
   .field-btn,
   .fab,
+  .near-me,
   .vehicle-card-close,
   .search-actions button,
-  .location-intro-actions button,
+  .load-banner button,
+  .location-card button,
   .vehicle-actions a,
   .map-style-options > button
 ) {
@@ -1324,9 +1359,11 @@ svg {
     .done-button,
     .field-btn,
     .fab,
+    .near-me,
     .vehicle-card-close,
     .search-actions button,
-    .location-intro-actions button,
+    .load-banner button,
+    .location-card button,
     .vehicle-actions a,
     .map-style-options > button,
     .chip
@@ -1351,15 +1388,17 @@ svg {
   .chip-selected:hover {
     background: color-mix(in srgb, var(--blue) 16%, var(--raised-bg));
   }
+  .location-card-close:hover {
+    background: var(--fill-tertiary);
+  }
   .vehicle-actions a:hover,
-  .location-intro-actions button:hover {
+  .near-me:hover:not(:disabled),
+  .load-banner button:hover,
+  .location-card-actions button:hover {
     opacity: 0.88;
   }
 }
 @media (min-width: 900px) {
-  .location-intro-positioner {
-    inset: 0;
-  }
   .search-island {
     left: 24px;
     right: auto;
@@ -1385,10 +1424,12 @@ svg {
     right: 24px;
     bottom: max(24px, var(--sab));
   }
-  .toast {
-    top: calc(var(--sat) + 24px);
-    max-width: calc(100vw - 510px);
-    margin-left: 160px;
+  .map-notices {
+    top: calc(var(--sat) + 98px);
+    left: 24px;
+    right: auto;
+    width: 380px;
+    margin: 0;
   }
   .control-sheet {
     inset: 0;
@@ -1424,31 +1465,7 @@ svg {
     gap: 6px;
   }
 }
-@media (max-height: 600px) {
-  .location-intro {
-    padding: 18px 20px 10px;
-  }
-  .location-intro-symbol {
-    width: 36px;
-    height: 36px;
-    margin-bottom: 10px;
-    border-radius: 12px;
-  }
-  .location-intro-actions {
-    margin-top: 12px;
-  }
-}
-@media (min-height: 501px) {
-  .app-shell:has(.location-intro) .fab-stack {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-}
 @media (max-height: 500px) {
-  .location-intro-positioner {
-    display: none;
-  }
   .sheet-content {
     max-height: 48dvh;
   }
@@ -1471,16 +1488,6 @@ svg {
   to {
     opacity: 1;
     transform: none;
-  }
-}
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -6px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
   }
 }
 @keyframes spin {

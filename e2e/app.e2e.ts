@@ -1,24 +1,57 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+const coarsePointer = (page: Page) => page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+
 async function zoomTo(page: Page, target: number) {
   const map = page.locator('.leaflet-container');
+  // Touch screens have no zoom buttons; there the keyboard stands in for a pinch.
+  const buttons = await page.locator('.map-zoom-controls').isVisible();
   let current = Number(await map.getAttribute('data-zoom'));
   while (current !== target) {
-    const next = current + (current < target ? 1 : -1);
-    await page.locator('.map-zoom-controls').getByRole('button', {
-      name: current < target ? 'Zoom in' : 'Zoom out',
-      exact: true,
-    }).click();
+    const zoomIn = current < target;
+    const next = current + (zoomIn ? 1 : -1);
+    if (buttons) {
+      await page.locator('.map-zoom-controls').getByRole('button', {
+        name: zoomIn ? 'Zoom in' : 'Zoom out',
+        exact: true,
+      }).click();
+    } else {
+      await map.press(zoomIn ? 'Equal' : 'Minus');
+    }
     await expect(map).toHaveAttribute('data-zoom', String(next));
     current = next;
   }
 }
 
 async function focusFixtureArea(page: Page) {
-  await page.getByRole('button', { name: 'Browse the map' }).click();
   await page.locator('.cluster-marker').first().click();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '10');
+}
+
+/** Turns the map by 45° the way two fingers do. */
+async function rotateWithTwoFingers(page: Page) {
+  await page.locator('.leaflet-container').evaluate(async element => {
+    const rect = element.getBoundingClientRect();
+    const send = (type: string, angle: number) => {
+      const touches = type === 'touchend' ? [] : [0, Math.PI].map((offset, identifier) => ({
+        identifier, target: element,
+        clientX: rect.x + rect.width / 2 + Math.cos(angle + offset) * 70,
+        clientY: rect.y + rect.height / 2 + Math.sin(angle + offset) * 70,
+      }));
+      // WebKit exposes TouchEvent but disallows constructing Touch objects.
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { touches, targetTouches: touches, changedTouches: touches });
+      element.dispatchEvent(event);
+    };
+    send('touchstart', 0);
+    send('touchmove', Math.PI / 4);
+    await new Promise(requestAnimationFrame);
+    send('touchmove', Math.PI / 2);
+    // Hold before lifting, as a deliberate rotation without a momentum fling.
+    await new Promise(resolve => setTimeout(resolve, 180));
+    send('touchend', Math.PI / 2);
+  });
 }
 
 async function allowLocationWithCompass(page: Page, permission: 'granted' | 'denied') {
@@ -200,16 +233,57 @@ test('installs the production service worker and reloads offline', async ({
   await context.setOffline(false);
 });
 
-test('explains denied location access without blocking map browsing', async ({ page }) => {
+test('says that location is off under the search bar, stays dismissed and leads to search', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
 
-  await expect(page.getByText('Location access is off. You can still search or browse the map.')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Use my location' }).click();
+  await expect(page.getByText('Location is off')).toHaveCount(0);
+  const nearMe = page.getByRole('button', { name: 'Near me', exact: true });
+  await nearMe.click();
 
-  await expect(page.getByRole('status').filter({
-    hasText: 'Location access is off. You can still search or browse the map.',
-  })).toBeVisible();
+  const card = page.getByRole('status').filter({ hasText: 'Location is off' });
+  await expect(card).toContainText('Turn it on for this site, or search a place instead.');
   await expect(page.locator('.leaflet-container')).toBeVisible();
+  // Locating has not worked yet, so the button keeps its label.
+  await expect(nearMe).toBeEnabled();
+  // Full width under the search bar, once it has settled in.
+  await card.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+  const island = await page.locator('.search-island').boundingBox();
+  const box = await card.boundingBox();
+  expect(box!.width).toBeCloseTo(island!.width, 0);
+  expect(box!.y).toBeGreaterThan(island!.y + island!.height);
+  for (const button of await card.getByRole('button').all()) {
+    const target = await button.boundingBox();
+    expect(target!.height).toBeGreaterThanOrEqual(44);
+  }
+  const accessibility = await new AxeBuilder({ page }).include('.map-notices').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await card.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(card).toHaveCount(0);
+  await nearMe.click();
+  await card.getByRole('button', { name: 'Search a place' }).click();
+  await expect(page.getByRole('combobox', { name: 'City or address' })).toBeFocused();
+  await expect(card).toBeHidden();
+});
+
+test('a load that fails says why under the search bar and recovers with Try again', async ({ page }) => {
+  let fail = true;
+  await page.route('**/api/scooters?**', async route => {
+    if (fail) await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    else await route.fallback();
+  });
+  await page.goto('/');
+  const banner = page.getByRole('alert').filter({ hasText: 'Scooters is having trouble. Try again in a moment.' });
+  await expect(banner).toBeVisible();
+  await expect(page.locator('.cluster-marker')).toHaveCount(0);
+  const accessibility = await new AxeBuilder({ page }).include('.map-notices').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  fail = false;
+  await banner.getByRole('button', { name: 'Try again' }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
 });
 
 test('clusters at zoom 15 and separates scooters above it', async ({ page }) => {
@@ -240,7 +314,6 @@ test('city overview drills directly into the city and preserves unchanged marker
   await page.goto('/');
   const marker = page.locator('.cluster-marker-wrap');
   await expect(marker).toHaveCount(1);
-  await page.getByRole('button', { name: 'Browse the map' }).click();
   const original = await marker.elementHandle();
   await marker.click();
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '13');
@@ -336,7 +409,6 @@ test('reduced motion and narrow screens retain accessible controls', async ({ pa
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Browse the map' }).click();
   const duration = await page.locator('.sheet').evaluate(element => getComputedStyle(element).transitionDuration);
   expect(duration.split(',').every(value => parseFloat(value) < 0.001)).toBe(true);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
@@ -350,29 +422,38 @@ test('reduced motion and narrow screens retain accessible controls', async ({ pa
   await expect(dialog).not.toBeVisible();
 });
 
-test('centers the location prompt and keeps map credits compact and accessible', async ({ page }) => {
+test('first launch shows the map at once, a labelled Near me button and compact credits', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  const intro = page.getByRole('dialog', { name: 'Find a scooter nearby' });
-  await expect(intro).toBeVisible();
+  // No card stands between the visitor and the map.
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Find a scooter nearby')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /refresh/i })).toHaveCount(0);
   // Check the production CSS: prefix ordering must retain the standard blur
   // declaration through minification, including in Chromium.
-  expect(await intro.evaluate(element => getComputedStyle(element).backdropFilter)).toContain('blur(');
-  const box = await intro.boundingBox();
-  expect(Math.abs(box!.x + box!.width / 2 - 195)).toBeLessThan(2);
-  expect(box!.y).toBeGreaterThan(88);
+  const dock = page.locator('.sheet');
+  expect(await dock.evaluate(element => getComputedStyle(element).backdropFilter)).toContain('blur(');
+
+  const nearMe = page.getByRole('button', { name: 'Near me', exact: true });
+  await expect(nearMe).toBeVisible();
+  const box = await nearMe.boundingBox();
+  expect(box!.height).toBe(52);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390 - 12);
+  const dockBox = await dock.boundingBox();
+  expect(box!.y + box!.height).toBeLessThan(dockBox!.y);
+  expect(await page.evaluate(() => localStorage.getItem('scooters-located-once'))).toBeNull();
+
   await expect(page.getByRole('link', { name: '© OpenStreetMap', exact: true })).toBeVisible();
   const credits = page.getByRole('region', { name: 'Map & data credits' });
   await expect(credits).toBeHidden();
   const creditBox = await page.locator('.map-attribution').boundingBox();
-  expect(box!.y + box!.height).toBeLessThan(creditBox!.y);
+  expect(creditBox!.x + creditBox!.width).toBeLessThan(box!.x);
   expect(creditBox!.height).toBeLessThanOrEqual(34);
   expect(creditBox!.width).toBeLessThan(180);
-  const accessibility = await new AxeBuilder({ page }).include('.location-intro').include('.map-attribution').withTags(['wcag2a', 'wcag2aa']).analyze();
+  const accessibility = await new AxeBuilder({ page }).include('.fab-stack').include('.map-attribution').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
 
-  await page.getByRole('button', { name: 'Browse the map' }).click();
-  await expect(intro).toBeHidden();
   const infoButton = page.getByRole('button', { name: 'Map & data credits' });
   await infoButton.click();
   await expect(credits).toBeVisible();
@@ -383,6 +464,103 @@ test('centers the location prompt and keeps map credits compact and accessible',
   await page.keyboard.press('Escape');
   await expect(credits).toBeHidden();
   await expect(infoButton).toBeFocused();
+});
+
+test('locating once zooms to the street, turns Near me into the icon button and is remembered', async ({ page }) => {
+  await page.goto('/');
+  await allowLocationWithCompass(page, 'granted');
+  await page.getByRole('button', { name: 'Near me', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Your live location' })).toBeVisible();
+  // About 350 m across on a phone, as on iOS.
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
+  const locate = page.getByRole('button', { name: 'Go to my location', exact: true });
+  await expect(locate).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Near me', exact: true })).toHaveCount(0);
+  const box = await locate.boundingBox();
+  expect(box!.width).toBe(50);
+  expect(box!.height).toBe(50);
+  // Only the fact is kept, never the position.
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage }))).not.toContain('47.37');
+  expect(await page.evaluate(() => localStorage.getItem('scooters-located-once'))).toBe('1');
+  expect(new URL(page.url()).search).not.toContain('47.37');
+
+  await page.reload();
+  await expect(locate).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Near me', exact: true })).toHaveCount(0);
+});
+
+test('locates by itself when location is already granted, without a tap', async ({ page }) => {
+  await page.addInitScript(() => {
+    const position = {
+      coords: { latitude: 47.3769, longitude: 8.5417, accuracy: 5,
+        altitude: null, altitudeAccuracy: null, heading: null, speed: 0, toJSON: () => ({}) },
+      timestamp: Date.now(), toJSON: () => ({}),
+    };
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) => queueMicrotask(() => success(position)),
+        watchPosition: (success: PositionCallback) => { queueMicrotask(() => success(position)); return 1; },
+        clearWatch: () => {},
+      },
+    });
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query: async () => ({ state: 'granted' }) },
+    });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('img', { name: 'Your live location' })).toBeVisible();
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
+  await expect(page.getByRole('button', { name: 'Go to my location', exact: true })).toBeEnabled();
+});
+
+test('a visitor who has not granted location is never located without a tap', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: () => { document.documentElement.dataset.locateRequested = 'true'; },
+        watchPosition: () => 1,
+        clearWatch: () => {},
+      },
+    });
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query: async () => ({ state: 'prompt' }) },
+    });
+  });
+  await page.goto('/');
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Near me', exact: true })).toBeEnabled();
+  await expect(page.locator('html')).not.toHaveAttribute('data-locate-requested', 'true');
+  await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '8');
+});
+
+test('zoom buttons and the compass show only where they are needed', async ({ page }) => {
+  await page.goto('/');
+  const zoom = page.locator('.map-zoom-controls');
+  const compass = page.locator('.map-compass');
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+  if (await coarsePointer(page)) {
+    // Touch: pinch to zoom, and a compass only while the map is turned.
+    await expect(zoom).toBeHidden();
+    await expect(compass).toBeHidden();
+    await rotateWithTwoFingers(page);
+    await expect(page.getByRole('button', { name: 'Reset map to north' })).toBeVisible();
+    await expect(zoom).toBeHidden();
+    return;
+  }
+  await expect(zoom).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset map to north' })).toBeVisible();
+  // A small window on its side keeps the compass and drops the zoom buttons.
+  await page.setViewportSize({ width: 800, height: 480 });
+  await expect(zoom).toBeHidden();
+  await expect(compass).toBeVisible();
+  await page.setViewportSize({ width: 800, height: 600 });
+  await expect(zoom).toBeVisible();
+  await page.setViewportSize({ width: 1000, height: 480 });
+  await expect(zoom).toBeVisible();
 });
 
 test('publishes a standalone privacy notice', async ({ page }) => {
@@ -396,12 +574,22 @@ test('compass rotates the map, preserves marker interaction and resets north', a
   await page.goto('/');
   await focusFixtureArea(page);
   await zoomTo(page, 16);
-  const compass = page.getByRole('button', { name: 'Reset map to north' });
-  await expect(compass).toBeVisible();
-  await compass.focus();
-  for (let step = 1; step <= 3; step++) {
-    await compass.press('ArrowRight');
-    await expect(compass).toHaveAttribute('data-bearing', String(step * 15));
+  // By class: a compass that is hidden has no role to find it by.
+  const compass = page.locator('.map-compass');
+  const touch = await coarsePointer(page);
+  if (touch) {
+    // On a touch screen the compass appears with the rotation it can undo.
+    await expect(compass).toBeHidden();
+    await rotateWithTwoFingers(page);
+    await expect(compass).toHaveAttribute('data-bearing', '45');
+    await expect(page.getByRole('button', { name: 'Reset map to north' })).toBeVisible();
+  } else {
+    await expect(compass).toBeVisible();
+    await compass.focus();
+    for (let step = 1; step <= 3; step++) {
+      await compass.press('ArrowRight');
+      await expect(compass).toHaveAttribute('data-bearing', String(step * 15));
+    }
   }
   const mapPane = page.locator('.leaflet-rotate-pane');
   expect(await mapPane.evaluate(element => getComputedStyle(element).transform)).not.toBe('none');
@@ -412,12 +600,14 @@ test('compass rotates the map, preserves marker interaction and resets north', a
   await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
   await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
   await expect(page.locator('.vehicle-card')).toBeVisible();
+  const accessibility = await new AxeBuilder({ page }).include('.map-navigation').withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(accessibility.violations).toEqual([]);
   await compass.click();
   await expect(compass).toHaveAttribute('data-bearing', '0');
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
   await expect(page.locator('.vehicle-card')).toBeVisible();
-  const accessibility = await new AxeBuilder({ page }).include('.map-navigation').withTags(['wcag2a', 'wcag2aa']).analyze();
-  expect(accessibility.violations).toEqual([]);
+  if (touch) await expect(compass).toBeHidden();
+  else await expect(compass).toBeVisible();
 
   await page.getByRole('button', { name: 'Choose an origin' }).click();
   await expect(page.getByRole('combobox', { name: 'City or address' })).toBeVisible();
@@ -427,8 +617,20 @@ test('compass rotates the map, preserves marker interaction and resets north', a
 test('compass honors reduced motion and takes the short route across north', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  const compass = page.getByRole('button', { name: 'Reset map to north' });
+  const compass = page.locator('.map-compass');
   await expect(compass).toBeEnabled();
+  if (await coarsePointer(page)) {
+    // Hidden at north on a touch screen, so the rotation comes from two fingers
+    // and the reset from a tap; neither animates.
+    await rotateWithTwoFingers(page);
+    await expect(compass).toHaveAttribute('data-bearing', '45');
+    await compass.press('ArrowRight');
+    await expect(compass).toHaveAttribute('data-bearing', '60');
+    await compass.press('Enter');
+    await expect(compass).toHaveAttribute('data-bearing', '0');
+    await expect(compass).toBeHidden();
+    return;
+  }
   await compass.press('ArrowLeft');
   await expect(compass).toHaveAttribute('data-bearing', '345');
   await compass.press('Enter');
@@ -439,7 +641,7 @@ test('phone direction follows compass readings and stays aligned on a rotated ma
   const response = await page.goto('/');
   expect(response?.headers()['permissions-policy']).toContain('magnetometer=(self)');
   await allowLocationWithCompass(page, 'granted');
-  await page.getByRole('button', { name: 'Use my location', exact: true }).click();
+  await page.getByRole('button', { name: 'Near me', exact: true }).click();
   const dot = page.getByRole('img', { name: 'Your live location' });
   const beam = page.locator('.user-heading-beam');
   await expect(dot).toBeVisible();
@@ -455,10 +657,16 @@ test('phone direction follows compass readings and stays aligned on a rotated ma
   }).toBe(true);
   await expect(beam).toHaveAttribute('data-heading', '90');
   await expect(beam).toHaveAttribute('data-screen-heading', '90');
-  const compass = page.getByRole('button', { name: 'Reset map to north' });
-  await compass.press('ArrowRight');
-  await expect(compass).toHaveAttribute('data-bearing', '15');
-  await expect(beam).toHaveAttribute('data-screen-heading', '105');
+  const compass = page.locator('.map-compass');
+  if (await coarsePointer(page)) {
+    await rotateWithTwoFingers(page);
+    await expect(compass).toHaveAttribute('data-bearing', '45');
+    await expect(beam).toHaveAttribute('data-screen-heading', '135');
+  } else {
+    await compass.press('ArrowRight');
+    await expect(compass).toHaveAttribute('data-bearing', '15');
+    await expect(beam).toHaveAttribute('data-screen-heading', '105');
+  }
   await compass.click();
   await expect(beam).toHaveAttribute('data-screen-heading', '90');
   await page.evaluate(() => {
@@ -481,43 +689,31 @@ test('phone direction follows compass readings and stays aligned on a rotated ma
 test('denying motion permission keeps location usable without inventing a direction', async ({ page }) => {
   await page.goto('/');
   await allowLocationWithCompass(page, 'denied');
-  await page.getByRole('button', { name: 'Use my location', exact: true }).click();
+  await page.getByRole('button', { name: 'Near me', exact: true }).click();
   await expect(page.getByRole('img', { name: 'Your live location' })).toBeVisible();
-  await expect(page.getByText('Motion access is off. Your location is still shown.')).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-compass-requested', 'true');
+  // No message about it: the direction is simply not drawn.
+  await page.evaluate(() => window.dispatchEvent(Object.assign(new Event('deviceorientation'), {
+    absolute: false, alpha: 20, beta: 0, gamma: 0, webkitCompassHeading: 90, webkitCompassAccuracy: 5,
+  })));
   await expect(page.locator('.user-heading-beam')).toBeHidden();
+  await expect(page.getByText(/motion access/i)).toHaveCount(0);
+  await expect(page.locator('.map-notices')).toBeEmpty();
   await expect(page.getByRole('button', { name: 'Go to my location' })).toBeEnabled();
 });
 
 test('two-finger rotation updates the compass and can be reset', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Touch rotation is exercised on mobile WebKit.');
   await page.goto('/');
-  await page.getByRole('button', { name: 'Browse the map' }).click();
-  const compass = page.getByRole('button', { name: 'Reset map to north' });
+  const compass = page.locator('.map-compass');
   await expect(compass).toBeEnabled();
-  await page.locator('.leaflet-container').evaluate(async element => {
-    const rect = element.getBoundingClientRect();
-    const send = (type: string, angle: number) => {
-      const touches = type === 'touchend' ? [] : [0, Math.PI].map((offset, identifier) => ({
-        identifier, target: element,
-        clientX: rect.x + rect.width / 2 + Math.cos(angle + offset) * 70,
-        clientY: rect.y + rect.height / 2 + Math.sin(angle + offset) * 70,
-      }));
-      // WebKit exposes TouchEvent but disallows constructing Touch objects.
-      const event = new Event(type, { bubbles: true, cancelable: true });
-      Object.assign(event, { touches, targetTouches: touches, changedTouches: touches });
-      element.dispatchEvent(event);
-    };
-    send('touchstart', 0);
-    send('touchmove', Math.PI / 4);
-    await new Promise(requestAnimationFrame);
-    send('touchmove', Math.PI / 2);
-    // Hold before lifting, as a deliberate rotation without a momentum fling.
-    await new Promise(resolve => setTimeout(resolve, 180));
-    send('touchend', Math.PI / 2);
-  });
+  await expect(compass).toBeHidden();
+  await rotateWithTwoFingers(page);
   await expect(compass).toHaveAttribute('data-bearing', '45');
+  await expect(page.getByRole('button', { name: 'Reset map to north' })).toBeVisible();
   await compass.click();
   await expect(compass).toHaveAttribute('data-bearing', '0');
+  await expect(compass).toBeHidden();
 });
 
 test('parking markers appear at street zoom, follow provider filters and keep scooter counts separate', async ({ page }) => {

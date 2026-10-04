@@ -72,6 +72,18 @@ const paths = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  warning: (
+    <>
+      <path d="M12 4 2.5 20h19L12 4Z" />
+      <path d="M12 10v4.5M12 17.5h.01" />
+    </>
+  ),
+  locationOff: (
+    <>
+      <path d="m21 3-7.5 18-3-7.5L3 10.5 21 3Z" />
+      <path d="M4 4l16 16" />
+    </>
+  ),
 } as const;
 
 export default function Icon({

@@ -3,11 +3,12 @@
 import { track } from '@/lib/analytics';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import MapWrapper from '@/components/MapWrapper';
 import BottomSheet, { type SelectedVehicle } from '@/components/BottomSheet';
 import MapControls from '@/components/MapControls';
 import MapCredits from '@/components/MapCredits';
-import Icon from '@/components/Icon';
+import MapNotices from '@/components/MapNotices';
 import SearchIsland from '@/components/SearchIsland';
 import ControlSheet from '@/components/ControlSheet';
 import { selectionFeedback } from '@/lib/feedback';
@@ -37,10 +38,14 @@ import { requestHeadingPermission, type HeadingPermission } from '@/lib/deviceHe
 
 const SWITZERLAND_CENTER: [number, number] = [46.8182, 8.2275];
 const INITIAL_ZOOM = 8;
+// About 350 m across on a phone, as the iOS app shows after locating.
+const LOCATE_ZOOM = 17;
 const VIEWPORT_FETCH_PADDING = 0.25;
 
 const STORAGE_KEY = 'scooters-params';
 const PROVIDERS_STORAGE_KEY = 'scooters-providers';
+// Only the fact that locating has worked once on this device; never a position.
+const LOCATED_ONCE_STORAGE_KEY = 'scooters-located-once';
 
 interface ScooterMapQuery {
   bounds: MapBounds;
@@ -88,6 +93,16 @@ function readUrlParams(): ClientParams {
   return parseClientParams(p);
 }
 
+// True only when the browser can tell without asking; a permission prompt needs a tap.
+async function locationAlreadyGranted(): Promise<boolean> {
+  try {
+    const status = await navigator.permissions?.query({ name: 'geolocation' });
+    return status?.state === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
   if (!a) return false;
   return (
@@ -119,17 +134,32 @@ export default function Home() {
   const [mapQuery, setMapQuery] = useState<ScooterMapQuery | null>(null);
   const [focusRequest, setFocusRequest] = useState<{
     location: [number, number] | null;
+    /** The zoom to arrive at; null keeps the current zoom, or street level when further out. */
+    zoom: number | null;
     version: number;
-  }>({ location: null, version: 0 });
+  }>({ location: null, zoom: null, version: 0 });
   const [searchedAddress, setSearchedAddress] = useState<AddressResult | null>(null);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'filters' | 'settings'>('filters');
-  const [showLocationIntro, setShowLocationIntro] = useState(true);
+  const [locatedOnce, setLocatedOnce] = useState<boolean | null>(null);
+  const [locationNoticeDismissed, setLocationNoticeDismissed] = useState(false);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
   const initializedRef = useRef(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const mapQueryRef = useRef<ScooterMapQuery | null>(null);
+
+  const startLocating = useCallback(() => {
+    setLocationNoticeDismissed(false);
+    // Asked within the tap, before waiting for GPS. Without a tap the browser
+    // cannot prompt, and the direction is then simply not drawn.
+    void requestHeadingPermission().then(setHeadingPermission);
+    locate((coords) => {
+      try { localStorage.setItem(LOCATED_ONCE_STORAGE_KEY, '1'); } catch {}
+      setLocatedOnce(true);
+      setFocusRequest(current => ({ location: coords, zoom: LOCATE_ZOOM, version: current.version + 1 }));
+    });
+  }, [locate]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- These effects intentionally
      restore browser-only state after hydration. */
@@ -145,6 +175,9 @@ export default function Home() {
         setEnabledProviders(new Set(saved));
       }
     } catch {}
+    let located = false;
+    try { located = localStorage.getItem(LOCATED_ONCE_STORAGE_KEY) === '1'; } catch {}
+    setLocatedOnce(located);
     setPreferencesReady(true);
     const params = readUrlParams();
     if (params.minBattery !== undefined) setMinBattery(params.minBattery);
@@ -154,10 +187,12 @@ export default function Home() {
     // Preserve old shared links without persisting their coordinates again.
     if (params.origin) {
       setInitialCenter(params.origin);
-      setShowLocationIntro(false);
-      setFocusRequest(current => ({ location: params.origin, version: current.version + 1 }));
+      setFocusRequest(current => ({ location: params.origin, zoom: null, version: current.version + 1 }));
+    } else {
+      // As the iOS app does on launch: locate at once when that needs no prompt.
+      void locationAlreadyGranted().then(granted => { if (granted) startLocating(); });
     }
-  }, []);
+  }, [startLocating]);
 
   useEffect(() => {
     if (!preferencesReady) return;
@@ -232,10 +267,9 @@ export default function Home() {
   const handleAddressSelect = (result: AddressResult) => {
     track('search_select');
     const location: [number, number] = [result.lat, result.lng];
-    setShowLocationIntro(false);
     setSelectedVehicleKey(null);
     setSearchedAddress(result);
-    setFocusRequest(current => ({ location, version: current.version + 1 }));
+    setFocusRequest(current => ({ location, zoom: null, version: current.version + 1 }));
   };
 
   const handleViewportChange = useCallback((bounds: MapBounds, zoom: number) => {
@@ -255,12 +289,14 @@ export default function Home() {
 
   const handleLocateMe = useCallback(() => {
     track('locate');
-    setShowLocationIntro(false);
-    if (headingPermission !== 'granted') void requestHeadingPermission().then(setHeadingPermission);
-    locate((coords) => {
-      setFocusRequest(current => ({ location: coords, version: current.version + 1 }));
-    });
-  }, [headingPermission, locate]);
+    startLocating();
+  }, [startLocating]);
+
+  // The only manual refresh: "Try again" where a failure is shown.
+  const retryLoad = useCallback(() => {
+    track('refresh');
+    void refresh().then(succeeded => track('refresh_result', { result: succeeded ? 'success' : 'error' }));
+  }, [refresh]);
 
   const resetFilters = useCallback(() => {
     track('filters_reset');
@@ -354,15 +390,19 @@ export default function Home() {
     ? [...new Set([...providersForViewport(viewportBounds), ...Object.keys(viewportData.providerCounts)])]
     : Object.keys(PROVIDERS);
   const hasActiveFilters = minBattery > 0 || availableProviders.some(provider => !enabledProviders.has(provider));
-  const locationIntroVisible = showLocationIntro && !searchExpanded && !userLocation && !searchedAddress;
 
   const openPanel = (panel: 'filters' | 'settings') => {
     track(panel === 'filters' ? 'filters_open' : 'settings_open');
     selectionFeedback();
     setSearchExpanded(false);
-    setShowLocationIntro(false);
     setActivePanel(panel);
     setPanelOpen(true);
+  };
+
+  const openSearch = () => {
+    track('search_open');
+    // Commit within the tap so mobile Safari can focus the newly mounted input.
+    flushSync(() => setSearchExpanded(true));
   };
 
   const handleQuickProviderToggle = (provider: string) => {
@@ -392,6 +432,7 @@ export default function Home() {
         userLocation={userLocation}
         headingEnabled={headingPermission === 'granted' && locationError !== 'denied'}
         focusLocation={focusRequest.location}
+        focusZoom={focusRequest.zoom}
         focusVersion={focusRequest.version}
         destination={searchedAddress}
         onViewportChange={handleViewportChange}
@@ -399,7 +440,6 @@ export default function Home() {
         onVehicleSelect={vehicle => {
           track('vehicle_select', { provider: vehicle.provider });
           selectionFeedback();
-          setShowLocationIntro(false);
           setSelectedVehicleKey(vehicle.vehicle_id
             ? `${vehicle.provider}:${vehicle.vehicle_id}`
             : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`
@@ -412,7 +452,7 @@ export default function Home() {
         hasLocation={Boolean(userLocation)}
         expanded={searchExpanded}
         hasActiveFilters={hasActiveFilters}
-        onExpandedChange={expanded => { track(expanded ? 'search_open' : 'search_close'); setSearchExpanded(expanded); if (expanded) setShowLocationIntro(false); }}
+        onExpandedChange={expanded => { track(expanded ? 'search_open' : 'search_close'); setSearchExpanded(expanded); }}
         onSelect={handleAddressSelect}
         onClear={() => setSearchedAddress(null)}
         onLocate={handleLocateMe}
@@ -420,62 +460,22 @@ export default function Home() {
         onShowSettings={() => openPanel('settings')}
       />
 
-      {locationIntroVisible && (
-        <div className="location-intro-positioner">
-          <div
-            className="location-intro glass"
-            role="dialog"
-            aria-labelledby="location-intro-title"
-            aria-describedby="location-intro-description"
-            onKeyDown={event => { if (event.key === 'Escape') setShowLocationIntro(false); }}
-          >
-            <div className="location-intro-symbol"><Icon name="location" size={27} /></div>
-            <h2 id="location-intro-title">{t('intro.title')}</h2>
-            <p id="location-intro-description">{t('intro.body')}</p>
-            <div className="location-intro-actions">
-              <button type="button" className="intro-primary" onClick={() => { selectionFeedback(); handleLocateMe(); }}>
-                <Icon name="location" size={18} />{t('intro.useLocation')}
-              </button>
-              <button type="button" onClick={() => { track('browse_map'); selectionFeedback(); setShowLocationIntro(false); }}>{t('intro.browse')}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {locating && (
-        <div className="toast glass" role="status">
-          <span className="mini-spinner" aria-hidden="true" />
-          {t('status.updatingLocation')}
-        </div>
-      )}
-
-      {failure && !locating && (
-        <div className="toast glass toast-error" role="alert">
-          {t('errors.fetchScooters')}
-          <button onClick={() => { track('refresh'); void refresh(); }}>{t('status.retry')}</button>
-        </div>
-      )}
-
-      {locationError && !locating && !failure && (
-        <div className="toast glass toast-location" role="status">
-          {t(locationError === 'denied'
-            ? 'errors.locationDenied'
-            : 'errors.locationUnavailable')}
-        </div>
-      )}
-
-      {headingPermission === 'denied' && userLocation && !locationError && !locating && !failure && (
-        <div className="toast glass toast-location" role="status">
-          {t('errors.headingDenied')}
-        </div>
-      )}
+      <MapNotices
+        loadFailure={failure}
+        loading={loading}
+        locationError={locating || locationNoticeDismissed ? null : locationError}
+        hidden={searchExpanded}
+        onRetryLoad={retryLoad}
+        onRetryLocate={handleLocateMe}
+        onSearchPlace={openSearch}
+        onDismissLocation={() => setLocationNoticeDismissed(true)}
+      />
 
       <MapControls
-        loading={loading}
         locating={locating}
+        locatedOnce={locatedOnce}
         hidden={searchExpanded}
         onLocateMe={handleLocateMe}
-        onRefresh={refresh}
       />
 
       <MapCredits />

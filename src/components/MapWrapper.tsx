@@ -18,6 +18,7 @@ interface MapWrapperProps {
   userLocation: [number, number] | null;
   headingEnabled: boolean;
   focusLocation: [number, number] | null;
+  focusZoom: number | null;
   focusVersion: number;
   destination: AddressResult | null;
   onViewportChange: (bounds: MapBounds, zoom: number) => void;

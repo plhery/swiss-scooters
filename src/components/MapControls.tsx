@@ -1,99 +1,44 @@
 'use client';
 
-import { track } from '@/lib/analytics';
-
-import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { selectionFeedback } from '@/lib/feedback';
 
 interface MapControlsProps {
-  loading: boolean;
   locating?: boolean;
+  /** This device has located successfully before. Null until that is known. */
+  locatedOnce: boolean | null;
   hidden: boolean;
   onLocateMe: () => void;
-  onRefresh: () => Promise<boolean>;
 }
 
 export default function MapControls({
-  loading,
   locating = false,
+  locatedOnce,
   hidden,
   onLocateMe,
-  onRefresh,
 }: MapControlsProps) {
   const { t } = useI18n();
-  const [refreshed, setRefreshed] = useState(false);
-  const resetTimerRef = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
-  }, []);
-
-  const handleRefresh = async () => {
-    track('refresh');
-    selectionFeedback();
-    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
-    setRefreshed(false);
-    const succeeded = await onRefresh();
-    track('refresh_result', { result: succeeded ? 'success' : 'error' });
-    if (!succeeded) return;
-
-    setRefreshed(true);
-    resetTimerRef.current = window.setTimeout(() => {
-      setRefreshed(false);
-      resetTimerRef.current = null;
-    }, 1_200);
-  };
 
   return (
     <div className="fab-stack" inert={hidden} aria-hidden={hidden}>
-      <span className="sr-only" role="status" aria-live="polite">
-        {refreshed ? t('status.refreshed') : ''}
+      <span className="sr-only" role="status">
+        {locating ? t('bar.locating') : ''}
       </span>
-      <button className="fab glass" disabled={locating} onClick={() => { selectionFeedback(); onLocateMe(); }} aria-label={t('controls.locate')}>
-        {locating ? <span className="mini-spinner" aria-hidden="true" /> : <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M21.7 2.3a1 1 0 0 1 .2 1.1l-8 18a1 1 0 0 1-1.9-.1l-2.2-6.6a1 1 0 0 0-.6-.6L2.7 12a1 1 0 0 1-.1-1.9l18-8a1 1 0 0 1 1.1.2Z" />
-        </svg>}
-      </button>
-      <button
-        className={`fab glass ${refreshed ? 'fab-success' : ''}`}
-        onClick={() => void handleRefresh()}
-        disabled={loading}
-        aria-label={refreshed ? t('status.refreshed') : t('controls.refresh')}
-      >
-        {refreshed ? (
-          <svg
-            className="refresh-check"
-            width="19"
-            height="19"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m5 12 4 4L19 6" />
-          </svg>
-        ) : (
-          <svg
-            className={loading ? 'spin' : undefined}
-            width="19"
-            height="19"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-            <path d="M21 3v5h-5" />
-          </svg>
-        )}
-      </button>
+      {/* Until the first successful fix the button says what it does; after that the icon is enough. */}
+      {locatedOnce !== null && (
+        <button
+          type="button"
+          className={locatedOnce ? 'fab glass' : 'near-me'}
+          disabled={locating}
+          onClick={() => { selectionFeedback(); onLocateMe(); }}
+          aria-label={locatedOnce ? t('controls.locate') : undefined}
+        >
+          {locating ? <span className="mini-spinner" aria-hidden="true" /> : <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M21.7 2.3a1 1 0 0 1 .2 1.1l-8 18a1 1 0 0 1-1.9-.1l-2.2-6.6a1 1 0 0 0-.6-.6L2.7 12a1 1 0 0 1-.1-1.9l18-8a1 1 0 0 1 1.1.2Z" />
+          </svg>}
+          {!locatedOnce && <span>{t('loc.nearMe')}</span>}
+        </button>
+      )}
     </div>
   );
 }

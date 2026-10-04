@@ -56,12 +56,13 @@
 .map-navigation {
   position: absolute;
   z-index: 1000;
-  top: calc(var(--sat) + 88px);
+  /* Below the search bar and whatever notice is shown under it. */
+  top: calc(var(--sat) + 88px + var(--notices-h, 0px));
   right: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: opacity 180ms ease;
+  transition: top 280ms var(--spring), opacity 180ms ease;
 }
 
 .map-compass {
@@ -435,9 +436,21 @@ a.popup-walk {
 @media (prefers-reduced-motion: reduce) {
   .user-loc-pulse { animation: none; opacity: 0.3; }
   .leaflet-tile-pane,
+  .map-navigation,
   .user-heading-beam,
   .scooter-marker,
   .cluster-marker { transition: none; }
+}
+
+/* Touch screens zoom with two fingers, and need the compass only to undo a rotation. */
+@media (pointer: coarse) {
+  .map-zoom-controls,
+  .map-compass[data-bearing='0'] { display: none; }
+}
+
+/* A phone on its side has no room for zoom buttons beside the search bar and the dock. */
+@media (max-width: 899px) and (max-height: 519px) {
+  .map-zoom-controls { display: none; }
 }
 
 @media (min-width: 900px) {
