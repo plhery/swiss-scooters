@@ -151,14 +151,36 @@ final class ScooterModelsTests: XCTestCase {
         let distance = scooter.distance(from: GeoPoint(latitude: 47.3769, longitude: 8.5417))
 
         XCTAssertEqual(distance, 111.2, accuracy: 1.5)
-        XCTAssertFalse(scooter.formattedDistance(
-            from: GeoPoint(latitude: 47.3769, longitude: 8.5417)
-        ).isEmpty)
+        XCTAssertEqual(
+            plainSpaces(scooter.formattedDistance(from: GeoPoint(latitude: 47.3769, longitude: 8.5417))),
+            "\(Int(distance.rounded())) m"
+        )
     }
 
     func testRangeFormattingOnlyExistsWhenRangeIsProvided() throws {
         XCTAssertNotNil(try makeScooter(rangeMeters: 1_500).formattedRange)
         XCTAssertNil(try makeScooter(rangeMeters: nil).formattedRange)
+    }
+
+    /// The same scooter reads the same on the web and here: whole metres below a
+    /// kilometre, then kilometres with at most one decimal. No rounding to 50 m.
+    func testLengthsAreWrittenAsOnTheWeb() throws {
+        let decimal = Locale.current.decimalSeparator ?? "."
+        let expectations = [
+            (51, "51 m"), (320, "320 m"), (337, "337 m"), (951, "951 m"),
+            (1_000, "1 km"), (1_250, "1\(decimal)3 km"), (1_449, "1\(decimal)4 km"),
+            (12_400, "12\(decimal)4 km"), (24_000, "24 km")
+        ]
+        for (meters, text) in expectations {
+            let range = try XCTUnwrap(makeScooter(rangeMeters: meters).formattedRange)
+            XCTAssertEqual(plainSpaces(range), text, "\(meters) m")
+            // A line never breaks between the number and its unit.
+            XCTAssertFalse(range.contains(" "), range)
+        }
+    }
+
+    private func plainSpaces(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{00A0}", with: " ").replacingOccurrences(of: "\u{202F}", with: " ")
     }
 
     func testMapZoomRoundsUpAtTheServerClusteringBoundary() {

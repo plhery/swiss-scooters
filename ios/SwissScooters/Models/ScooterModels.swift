@@ -81,10 +81,20 @@ struct Scooter: Identifiable, Hashable, Sendable {
         )
     }
 
+    /// "320 m" below a kilometre; "1.4 km" and "24 km" from there, as on the
+    /// web. The system's rounding for roads would say "300 m" for the same scooter.
     private static func formattedLength(meters: Double) -> String {
-        Measurement(value: meters, unit: UnitLength.meters).formatted(
-            .measurement(width: .abbreviated, usage: .road)
-        )
+        let length = meters < 1_000
+            ? Measurement(value: meters.rounded(), unit: UnitLength.meters)
+            : Measurement(value: meters / 1_000, unit: UnitLength.kilometers)
+        return length.formatted(.measurement(
+            width: .abbreviated,
+            usage: .asProvided,
+            // Halves go up, as the web rounds them: 1 250 m is "1.3 km".
+            numberFormatStyle: .number
+                .precision(.fractionLength(0 ... 1))
+                .rounded(rule: .toNearestOrAwayFromZero)
+        ))
         // A line never breaks between the number and its unit.
         .replacingOccurrences(of: " ", with: "\u{00A0}")
     }
