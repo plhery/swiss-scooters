@@ -59,7 +59,8 @@
 
 .map-navigation {
   position: absolute;
-  z-index: 1000;
+  /* Under the dock, which comes before the map in the page and reaches up to here on a small screen. */
+  z-index: calc(var(--z-sheet) - 1);
   /* Below the search bar and whatever notice is shown under it. */
   top: calc(var(--sat) + 88px + var(--notices-h, 0px));
   right: 12px;

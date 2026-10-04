@@ -795,6 +795,42 @@ test('a busy Try again keeps its label where motion is reduced, and turns a spin
   await expect(page.locator('.cluster-marker')).toHaveCount(1);
 });
 
+test('the Tab key goes through the search bar and the dock before the map and its markers', async ({ page, browserName }) => {
+  await page.goto('/?origin=47.3769,8.5417');
+  await expect(page.locator('.scooter-marker')).toHaveCount(3);
+  // What a stop of the Tab key belongs to.
+  const part = () => page.evaluate(() => {
+    const stop = document.activeElement!;
+    if (stop.closest('.search-island')) return 'search bar';
+    if (stop.closest('.map-notices')) return 'notices';
+    if (stop.closest('.sheet')) return 'dock';
+    if (stop.closest('.leaflet-marker-pane')) return 'markers';
+    if (stop.matches('.leaflet-container')) return 'map';
+    if (stop.closest('.map-navigation')) return 'compass and zoom';
+    if (stop.closest('.fab-stack, .map-attribution')) return 'corner';
+    return stop.tagName;
+  });
+  // The page itself is in that order, whatever a browser makes of the Tab key.
+  const inPage = await page.evaluate(() => ['.search-island', '.map-notices', '.sheet', '.leaflet-container', '.fab-stack']
+    .map(selector => document.querySelector(selector)!)
+    .every((element, index, all) => index === 0 ||
+      Boolean(all[index - 1].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING)));
+  expect(inPage).toBe(true);
+
+  test.skip(browserName === 'webkit', 'Safari takes the Tab key to buttons and links only with Option held.');
+  const parts: string[] = [];
+  for (let presses = 0; presses < 60 && parts.at(-1) !== 'corner'; presses++) {
+    await page.keyboard.press('Tab');
+    const now = await part();
+    if (parts.at(-1) !== now) parts.push(now);
+  }
+  // Every marker is a stop: they come after what is always there, not before it.
+  const expected = await desktopLayout(page)
+    ? ['search bar', 'dock', 'map', 'markers', 'compass and zoom', 'corner']
+    : ['search bar', 'dock', 'map', 'markers', 'corner'];
+  expect(parts.filter(name => name !== 'compass and zoom' || expected.includes(name))).toEqual(expected);
+});
+
 test('clusters at zoom 15 and separates scooters above it', async ({ page }) => {
   await page.goto('/');
   const map = page.locator('.leaflet-container');

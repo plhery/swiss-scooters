@@ -645,6 +645,60 @@ export default function Home() {
         media="(prefers-color-scheme: dark)"
         content={theme === 'light' ? THEME_COLOR.light : THEME_COLOR.dark}
       />
+      {/* In the order of the layout, which is the order of the Tab key: the search
+          bar, what went wrong, the dock, and only then the map with its markers,
+          which can be many. All but the map are placed by the stylesheet. */}
+      <SearchIsland
+        place={searchedPlace}
+        // Decided by the place, as in the iOS app: the map may since have been moved elsewhere.
+        placeHasData={searchedPlace?.covered !== false}
+        hasLocation={Boolean(userLocation)}
+        locating={locating}
+        expanded={searchExpanded}
+        hasActiveFilters={hasActiveFilters}
+        recentPlaces={recent}
+        nearbyCities={nearbyCities}
+        onExpandedChange={expanded => { track(expanded ? 'search_open' : 'search_close'); setSearchExpanded(expanded); }}
+        onSelect={handlePlaceSelect}
+        onClear={() => { track('search_clear'); setSearchedPlace(null); }}
+        onLocate={handleLocateMe}
+        onShowFilters={() => openPanel('filters')}
+        onShowSettings={() => openPanel('settings')}
+      />
+
+      <MapNotices
+        loadFailure={failureSurface({ failure, hasData, outOfDate }) === 'banner' ? failure : null}
+        loading={loading !== null}
+        locationError={locating || locationNoticeDismissed ? null : locationError}
+        hidden={searchExpanded}
+        onRetryLoad={retryLoad}
+        onRetryLocate={handleLocateMe}
+        onSeeHow={() => setLocationHelpOpen(true)}
+        // Searching is the answer to the card, as in the iOS app: it does not come back with the place.
+        onSearchPlace={() => { setLocationNoticeDismissed(true); openSearch(); }}
+        onDismissLocation={() => { setLocationNoticeDismissed(true); focusSearchBar(); }}
+      />
+
+      <BottomSheet
+        dock={dock}
+        issue={dockIssue(dockInput)}
+        selectedVehicle={selectedVehicle}
+        selectedParking={selectedParking}
+        desktop={desktop}
+        selectionAnchor={selectionAnchor}
+        hidden={searchExpanded}
+        onShowAllProviders={handleShowAllProviders}
+        onProviderToggle={handleQuickProviderToggle}
+        onClearSelection={closeCard}
+        // "Show all" and a closest city leave with their card.
+        onResetFilters={() => { resetFilters(); focusSearchBar(); }}
+        onEditFilters={() => openPanel('filters')}
+        onRetry={retryLoad}
+        onCitySelect={city => { handleCitySelect(city); focusSearchBar(); }}
+        onLocate={handleLocateFromCard}
+        locating={locating}
+      />
+
       <MapWrapper
         parking={visibleParking}
         vehicles={viewportData.visibleVehicles}
@@ -685,37 +739,6 @@ export default function Home() {
         markerLookupRef={markerLookupRef}
       />
 
-      <SearchIsland
-        place={searchedPlace}
-        // Decided by the place, as in the iOS app: the map may since have been moved elsewhere.
-        placeHasData={searchedPlace?.covered !== false}
-        hasLocation={Boolean(userLocation)}
-        locating={locating}
-        expanded={searchExpanded}
-        hasActiveFilters={hasActiveFilters}
-        recentPlaces={recent}
-        nearbyCities={nearbyCities}
-        onExpandedChange={expanded => { track(expanded ? 'search_open' : 'search_close'); setSearchExpanded(expanded); }}
-        onSelect={handlePlaceSelect}
-        onClear={() => { track('search_clear'); setSearchedPlace(null); }}
-        onLocate={handleLocateMe}
-        onShowFilters={() => openPanel('filters')}
-        onShowSettings={() => openPanel('settings')}
-      />
-
-      <MapNotices
-        loadFailure={failureSurface({ failure, hasData, outOfDate }) === 'banner' ? failure : null}
-        loading={loading !== null}
-        locationError={locating || locationNoticeDismissed ? null : locationError}
-        hidden={searchExpanded}
-        onRetryLoad={retryLoad}
-        onRetryLocate={handleLocateMe}
-        onSeeHow={() => setLocationHelpOpen(true)}
-        // Searching is the answer to the card, as in the iOS app: it does not come back with the place.
-        onSearchPlace={() => { setLocationNoticeDismissed(true); openSearch(); }}
-        onDismissLocation={() => { setLocationNoticeDismissed(true); focusSearchBar(); }}
-      />
-
       {/* One row in the corner of a desktop; on a phone each of the two places itself. */}
       <div className="map-corner">
         <MapControls
@@ -729,26 +752,6 @@ export default function Home() {
       </div>
 
       {desktop && <KeyHints />}
-
-      <BottomSheet
-        dock={dock}
-        issue={dockIssue(dockInput)}
-        selectedVehicle={selectedVehicle}
-        selectedParking={selectedParking}
-        desktop={desktop}
-        selectionAnchor={selectionAnchor}
-        hidden={searchExpanded}
-        onShowAllProviders={handleShowAllProviders}
-        onProviderToggle={handleQuickProviderToggle}
-        onClearSelection={closeCard}
-        // "Show all" and a closest city leave with their card.
-        onResetFilters={() => { resetFilters(); focusSearchBar(); }}
-        onEditFilters={() => openPanel('filters')}
-        onRetry={retryLoad}
-        onCitySelect={city => { handleCitySelect(city); focusSearchBar(); }}
-        onLocate={handleLocateFromCard}
-        locating={locating}
-      />
 
       <ControlSheet
         open={panelOpen}
