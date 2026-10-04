@@ -33,11 +33,16 @@ What the events mean on the web:
 - `locate` is a request to be located: Near me or the locate button, "Use my
   location" in the search, the `L` key, or "Turn on location to see walking
   time" on a card. When the page locates by itself on load, because the browser
-  already has the permission, only `location_result` follows.
+  already has the permission, only `location_result` follows. Once a position is
+  known, the page follows it; only a permission taken back is then reported, as
+  `denied`, not a signal lost for a while.
 - `search_select` covers a result, a recent place and a "Cities with scooters"
   chip alike; `search_clear` is the × that removes the chosen place.
+  `search_error` is a search that failed, not one the server put off for being
+  one too many in a minute: that one is repeated and reports its own outcome.
 - `refresh` is a tap on "Try again" where a failure is shown, and
-  `refresh_result` its outcome. Refreshing is otherwise automatic and sends
+  `refresh_result` its outcome. A tap while a request is already running is
+  waited out and sends nothing. Refreshing is otherwise automatic and sends
   nothing. `data_error` is sent once when loading starts to fail, `data_expired`
   when the positions on screen are removed as out of date.
 - `provider_filter` comes with `source: quick` from the chips and the desktop
@@ -47,7 +52,8 @@ What the events mean on the web:
 - `panel_close` closes Filters or Settings.
 - The desktop keys send the event of the control they stand for: `/` sends
   `search_open`, `+` and `−` send `map_zoom`, Esc sends `search_close` or, on a
-  scooter card, `vehicle_dismiss`.
+  scooter card, `vehicle_dismiss`. A tap on the map that closes a scooter card
+  sends `vehicle_dismiss` as well.
 - Not sent at all: opening the location help, closing a parking bay's card, the
   ride length chosen for the price estimate, a "Closest cities" chip, hover tips.
 
