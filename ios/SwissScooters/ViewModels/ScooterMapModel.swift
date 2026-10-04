@@ -182,6 +182,10 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     @ObservationIgnored private var bestLocationCandidate: CLLocation?
     /// Set while a card asked for the location: the first fix leaves the map where it is.
     @ObservationIgnored private var keepsMapOnFirstFix = false
+    /// Counts the places and cities the rider sent the map to, so that a fix can
+    /// tell whether one was chosen while it was on its way.
+    @ObservationIgnored private var placeChoices = 0
+    @ObservationIgnored private var placeChoicesAtLocate = 0
     @ObservationIgnored private var focusToken = 0
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var isApplyingResponse = false
@@ -797,6 +801,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         ScooterAnalytics.shared.track("search_select")
         selectedScooterID = nil
         selectedParkingID = nil
+        placeChoices += 1
         searchedDestination = destination
         rememberPlace(destination)
         focusToken += 1
@@ -814,6 +819,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     func focusOnCity(_ city: ScooterCity) {
         selectedScooterID = nil
         selectedParkingID = nil
+        placeChoices += 1
         focusToken += 1
         focusRequest = .city(city.center, token: focusToken)
     }
@@ -1132,6 +1138,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         // A new attempt brings a dismissed card back and retires the last "not found".
         locationIssueDismissed = false
         if locationProblem == .notFound { locationProblem = nil }
+        placeChoicesAtLocate = placeChoices
 
         switch locationManager.authorizationStatus {
         case .notDetermined:
@@ -1242,10 +1249,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
             defaults.set(true, forKey: Self.hasLocatedOnceKey)
         }
 
-        let keepsMap = keepsMapOnFirstFix
+        // A place chosen while the fix was on its way is the later wish, however
+        // late the fix is: the map stays there and the place stays the origin.
+        let keepsMap = keepsMapOnFirstFix || placeChoices != placeChoicesAtLocate
         keepsMapOnFirstFix = false
         if !hadLocation, keepsMap {
-            // Asked from a card: the walking time appears and the map stays put.
+            // Also when a card asked: the walking time appears and the map stays put.
             distanceOrigin = nextLocation
         } else if !hadLocation {
             requestUserFocus(at: nextLocation)

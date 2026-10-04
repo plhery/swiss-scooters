@@ -1841,6 +1841,76 @@ extension ScooterMapModelTests {
         XCTAssertTrue(restored.hasLocatedOnce)
     }
 
+    func testAPlaceChosenWhileTheFixWasOnItsWayKeepsTheMap() throws {
+        let manager = StubLocationManager(status: .authorizedWhenInUse)
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: manager,
+            defaults: isolatedDefaults()
+        )
+        let place = MapDestination(title: "Bern", point: GeoPoint(latitude: 46.948, longitude: 7.4474))
+        let viewport = model.viewport
+
+        model.focusOnUser()
+        XCTAssertTrue(model.isLocating)
+        model.focusOnAddress(place)
+        let placeFocus = try XCTUnwrap(model.focusRequest)
+        model.locationManager(manager, didUpdateLocations: [zurichFix])
+
+        // The position is known from now on, and nothing moved.
+        XCTAssertEqual(model.focusRequest, placeFocus)
+        XCTAssertEqual(model.viewport, viewport)
+        XCTAssertEqual(model.searchBarState, .place(place))
+        XCTAssertEqual(model.activeOrigin, .searchedDestination(place))
+        XCTAssertFalse(model.isLocating)
+        XCTAssertTrue(model.hasLocatedOnce)
+        XCTAssertEqual(model.userLocation, GeoPoint(zurichFix.coordinate))
+
+        model.clearAddressSearch()
+        XCTAssertEqual(model.searchBarState, .nearYou)
+
+        // Near me is a new wish and moves the map again.
+        model.focusOnUser()
+        XCTAssertEqual(model.focusRequest?.point, GeoPoint(zurichFix.coordinate))
+    }
+
+    func testAFixThatArrivesAfterNotFoundLeavesAPlaceOrCityChosenMeanwhile() async throws {
+        for choosesCity in [false, true] {
+            let manager = StubLocationManager(status: .authorizedWhenInUse)
+            let model = ScooterMapModel(
+                api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+                locationManager: manager,
+                defaults: isolatedDefaults(),
+                locationTimeout: .milliseconds(50)
+            )
+            let bern = try XCTUnwrap(ScooterCityCatalog.cities.first { $0.id == "ch:bern" })
+            let place = MapDestination(title: "Bundesplatz", point: GeoPoint(latitude: 46.9471, longitude: 7.4441))
+
+            model.focusOnUser()
+            let timedOut = await waitUntil { model.locationIssue == .notFound }
+            XCTAssertTrue(timedOut)
+
+            // A searched place, or a chip under "Closest cities".
+            if choosesCity {
+                model.focusOnCity(bern)
+            } else {
+                model.focusOnAddress(place)
+            }
+            let chosenFocus = try XCTUnwrap(model.focusRequest)
+            let viewport = model.viewport
+            model.locationManager(manager, didUpdateLocations: [zurichFix])
+
+            XCTAssertEqual(model.focusRequest, chosenFocus, "city: \(choosesCity)")
+            XCTAssertEqual(model.viewport, viewport)
+            XCTAssertEqual(model.searchBarState, choosesCity ? .nearYou : .place(place))
+            XCTAssertNil(model.locationIssue)
+            XCTAssertTrue(model.hasLocatedOnce)
+
+            model.clearAddressSearch()
+            XCTAssertEqual(model.searchBarState, .nearYou)
+        }
+    }
+
     func testRefusedLocationShowsADismissibleCardUntilTheNextAttempt() {
         let manager = StubLocationManager(status: .denied)
         let model = ScooterMapModel(
@@ -2024,6 +2094,17 @@ extension ScooterMapModelTests {
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: 47.3769, longitude: 8.5417),
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
+    }
+
+    /// A good first fix in Zürich.
+    private var zurichFix: CLLocation {
+        CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 47.3769, longitude: 8.5417),
+            altitude: 0,
+            horizontalAccuracy: 25,
+            verticalAccuracy: 10,
+            timestamp: Date()
         )
     }
 
