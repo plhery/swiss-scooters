@@ -1081,223 +1081,253 @@ private enum RidePriceFormatter {
     }
 }
 
+/// Filters: a minimum battery and the providers to show. Choices apply at
+/// once, so the button at the bottom can say what the map will show.
 struct ScooterFilterSheet: View {
     @Bindable var model: ScooterMapModel
-    @State private var batteryDraft: Double
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
 
-    init(model: ScooterMapModel) {
-        self.model = model
-        _batteryDraft = State(initialValue: model.minimumBattery)
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    providerFilters
+                VStack(alignment: .leading, spacing: 22) {
                     batteryFilters
-
-                    if model.hasActiveFilters {
-                        Button("Reset all filters", role: .destructive) {
-                            model.resetFilters()
-                            batteryDraft = 0
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                    }
+                    providerFilters
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Reset", action: model.resetFilters)
+                        .disabled(!model.hasActiveFilters)
                 }
             }
-            .onChange(of: model.minimumBattery) { _, newValue in
-                batteryDraft = newValue
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                showResultsButton
             }
             .sensoryFeedback(.selection, trigger: model.enabledProviders)
+            .sensoryFeedback(.selection, trigger: model.minimumBattery)
         }
-    }
-
-    private var providerFilters: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Providers", systemImage: "scooter")
-                    .font(.headline)
-                Spacer()
-                Button("Show all", action: model.showAllProviders)
-                    .font(.subheadline.weight(.semibold))
-                    .disabled(model.allProvidersSelected)
-            }
-
-            LazyVGrid(columns: columns, spacing: 10) {
-                ForEach(model.availableProviders) { provider in
-                    providerButton(provider)
-                }
-            }
-        }
-    }
-
-    private func providerButton(_ provider: ScooterProvider) -> some View {
-        let selected = model.enabledProviders.contains(provider)
-        let accent = providerAccent(provider)
-        let count = model.count(for: provider)
-        return Button {
-            model.toggle(provider: provider)
-        } label: {
-            HStack(spacing: 9) {
-                Circle()
-                    .fill(accent)
-                    .frame(width: 11, height: 11)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(provider.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    Text(count, format: .number)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                Spacer(minLength: 0)
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selected ? accent : Color.secondary.opacity(0.55))
-            }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .background(
-                selected ? accent.opacity(0.08) : Color(uiColor: .secondarySystemGroupedBackground),
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(selected ? accent.opacity(0.3) : .clear, lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(providerAccessibilityLabel(provider, count: count))
-        .accessibilityValue(selected ? String(localized: "Shown") : String(localized: "Hidden"))
     }
 
     private var batteryFilters: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label("Minimum battery", systemImage: "battery.50percent")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("Battery")
 
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: 8) {
-                        batteryPresets
-                    }
-                } else {
-                    HStack(spacing: 8) {
-                        batteryPresets
-                    }
+            batteryPresetLayout {
+                ForEach(ScooterBatteryFilter.presets, id: \.self) { preset in
+                    batteryPreset(preset)
                 }
             }
+            .padding(4)
+            .background(
+                Color(uiColor: .tertiarySystemFill),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(String(localized: "Battery"))
 
-            VStack(spacing: 8) {
-                HStack {
-                    Text("Fine tune")
-                        .font(.subheadline.weight(.medium))
-                    Spacer()
-                    Text(batteryDraft == 0 ? String(localized: "Any") : "\(Int(batteryDraft))%+")
-                        .font(.subheadline.weight(.semibold))
+            if model.minimumBattery > 0 {
+                Text("Scooters without battery info are hidden while a minimum is set.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    /// Side by side; one above the other when the text is very large.
+    private var batteryPresetLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 4))
+    }
+
+    private func batteryPreset(_ preset: Int) -> some View {
+        let selected = Int(model.minimumBattery) == preset
+        return Button {
+            model.setMinimumBattery(Double(preset))
+        } label: {
+            // "30%+" reads the same in every language; only "Any" is translated.
+            Text(verbatim: ScooterBatteryFilter.label(for: preset))
+                .font(.subheadline.weight(selected ? .semibold : .regular))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Self.selectedPresetFill)
+                            .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            preset == 0
+                ? String(localized: "Any")
+                : String(format: String(localized: "%lld percent or more"), Int64(preset))
+        )
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// The raised segment of the chosen minimum, as in a segmented control.
+    private static let selectedPresetFill = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .systemGray2 : .white
+    })
+
+    private var providerFilters: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("Providers")
+
+            VStack(alignment: .leading, spacing: 0) {
+                let entries = model.filterProviders
+                if entries.isEmpty {
+                    // No provider operates in this part of the map.
+                    Text("No scooter data here yet")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                 }
-
-                Slider(value: $batteryDraft, in: 0 ... 100, step: 5) { editing in
-                    if !editing {
-                        model.setMinimumBattery(batteryDraft)
-                        // The model keeps to its presets; show what it kept.
-                        batteryDraft = model.minimumBattery
+                ForEach(entries) { entry in
+                    providerRow(entry)
+                    if entry.id != entries.last?.id {
+                        Divider()
+                            .padding(.leading, 62)
                     }
                 }
-                .sensoryFeedback(.selection, trigger: Int(batteryDraft / 5))
-                .accessibilityLabel(String(localized: "Minimum battery"))
-                .accessibilityValue(
-                    batteryDraft == 0
-                        ? String(localized: "Any")
-                        : String(
-                            format: String(localized: "%lld percent or more"),
-                            Int64(batteryDraft)
-                        )
-                )
             }
-            .padding(14)
             .background(
                 Color(uiColor: .secondarySystemGroupedBackground),
                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
             )
-
-            if batteryDraft > 0 {
-                Text("Scooters without battery data are hidden.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 
-    private func batteryPreset(title: LocalizedStringKey, value: Double) -> some View {
-        let selected = model.minimumBattery == value
-        return Button {
-            batteryDraft = value
-            model.setMinimumBattery(value)
+    private func providerRow(_ entry: ScooterProviderEntry) -> some View {
+        Button {
+            model.toggle(provider: entry.provider)
         } label: {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(
-                    selected ? Color.blue : Color(uiColor: .secondarySystemGroupedBackground),
-                    in: Capsule()
-                )
-                .foregroundStyle(selected ? Color.white : Color.primary)
+            HStack(spacing: 12) {
+                // Dark initials on a tint of the provider's colour, never white on the colour itself.
+                Text(verbatim: entry.provider.shortName)
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(entry.isDown ? Color.secondary : Color.primary)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        entry.isDown
+                            ? Color.secondary.opacity(0.14)
+                            : providerAccent(entry.provider, colorScheme: colorScheme).opacity(0.2),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.provider.name)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(entry.isDown ? Color.secondary : Color.primary)
+                    if entry.isDown {
+                        Text("Not sharing data right now")
+                            .font(.caption)
+                            .foregroundStyle(ScooterPalette.warning)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 8)
+
+                if !entry.isDown {
+                    Text(entry.count, format: .number)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+
+                providerCheck(entry)
+                    .frame(width: 26, height: 26)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(minHeight: 56)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityValue(
-            selected ? String(localized: "Selected") : String(localized: "Not selected")
-        )
+        .accessibilityLabel(providerAccessibilityLabel(entry))
+        .accessibilityValue(entry.isEnabled ? String(localized: "Shown") : String(localized: "Hidden"))
     }
 
+    /// A check for a provider that is shown, an empty circle for one that is
+    /// hidden, and a dashed circle for one that is chosen but shares no data.
     @ViewBuilder
-    private var batteryPresets: some View {
-        batteryPreset(title: "Any", value: 0)
-        batteryPreset(title: "30%+", value: 30)
-        batteryPreset(title: "60%+", value: 60)
-    }
-
-    private var columns: [GridItem] {
-        if dynamicTypeSize.isAccessibilitySize {
-            return [GridItem(.flexible(), spacing: 10)]
+    private func providerCheck(_ entry: ScooterProviderEntry) -> some View {
+        if !entry.isEnabled {
+            Image(systemName: "circle")
+                .font(.system(size: 22))
+                .foregroundStyle(Color.secondary.opacity(0.7))
+        } else if entry.isDown {
+            Circle()
+                .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3.5, 3]))
+                .padding(2)
+        } else {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(ScooterPalette.actionFill)
         }
-        return [
-            GridItem(.flexible(), spacing: 10),
-            GridItem(.flexible(), spacing: 10)
-        ]
     }
 
-    private func providerAccent(_ provider: ScooterProvider) -> Color {
-        if provider == .bird, colorScheme == .dark {
-            return Color(uiColor: .label)
+    private var showResultsButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Text(showResultsTitle)
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(.white)
         }
-        return provider.color
+        .dockActionStyle(prominent: true)
+        .font(.headline)
+        .controlSize(.large)
+        // The button stays over the list, so its text stops growing before it covers it.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
     }
 
-    private func providerAccessibilityLabel(_ provider: ScooterProvider, count: Int) -> String {
-        if count == 1 {
-            return String(format: String(localized: "%@, one scooter"), provider.name)
+    /// What the map will show with the current choices. While the answer for
+    /// a new minimum is still on its way there is no count to promise.
+    private var showResultsTitle: String {
+        if case .finding = model.dock {
+            return String(localized: "Finding scooters…")
+        }
+        return model.showResultsTitle
+    }
+
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func providerAccessibilityLabel(_ entry: ScooterProviderEntry) -> String {
+        if entry.isDown { return entry.downLabel }
+        if entry.count == 1 {
+            return String(format: String(localized: "%@, one scooter"), entry.provider.name)
         }
         return String(
             format: String(localized: "%@, %lld scooters"),
-            provider.name,
-            Int64(count)
+            entry.provider.name,
+            Int64(entry.count)
         )
     }
 }
