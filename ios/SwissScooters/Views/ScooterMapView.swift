@@ -1047,7 +1047,7 @@ final class ScooterAnnotationView: MKAnnotationView {
             accessibilityDetails.append("\(String(localized: "Battery")): \(batteryValue)")
         }
         if let range = scooter.formattedRange {
-            accessibilityDetails.append("\(String(localized: "Estimated")): \(range)")
+            accessibilityDetails.append("\(String(localized: "Estimated range")): \(range)")
         }
         accessibilityValue = accessibilityDetails.isEmpty
             ? nil

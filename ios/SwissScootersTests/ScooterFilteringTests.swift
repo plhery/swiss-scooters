@@ -336,7 +336,9 @@ final class ScooterFilteringTests: XCTestCase {
             format: String(localized: "%lld percent"),
             Int64(82)
         )))
-        XCTAssertTrue(value.contains(try XCTUnwrap(scooter.formattedRange)))
+        // "Estimated" alone left open what the figure is, right after a distance.
+        let range = try XCTUnwrap(scooter.formattedRange)
+        XCTAssertTrue(value.contains("\(String(localized: "Estimated range")): \(range)"), value)
         XCTAssertFalse(view.accessibilityTraits.contains(.selected))
 
         view.setSelected(true, animated: false)

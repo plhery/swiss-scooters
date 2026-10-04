@@ -4,7 +4,7 @@
 "scooters" = "trottinettes";
 "All" = "Tous";
 "Battery" = "Batterie";
-"Estimated" = "Estimée";
+"Estimated range" = "Autonomie estimée";
 "Any" = "Indifférent";
 "Address data © swisstopo" = "Données d’adresse © swisstopo";
 "Privacy" = "Confidentialité";

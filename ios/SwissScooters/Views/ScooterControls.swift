@@ -1007,7 +1007,7 @@ private struct ScooterCard: View {
                 }
                 .dockPill()
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(String(localized: "Estimated"))
+                .accessibilityLabel(String(localized: "Estimated range"))
                 .accessibilityValue(range)
             }
 
