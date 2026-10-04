@@ -1351,6 +1351,57 @@ extension ScooterMapModelTests {
         XCTAssertTrue(model.dockChips.allSatisfy { !$0.isDown })
     }
 
+    func testNoProviderIsNamedAsDownWhereTheServerLeftOutLowBatteries() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [],
+            clusters: [ScooterCluster(id: "13:4290:2868", latitude: 47.3769, longitude: 8.5417,
+                count: 40, providers: ["lime": 40])],
+            meta: ScooterResponseMetadata(partial: true,
+                failedSources: ["national:bird_zurich", "city-overview"], mode: "clusters", zoom: 13)
+        ))
+        let model = makeModel(api: api)
+        model.updateViewport(zurichRegion, zoom: 13)
+        var loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        // Clusters count every scooter: Bird has none here, so it is down.
+        XCTAssertEqual(
+            model.providerHealth,
+            ScooterProviderHealth(downProviders: [.bird], hasUnknownFailures: true)
+        )
+
+        // With a minimum, the server leaves the scooters under it out of the clusters,
+        // which can no longer tell an absent provider from one whose scooters are low.
+        model.setMinimumBattery(60)
+        loaded = await waitUntil {
+            let snapshot = await api.snapshot()
+            return snapshot.calls == 2 && !model.isLoading
+        }
+        XCTAssertTrue(loaded)
+        let clustered = await api.snapshot()
+        XCTAssertEqual(clustered.lastMinimumBattery, 60)
+        XCTAssertEqual(model.providerHealth, .healthy)
+        XCTAssertEqual(model.dockNotices, [])
+        XCTAssertTrue(model.dockChips.allSatisfy { !$0.isDown })
+        XCTAssertTrue(model.filterProviders.allSatisfy { !$0.isDown })
+
+        // At street level the app applies the minimum itself, so it knows again.
+        await api.setResponse(ScooterResponse(
+            vehicles: [scooter(id: "lime", provider: "lime", battery: 40)],
+            meta: ScooterResponseMetadata(partial: true, failedSources: ["national:bird_zurich"])
+        ))
+        model.updateViewport(zurichRegion, zoom: 16)
+        loaded = await waitUntil {
+            let snapshot = await api.snapshot()
+            return snapshot.calls == 3 && !model.isLoading
+        }
+        XCTAssertTrue(loaded)
+        let street = await api.snapshot()
+        XCTAssertEqual(street.lastMinimumBattery, 0)
+        XCTAssertEqual(model.count(for: .lime), 0)
+        XCTAssertEqual(model.providerHealth.downProviders, [.bird])
+        XCTAssertEqual(model.dockChips.filter(\.isDown).map(\.provider), [.bird])
+    }
+
     func testDockCountsScootersNearbyWhileTheOriginIsOnScreen() async throws {
         let origin = GeoPoint(latitude: 47.3769, longitude: 8.5417)
         let model = await loadedModel(vehicles: [scooter(id: "one", provider: "lime")], origin: origin)

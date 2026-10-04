@@ -317,9 +317,12 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     /// The providers that are not sharing data here: a feed of theirs failed, they
     /// operate in the viewport and the map holds none of their scooters in view,
     /// whatever the rider's filters hide. City totals name no one, and neither does
-    /// data that was loaded for another area.
+    /// data that cannot tell who has scooters here: loaded for another area, or
+    /// already without the scooters under the battery minimum, which the server
+    /// leaves out of clusters.
     var providerHealth: ScooterProviderHealth {
-        guard let responseMetadata, responseMetadata.overview != true, viewportIsLoaded else { return .healthy }
+        guard let responseMetadata, responseMetadata.overview != true, viewportIsLoaded,
+              (queryMinimumBattery ?? 0) == 0 else { return .healthy }
         return ScooterProviderHealth(
             failedSources: responseMetadata.failedSources,
             operating: ScooterProviderCoverage.providers(in: viewport),
