@@ -85,6 +85,8 @@ struct Scooter: Identifiable, Hashable, Sendable {
         Measurement(value: meters, unit: UnitLength.meters).formatted(
             .measurement(width: .abbreviated, usage: .road)
         )
+        // A line never breaks between the number and its unit.
+        .replacingOccurrences(of: " ", with: "\u{00A0}")
     }
 }
 
@@ -746,6 +748,8 @@ extension ScooterCityDistance {
             usage: .asProvided,
             numberFormatStyle: .number.precision(.fractionLength(0))
         ))
+        // A line never breaks between the number and its unit.
+        .replacingOccurrences(of: " ", with: "\u{00A0}")
     }
 
     /// "Bern · 61 km", the label of a closest-city chip.
