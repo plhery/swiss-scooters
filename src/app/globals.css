@@ -2220,10 +2220,15 @@ svg {
     margin-top: -2px;
     padding: 0 0 10px;
   }
-  /* Beside the search bar: the dock is under it. */
+  /* Beside the search bar: the dock is under it. A sentence is one line where the window has the room. */
   .map-notices {
     top: calc(var(--sat) + 24px);
     left: 416px;
+    width: min(560px, calc(100vw - 416px - 80px));
+    align-items: flex-start;
+  }
+  .location-card {
+    max-width: 380px;
   }
   /* The credits and the locate button share the bottom right corner, whatever the width of the button. */
   .map-corner {

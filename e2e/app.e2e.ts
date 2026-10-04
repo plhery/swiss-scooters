@@ -691,6 +691,12 @@ test('a load that fails says why under the search bar and recovers with Try agai
   await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toHaveCount(0);
   const accessibility = await new AxeBuilder({ page }).include('.map-notices').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
+  if (await desktopLayout(page)) {
+    // Beside the search bar there is room for the sentence on one line.
+    const sentence = (await banner.locator('> span').boundingBox())!;
+    expect(sentence.height).toBeLessThan(20);
+    expect(overlap((await banner.boundingBox())!, (await page.locator('.map-navigation').boundingBox())!)).toBe(false);
+  }
 
   fail = false;
   await banner.getByRole('button', { name: 'Try again' }).click();
