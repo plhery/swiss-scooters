@@ -84,7 +84,12 @@ export function useLiveLocation() {
       if (document.visibilityState === 'hidden' || watchId !== null) return;
       watchId = navigator.geolocation.watchPosition(
         position => { acceptPosition(position); },
-        handlePositionError,
+        // The watch follows a position that was found. When it times out or
+        // loses the signal for a while, that position still stands: only a
+        // permission taken back is something to tell the visitor.
+        positionError => {
+          if (positionError.code === positionError.PERMISSION_DENIED) handlePositionError(positionError);
+        },
         WATCH_OPTIONS
       );
     };

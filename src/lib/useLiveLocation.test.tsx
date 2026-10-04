@@ -2,7 +2,10 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { track } from '@/lib/analytics';
 import { shouldAcceptLocation, useLiveLocation } from '@/lib/useLiveLocation';
+
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 function position(latitude: number, longitude: number, accuracy = 5): GeolocationPosition {
   return {
@@ -25,10 +28,12 @@ function installGeolocation() {
   let currentSuccess: PositionCallback | null = null;
   let watchSuccess: PositionCallback | null = null;
   let currentError: PositionErrorCallback | null = null;
+  let watchError: PositionErrorCallback | null = null;
   let nextWatchId = 1;
   const clearWatch = vi.fn();
-  const watchPosition = vi.fn((success: PositionCallback) => {
+  const watchPosition = vi.fn((success: PositionCallback, error?: PositionErrorCallback | null) => {
     watchSuccess = success;
+    watchError = error ?? null;
     return nextWatchId++;
   });
   const getCurrentPosition = vi.fn((success: PositionCallback, error?: PositionErrorCallback | null) => {
@@ -48,6 +53,9 @@ function installGeolocation() {
     succeedCurrent: (next: GeolocationPosition) => currentSuccess?.(next),
     failCurrent: (next: GeolocationPositionError) => currentError?.(next),
     updateWatch: (next: GeolocationPosition) => watchSuccess?.(next),
+    failWatch: (code: 1 | 2 | 3) => watchError?.({
+      code, message: '', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3,
+    }),
   };
 }
 
@@ -117,6 +125,41 @@ describe('useLiveLocation', () => {
 
     unmount();
     expect(geolocation.clearWatch).toHaveBeenCalledWith(2);
+  });
+
+  it('keeps the position it has when the watch loses the signal or times out, and says nothing', async () => {
+    const geolocation = installGeolocation();
+    const { result } = renderHook(() => useLiveLocation());
+    act(() => result.current.locate(() => {}));
+    act(() => geolocation.succeedCurrent(position(47.3769, 8.5417)));
+    await waitFor(() => expect(geolocation.watchPosition).toHaveBeenCalledOnce());
+    vi.mocked(track).mockClear();
+
+    // Standing still indoors: the watch gives up for a while.
+    act(() => geolocation.failWatch(3));
+    act(() => geolocation.failWatch(2));
+    expect(result.current.error).toBeNull();
+    expect(result.current.location).toEqual([47.3769, 8.5417]);
+    expect(track).not.toHaveBeenCalled();
+    // It goes on watching, and the next fix arrives as usual.
+    expect(geolocation.clearWatch).not.toHaveBeenCalled();
+    act(() => geolocation.updateWatch(position(47.378, 8.5417)));
+    expect(result.current.location).toEqual([47.378, 8.5417]);
+  });
+
+  it('says that location is off when the permission is taken back while watching', async () => {
+    const geolocation = installGeolocation();
+    const { result } = renderHook(() => useLiveLocation());
+    act(() => result.current.locate(() => {}));
+    act(() => geolocation.succeedCurrent(position(47.3769, 8.5417)));
+    await waitFor(() => expect(geolocation.watchPosition).toHaveBeenCalledOnce());
+    vi.mocked(track).mockClear();
+
+    act(() => geolocation.failWatch(1));
+    expect(result.current.error).toBe('denied');
+    expect(track).toHaveBeenCalledExactlyOnceWith('location_result', { result: 'denied' });
+    // Nothing is left to watch.
+    await waitFor(() => expect(geolocation.clearWatch).toHaveBeenCalledWith(1));
   });
 
   it('distinguishes denied and temporarily unavailable positions', () => {
