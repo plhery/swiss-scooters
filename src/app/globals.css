@@ -2333,6 +2333,13 @@ svg {
   .app-shell :active {
     transform: none !important;
   }
+  /* A spinner that does not turn looks stuck: a busy "Try again" keeps its label, dimmed. */
+  .retry-button[aria-busy='true'] > span {
+    opacity: 0.5;
+  }
+  .retry-button[aria-busy='true']::after {
+    content: none;
+  }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass { background: var(--raised-bg); }

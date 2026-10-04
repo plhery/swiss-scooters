@@ -763,6 +763,38 @@ test('a load that fails says why under the search bar and recovers with Try agai
   await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
 });
 
+test('a busy Try again keeps its label where motion is reduced, and turns a spinner where it is not', async ({ page }) => {
+  let release = () => {};
+  let fail = true;
+  await page.route('**/api/scooters?**', async route => {
+    if (fail) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    // The retry takes its time.
+    await new Promise<void>(resolve => { release = resolve; });
+    await route.fallback();
+  });
+  const look = (button: ReturnType<Page['locator']>) => button.evaluate(element => ({
+    label: getComputedStyle(element.querySelector('span')!).opacity,
+    spinner: getComputedStyle(element, '::after').content,
+  }));
+  await page.goto('/');
+  const retry = page.locator('.load-banner').getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeVisible();
+  fail = false;
+  await retry.click();
+  await expect(retry).toHaveAttribute('aria-busy', 'true');
+  // In motion: the label makes way for a spinner that turns.
+  await expect.poll(() => look(retry)).toEqual({ label: '0', spinner: '""' });
+
+  // Reduced motion stops every animation: a still ring without a label would look stuck.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => look(retry)).toEqual({ label: '0.5', spinner: 'none' });
+  await expect(retry).toHaveText('Try again');
+
+  release();
+  await expect(page.locator('.load-banner')).toHaveCount(0);
+  await expect(page.locator('.cluster-marker')).toHaveCount(1);
+});
+
 test('clusters at zoom 15 and separates scooters above it', async ({ page }) => {
   await page.goto('/');
   const map = page.locator('.leaflet-container');
