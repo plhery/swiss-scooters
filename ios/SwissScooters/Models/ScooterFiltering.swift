@@ -5,6 +5,8 @@ struct VisibleScooterSummary: Equatable {
     let providerCounts: [ScooterProvider: Int]
     /// Scooters in the viewport before the battery and provider filters.
     let unfilteredCount: Int
+    /// Providers with a scooter in the viewport before those filters.
+    let unfilteredProviders: Set<ScooterProvider>
 }
 
 enum ScooterFiltering {
@@ -32,6 +34,7 @@ enum ScooterFiltering {
     ) -> VisibleScooterSummary {
         var visibleCount = 0
         var unfilteredCount = 0
+        var unfilteredProviders = Set<ScooterProvider>()
         var providerCounts: [ScooterProvider: Int] = [:]
         providerCounts.reserveCapacity(ScooterProvider.allCases.count)
 
@@ -39,6 +42,7 @@ enum ScooterFiltering {
         for scooter in vehicles {
             guard viewport.contains(latitude: scooter.latitude, longitude: scooter.longitude) else { continue }
             unfilteredCount += 1
+            if let provider = scooter.providerInfo { unfilteredProviders.insert(provider) }
             guard passesBattery(scooter, minimumBattery: minimumBattery) else { continue }
 
             if let provider = scooter.providerInfo {
@@ -52,7 +56,8 @@ enum ScooterFiltering {
         return VisibleScooterSummary(
             count: visibleCount,
             providerCounts: providerCounts,
-            unfilteredCount: unfilteredCount
+            unfilteredCount: unfilteredCount,
+            unfilteredProviders: unfilteredProviders
         )
     }
 
@@ -86,8 +91,9 @@ struct ScooterProviderEntry: Identifiable, Equatable, Sendable {
     let isEnabled: Bool
     /// Highlighted in the dock, which only happens while a provider filter is active.
     let isSelected: Bool
-    /// Not sharing data and none in view: dashed and never selected, with a
-    /// warning icon in the dock and "Not sharing data right now" in the filter sheet.
+    /// A feed of the provider failed and the map holds none of its scooters in view:
+    /// dashed and never selected, with a warning icon in the dock and
+    /// "Not sharing data right now" in the filter sheet.
     let isDown: Bool
 
     var id: String { provider.id }

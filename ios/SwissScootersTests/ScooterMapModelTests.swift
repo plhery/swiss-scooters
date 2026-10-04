@@ -1290,21 +1290,72 @@ extension ScooterMapModelTests {
         XCTAssertEqual(model.filterProviders.filter(\.isEnabled).map(\.provider), [.bird, .lime])
     }
 
-    func testProviderWithAFailedFeedAndScootersInViewKeepsItsCount() async {
+    func testProviderWithAFailedFeedAndScootersInViewIsNotReportedAsDown() async {
         let api = StubScooterAPI(response: ScooterResponse(
-            vehicles: [scooter(id: "lime", provider: "lime")],
-            meta: ScooterResponseMetadata(partial: true, failedSources: ["national:lime_zurich"])
+            vehicles: [scooter(id: "lime", provider: "lime", battery: 40)],
+            meta: ScooterResponseMetadata(partial: true, failedSources: ["national:lime_winterthur"])
         ))
         let model = makeModel(api: api)
         model.updateViewport(zurichRegion, zoom: 16)
         let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
         XCTAssertTrue(loaded)
 
-        XCTAssertEqual(model.providerHealth.downProviders, [.lime])
-        XCTAssertFalse(model.providerHealth.hasUnknownFailures)
-        XCTAssertEqual(model.dockNotices, [.providersDown([.lime])])
+        XCTAssertEqual(model.providerHealth, .healthy)
+        XCTAssertEqual(model.dockNotices, [])
         XCTAssertTrue(model.dockChips.allSatisfy { !$0.isDown })
         XCTAssertEqual(model.dockChips.first?.provider, .lime)
+
+        // The rider's own filters hide Lime's scooter; they do not make Lime look down.
+        model.setMinimumBattery(60)
+        model.showProviders([.voi])
+        XCTAssertEqual(model.count(for: .lime), 0)
+        XCTAssertEqual(model.providerHealth, .healthy)
+        XCTAssertEqual(model.dockNotices, [])
+        XCTAssertTrue(model.filterProviders.allSatisfy { !$0.isDown })
+    }
+
+    func testCityTotalsNameNoProviderAsDown() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [],
+            clusters: [ScooterCluster(id: "city:ch:zurich", latitude: 47.38, longitude: 8.54,
+                count: 100, providers: ["lime": 100], city: "Zürich")],
+            meta: ScooterResponseMetadata(partial: true,
+                failedSources: ["national:bird_zurich", "france:dott_fr_lyon", "city-overview"],
+                mode: "clusters", zoom: 8, overview: true, refreshAfterSeconds: 3_600)
+        ))
+        let model = makeModel(api: api)
+
+        model.refresh()
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+
+        XCTAssertTrue(loaded)
+        // Bird operates in view and shows nothing, yet one failed city feed says little about a country.
+        XCTAssertTrue(model.availableProviders.contains(.bird))
+        XCTAssertEqual(model.count(for: .bird), 0)
+        XCTAssertEqual(model.providerHealth, .healthy)
+        XCTAssertEqual(model.dockNotices, [])
+        XCTAssertTrue(model.dockChips.allSatisfy { !$0.isDown })
+        XCTAssertTrue(model.filterProviders.allSatisfy { !$0.isDown })
+        guard case let .summary(summary) = model.dock else { return XCTFail("Expected the dock summary") }
+        XCTAssertEqual(summary.notices, [])
+    }
+
+    func testProvidersAreNotReportedAsDownWhereTheDataHasNotLoadedYet() async {
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [scooter(id: "lime", provider: "lime")],
+            meta: ScooterResponseMetadata(partial: true, failedSources: ["national:bird_zurich"])
+        ))
+        let model = makeModel(api: api)
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(model.providerHealth.downProviders, [.bird])
+
+        // Bern is covered too, but what failed around Zürich says nothing about it.
+        model.viewport = GeoBounds(south: 46.94, west: 7.43, north: 46.96, east: 7.46)
+        XCTAssertTrue(model.availableProviders.contains(.bird))
+        XCTAssertEqual(model.providerHealth, .healthy)
+        XCTAssertTrue(model.dockChips.allSatisfy { !$0.isDown })
     }
 
     func testDockCountsScootersNearbyWhileTheOriginIsOnScreen() async throws {

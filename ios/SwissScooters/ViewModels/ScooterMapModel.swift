@@ -221,6 +221,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
     private(set) var visibleScooterCount = 0
     private(set) var visibleProviderCounts: [ScooterProvider: Int] = [:]
     private var unfilteredVisibleCount = 0
+    private var unfilteredVisibleProviders = Set<ScooterProvider>()
 
     private static let minimumBatteryKey = "minimum-battery"
     private static let mapStyleKey = "apple-map-style"
@@ -361,12 +362,16 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         minimumBattery > 0 || !allProvidersSelected
     }
 
-    /// The providers whose feeds failed, limited to those that operate in the viewport.
+    /// The providers that are not sharing data here: a feed of theirs failed, they
+    /// operate in the viewport and the map holds none of their scooters in view,
+    /// whatever the rider's filters hide. City totals name no one, and neither does
+    /// data that was loaded for another area.
     var providerHealth: ScooterProviderHealth {
-        guard let responseMetadata else { return .healthy }
+        guard let responseMetadata, responseMetadata.overview != true, viewportIsLoaded else { return .healthy }
         return ScooterProviderHealth(
             failedSources: responseMetadata.failedSources,
-            operating: ScooterProviderCoverage.providers(in: viewport)
+            operating: ScooterProviderCoverage.providers(in: viewport),
+            inView: unfilteredVisibleProviders
         )
     }
 
@@ -398,7 +403,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         let isFilteringProviders = !allProvidersSelected
         return availableProviders.map { provider in
             let count = count(for: provider)
-            let isDown = count == 0 && down.contains(provider)
+            let isDown = down.contains(provider)
             let isEnabled = enabledProviders.contains(provider)
             return ScooterProviderEntry(
                 provider: provider,
@@ -961,11 +966,13 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         var count = summary.count
         var providers = summary.providerCounts
         var unfilteredCount = summary.unfilteredCount
+        var unfilteredProviders = summary.unfilteredProviders
         if responseMetadata?.mode == "clusters" {
             for cluster in clusters where viewport.contains(latitude: cluster.latitude, longitude: cluster.longitude) {
                 for (providerID, providerCount) in cluster.providers {
                     unfilteredCount += providerCount
                     guard let provider = ScooterProvider(rawValue: providerID) else { continue }
+                    if providerCount > 0 { unfilteredProviders.insert(provider) }
                     providers[provider, default: 0] += providerCount
                     if enabledProviders.contains(provider) { count += providerCount }
                 }
@@ -974,6 +981,7 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         visibleScooterCount = count
         visibleProviderCounts = providers
         unfilteredVisibleCount = unfilteredCount
+        unfilteredVisibleProviders = unfilteredProviders
     }
 
     private var representedVehicleCount: Int {

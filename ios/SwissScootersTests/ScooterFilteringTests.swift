@@ -580,6 +580,7 @@ extension ScooterFilteringTests {
 
         XCTAssertEqual(summary.count, 1)
         XCTAssertEqual(summary.unfilteredCount, 4)
+        XCTAssertEqual(summary.unfilteredProviders, [.lime, .bird])
     }
 
     func testFilterResultTitlesUseSingularAndPluralForms() {

@@ -501,16 +501,26 @@ extension ScooterModelsTests {
     }
 
     func testFailedSourcesBecomeDownProvidersOperatingInTheViewport() {
+        let failedSources = ["voi_zurich", "Bird_Basel", "velospot", "pony_fr_angers", "city-overview"]
         let health = ScooterProviderHealth(
-            failedSources: ["voi_zurich", "Bird_Basel", "velospot", "pony_fr_angers", "city-overview"],
-            operating: [.bolt, .bird, .voi, .publibike]
+            failedSources: failedSources,
+            operating: [.bolt, .bird, .voi, .publibike],
+            inView: []
         )
 
         XCTAssertEqual(health.downProviders, [.bird, .voi, .publibike])
         XCTAssertTrue(health.hasUnknownFailures)
 
+        // A provider whose scooters are in view is sharing data, whatever feed of its failed.
+        let partlyInView = ScooterProviderHealth(
+            failedSources: failedSources,
+            operating: [.bolt, .bird, .voi, .publibike],
+            inView: [.voi, .bolt]
+        )
+        XCTAssertEqual(partlyInView.downProviders, [.bird, .publibike])
+
         XCTAssertEqual(
-            ScooterProviderHealth(failedSources: [], operating: ScooterProvider.allCases),
+            ScooterProviderHealth(failedSources: [], operating: ScooterProvider.allCases, inView: []),
             .healthy
         )
         // A source prefix does not hide the provider behind it.

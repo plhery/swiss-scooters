@@ -820,7 +820,8 @@ enum ScooterLoadIssue: Equatable, Sendable {
 
 /// Which providers are not sharing data for the area on screen.
 struct ScooterProviderHealth: Equatable, Sendable {
-    /// Providers with a failed feed that operate in the viewport, in catalogue order.
+    /// Providers that show nothing where they should: a feed of theirs failed, they
+    /// operate in the viewport and none of their scooters is in view. In catalogue order.
     let downProviders: [ScooterProvider]
     /// A failed source belongs to no known provider, such as "city-overview".
     let hasUnknownFailures: Bool
@@ -832,7 +833,10 @@ struct ScooterProviderHealth: Equatable, Sendable {
         self.hasUnknownFailures = hasUnknownFailures
     }
 
-    init(failedSources: [String], operating: [ScooterProvider]) {
+    /// `inView` holds the providers with a scooter in view in the loaded data, before
+    /// the rider's own filters. One failed city feed does not make a provider down
+    /// while its scooters from other feeds are on the map.
+    init(failedSources: [String], operating: [ScooterProvider], inView: Set<ScooterProvider>) {
         var failed = Set<ScooterProvider>()
         var hasUnknownFailures = false
         for source in failedSources {
@@ -844,7 +848,7 @@ struct ScooterProviderHealth: Equatable, Sendable {
         }
         let operating = Set(operating)
         downProviders = ScooterProvider.allCases.filter {
-            failed.contains($0) && operating.contains($0)
+            failed.contains($0) && operating.contains($0) && !inView.contains($0)
         }
         self.hasUnknownFailures = hasUnknownFailures
     }
