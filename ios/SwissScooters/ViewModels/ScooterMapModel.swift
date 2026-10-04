@@ -1144,8 +1144,9 @@ final class ScooterMapModel: NSObject, @MainActor CLLocationManagerDelegate {
         case .notDetermined:
             locationProblem = nil
             isLocating = true
+            // The wait for a fix starts with the answer to the prompt, however
+            // long that takes: the authorization callback begins it.
             locationManager.requestWhenInUseAuthorization()
-            beginLocationTimeout()
         case .authorizedAlways, .authorizedWhenInUse:
             locationProblem = nil
             isLocating = true

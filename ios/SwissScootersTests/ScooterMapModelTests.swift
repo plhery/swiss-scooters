@@ -876,7 +876,8 @@ private final class TestClock {
 }
 
 private final class StubLocationManager: CLLocationManager {
-    private let status: CLAuthorizationStatus
+    /// Tests change it to answer the permission prompt.
+    var status: CLAuthorizationStatus
 
     init(status: CLAuthorizationStatus) {
         self.status = status
@@ -1787,6 +1788,52 @@ extension ScooterMapModelTests {
 
 // Location, search, filters and settings.
 extension ScooterMapModelTests {
+    func testAnsweringTheLocationPromptSlowlyStillKeepsTheMapAndTheCard() async throws {
+        let manager = StubLocationManager(status: .notDetermined)
+        let parked = scooter(id: "one", provider: "lime")
+        let model = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [parked])),
+            locationManager: manager,
+            defaults: isolatedDefaults(),
+            locationTimeout: .milliseconds(50)
+        )
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        model.selectScooter(parked.id)
+
+        // The prompt stays open three times longer than a fix may take.
+        model.locateForWalkingTime()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertTrue(model.isLocating)
+        XCTAssertNil(model.locationIssue)
+
+        manager.status = .authorizedWhenInUse
+        model.locationManagerDidChangeAuthorization(manager)
+        XCTAssertTrue(model.isLocating)
+        model.locationManager(manager, didUpdateLocations: [zurichFix])
+
+        XCTAssertFalse(model.isLocating)
+        XCTAssertNil(model.focusRequest, "The map stays where it is")
+        XCTAssertEqual(model.selectedScooterID, parked.id)
+        XCTAssertNotNil(model.walkingSummary(for: parked))
+
+        // Once allowed, a fix that does not come in time is still reported.
+        let slowManager = StubLocationManager(status: .notDetermined)
+        let slow = ScooterMapModel(
+            api: StubScooterAPI(response: ScooterResponse(vehicles: [])),
+            locationManager: slowManager,
+            defaults: isolatedDefaults(),
+            locationTimeout: .milliseconds(50)
+        )
+        slow.focusOnUser()
+        slowManager.status = .authorizedWhenInUse
+        slow.locationManagerDidChangeAuthorization(slowManager)
+        let timedOut = await waitUntil { slow.locationIssue == .notFound }
+        XCTAssertTrue(timedOut)
+        XCTAssertFalse(slow.isLocating)
+    }
+
     func testLocatingWithoutAFixInTimeReportsNotFoundUntilDismissedOrRetried() async {
         let manager = StubLocationManager(status: .authorizedWhenInUse)
         let defaults = isolatedDefaults()
