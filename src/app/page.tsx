@@ -10,20 +10,20 @@ import MapCredits from '@/components/MapCredits';
 import Icon from '@/components/Icon';
 import SearchIsland from '@/components/SearchIsland';
 import ControlSheet from '@/components/ControlSheet';
-import { requestDeadline } from '@/lib/requestDeadline';
-import { responseExpiry } from '@/lib/dataExpiry';
 import { selectionFeedback } from '@/lib/feedback';
 import type { AddressResult } from '@/components/AddressSearch';
-import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle, ScooterResponse } from '@/lib/types';
+import type { MapBounds, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
   parseClientParams,
   parseStoredClientParams,
   serializeClientParams,
   type ClientParams,
+  type MapStyleName,
+  type ThemeName,
 } from '@/lib/clientParams';
 import { scooterDataHealthNotice } from '@/lib/dataHealth';
-import { shouldAutoRefresh } from '@/lib/autoRefresh';
+import { useScooterData, type ScooterDataQuery } from '@/lib/useScooterData';
 import { mapRepresentationsMatch, providersForViewport } from '@/lib/mapCoverage';
 import { useI18n } from '@/lib/i18n';
 import {
@@ -38,7 +38,6 @@ import { requestHeadingPermission, type HeadingPermission } from '@/lib/deviceHe
 const SWITZERLAND_CENTER: [number, number] = [46.8182, 8.2275];
 const INITIAL_ZOOM = 8;
 const VIEWPORT_FETCH_PADDING = 0.25;
-const AUTO_REFRESH_INTERVAL_MS = 60_000;
 
 const STORAGE_KEY = 'scooters-params';
 const PROVIDERS_STORAGE_KEY = 'scooters-providers';
@@ -56,9 +55,18 @@ function loadParamsFromStorage(): ClientParams | null {
   try { return parseStoredClientParams(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
 }
 
+// Until the settings sheet offers appearance and map detail separately, the
+// two settings are shown through its single three-way map style.
+type LegacyTileLayer = 'light' | 'dark' | 'osm';
+
+function legacyTileLayer(theme: ThemeName, mapStyle: MapStyleName): LegacyTileLayer {
+  if (mapStyle === 'detailed') return 'osm';
+  return theme === 'dark' ? 'dark' : 'light';
+}
+
 function readUrlParams(): ClientParams {
   if (typeof window === 'undefined') {
-    return { origin: null, minBattery: undefined, tileLayer: undefined };
+    return { origin: null, minBattery: undefined, theme: undefined, map: undefined };
   }
   const p = new URLSearchParams(window.location.search);
   const hasUrlParams = p.toString().length > 0;
@@ -67,9 +75,11 @@ function readUrlParams(): ClientParams {
   if (!hasUrlParams) {
     const stored = loadParamsFromStorage();
     if (stored) {
-      const sp = new URLSearchParams();
-      if (stored.minBattery !== undefined) sp.set('minBattery', String(stored.minBattery));
-      if (stored.tileLayer) sp.set('tile', stored.tileLayer);
+      const sp = serializeClientParams({
+        minBattery: stored.minBattery ?? 0,
+        theme: stored.theme ?? 'auto',
+        map: stored.map ?? 'calm',
+      });
       window.history.replaceState(null, '', `?${sp.toString()}`);
       return stored;
     }
@@ -99,13 +109,12 @@ export default function Home() {
   } = useLiveLocation();
   const [headingPermission, setHeadingPermission] = useState<HeadingPermission | null>(null);
   const [minBattery, setMinBattery] = useState(0);
-  const [tileLayer, setTileLayer] = useState<'dark' | 'light' | 'osm'>('light');
+  const [theme, setTheme] = useState<ThemeName>('auto');
+  const [mapStyle, setMapStyle] = useState<MapStyleName>('calm');
+  const tileLayer = legacyTileLayer(theme, mapStyle);
   const [enabledProviders, setEnabledProviders] = useState<Set<string>>(
     new Set(Object.keys(PROVIDERS))
   );
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [clusters, setClusters] = useState<ScooterCluster[]>([]);
-  const [parking, setParking] = useState<ParkingLocation[]>([]);
   const [viewportBounds, setViewportBounds] = useState<MapBounds | null>(null);
   const [mapQuery, setMapQuery] = useState<ScooterMapQuery | null>(null);
   const [focusRequest, setFocusRequest] = useState<{
@@ -113,10 +122,6 @@ export default function Home() {
     version: number;
   }>({ location: null, version: 0 });
   const [searchedAddress, setSearchedAddress] = useState<AddressResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [responseMeta, setResponseMeta] = useState<ScooterResponse['meta'] | null>(null);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'filters' | 'settings'>('filters');
@@ -124,15 +129,10 @@ export default function Home() {
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
   const initializedRef = useRef(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
-  const receivedAtRef = useRef(0);
   const mapQueryRef = useRef<ScooterMapQuery | null>(null);
-  const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
-  const requestSequenceRef = useRef(0);
-  const lastUpdatedRef = useRef<number | null>(null);
-  const refreshIntervalRef = useRef(AUTO_REFRESH_INTERVAL_MS);
 
   /* eslint-disable react-hooks/set-state-in-effect -- These effects intentionally
-     restore browser-only state after hydration and fetch data when inputs change. */
+     restore browser-only state after hydration. */
 
   // Restore saved settings before live location tracking starts.
   useEffect(() => {
@@ -148,7 +148,8 @@ export default function Home() {
     setPreferencesReady(true);
     const params = readUrlParams();
     if (params.minBattery !== undefined) setMinBattery(params.minBattery);
-    if (params.tileLayer) setTileLayer(params.tileLayer);
+    if (params.theme) setTheme(params.theme);
+    if (params.map) setMapStyle(params.map);
 
     // Preserve old shared links without persisting their coordinates again.
     if (params.origin) {
@@ -166,7 +167,7 @@ export default function Home() {
   // Sync state to URL + localStorage
   useEffect(() => {
     if (!preferencesReady) return;
-    const p = serializeClientParams({ minBattery, tileLayer });
+    const p = serializeClientParams({ minBattery, theme, map: mapStyle });
     const qs = p.toString();
     const newUrl = qs ? `?${qs}` : window.location.pathname;
     window.history.replaceState(null, '', newUrl);
@@ -175,7 +176,7 @@ export default function Home() {
     const stored: Record<string, string> = {};
     p.forEach((v, k) => { stored[k] = v; });
     saveParamsToStorage(stored);
-  }, [minBattery, tileLayer, preferencesReady]);
+  }, [minBattery, theme, mapStyle, preferencesReady]);
 
   useEffect(() => {
     const darkMap = tileLayer === 'dark';
@@ -189,121 +190,29 @@ export default function Home() {
     };
   }, [tileLayer]);
 
-  const queryMinimumBattery = mapQuery && mapQuery.zoom <= 15 ? minBattery : 0;
-
-  const fetchScooters = useCallback(async (requestedQuery?: ScooterMapQuery) => {
-    const query = requestedQuery ?? mapQueryRef.current;
-    if (!query) return false;
-    const { bounds, zoom } = query;
-
-    requestRef.current?.controller.abort();
-    const request = {
-      id: ++requestSequenceRef.current,
-      controller: new AbortController(),
-    };
-    requestRef.current = request;
-    const deadline = requestDeadline(request.controller.signal, 20_000);
-    setLoading(true);
-    setError(false);
-    try {
-      const params = new URLSearchParams({
-        south: bounds.south.toFixed(5),
-        west: bounds.west.toFixed(5),
-        north: bounds.north.toFixed(5),
-        east: bounds.east.toFixed(5),
-        zoom: String(zoom),
-        minBattery: String(queryMinimumBattery),
-      });
-      const res = await fetch(`/api/scooters?${params}`, {
-        signal: deadline.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: ScooterResponse = await res.json();
-      if (requestRef.current?.id !== request.id) return false;
-      if (!Array.isArray(data.vehicles) || !data.meta) throw new Error('Invalid scooter response');
-      receivedAtRef.current = Date.now();
-      setVehicles(data.vehicles);
-      setClusters(data.clusters ?? []);
-      setParking(data.parking ?? []);
-      setResponseMeta(data.meta);
-      const generatedAt = data.meta?.generatedAt ? new Date(data.meta.generatedAt) : new Date();
-      const updatedAt = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt;
-      lastUpdatedRef.current = data.meta.overview ? updatedAt.getTime() : Date.now();
-      refreshIntervalRef.current = (data.meta.refreshAfterSeconds ?? 60) * 1000;
-      setLastUpdated(updatedAt);
-      return true;
-    } catch (e) {
-      if (request.controller.signal.aborted || requestRef.current?.id !== request.id) return false;
-      track('data_error', { result: deadline.signal.aborted ? 'timeout' : 'request_failed' });
-      console.error('Failed to fetch scooters:', e);
-      setError(true);
-      return false;
-    } finally {
-      deadline.dispose();
-      if (requestRef.current?.id === request.id) {
-        requestRef.current = null;
-        setLoading(false);
-      }
-    }
-  }, [queryMinimumBattery]);
-
-  useEffect(() => {
-    if (!responseMeta) return;
-    const expiry = responseExpiry(responseMeta, receivedAtRef.current);
-    const expireVehicles = () => {
-      track('data_expired');
-      setVehicles([]);
-      setClusters([]);
-      setSelectedVehicleKey(null);
-      setError(true);
-    };
-    const expireParking = () => setParking([]);
-    const onVisibility = () => {
-      if (Date.now() >= expiry.vehicles) expireVehicles();
-      if (Date.now() >= expiry.parking) expireParking();
-    };
-    const vehicleTimer = window.setTimeout(expireVehicles, Math.max(0, expiry.vehicles - Date.now()));
-    const parkingTimer = window.setTimeout(expireParking, Math.max(0, expiry.parking - Date.now()));
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.clearTimeout(vehicleTimer);
-      window.clearTimeout(parkingTimer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [responseMeta]);
-
-  useEffect(() => {
-    if (!mapQuery) return;
-    const timer = window.setTimeout(() => void fetchScooters(mapQuery), 180);
-    return () => window.clearTimeout(timer);
-  }, [fetchScooters, mapQuery]);
-
-  useEffect(() => () => requestRef.current?.controller.abort(), []);
-
-  useEffect(() => {
-    const refreshIfDue = () => {
-      const lastUpdatedAt = lastUpdatedRef.current;
-      if (!shouldAutoRefresh({
-        visible: document.visibilityState === 'visible',
-        requestInFlight: requestRef.current !== null,
-        hasBounds: mapQueryRef.current !== null,
-        lastUpdatedAt,
-        now: Date.now(),
-        intervalMs: refreshIntervalRef.current,
-      })) return;
-
-      void fetchScooters();
-    };
-
-    const intervalId = window.setInterval(refreshIfDue, AUTO_REFRESH_INTERVAL_MS);
-    document.addEventListener('visibilitychange', refreshIfDue);
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', refreshIfDue);
-    };
-  }, [fetchScooters]);
-
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Clustered responses are filtered by the server; single scooters by the client.
+  const scooterQuery = useMemo<ScooterDataQuery | null>(
+    () => mapQuery && { ...mapQuery, minBattery: mapQuery.zoom <= 15 ? minBattery : 0 },
+    [mapQuery, minBattery]
+  );
+  const clearSelection = useCallback(() => setSelectedVehicleKey(null), []);
+  const {
+    vehicles,
+    clusters,
+    parking,
+    meta: responseMeta,
+    lastUpdated: lastUpdatedAt,
+    loading: loadingState,
+    failure,
+    refresh,
+  } = useScooterData(scooterQuery, { onOutOfDate: clearSelection });
+  const loading = loadingState !== null;
+  const lastUpdated = useMemo(
+    () => lastUpdatedAt === null ? null : new Date(lastUpdatedAt),
+    [lastUpdatedAt]
+  );
 
   const handleProviderToggle = (provider: string) => {
     track('provider_filter', { provider, enabled: !enabledProviders.has(provider), source: 'filters' });
@@ -540,14 +449,14 @@ export default function Home() {
         </div>
       )}
 
-      {error && !locating && (
+      {failure && !locating && (
         <div className="toast glass toast-error" role="alert">
           {t('errors.fetchScooters')}
-          <button onClick={() => { track('refresh'); void fetchScooters(); }}>{t('status.retry')}</button>
+          <button onClick={() => { track('refresh'); void refresh(); }}>{t('status.retry')}</button>
         </div>
       )}
 
-      {locationError && !locating && !error && (
+      {locationError && !locating && !failure && (
         <div className="toast glass toast-location" role="status">
           {t(locationError === 'denied'
             ? 'errors.locationDenied'
@@ -555,7 +464,7 @@ export default function Home() {
         </div>
       )}
 
-      {headingPermission === 'denied' && userLocation && !locationError && !locating && !error && (
+      {headingPermission === 'denied' && userLocation && !locationError && !locating && !failure && (
         <div className="toast glass toast-location" role="status">
           {t('errors.headingDenied')}
         </div>
@@ -566,7 +475,7 @@ export default function Home() {
         locating={locating}
         hidden={searchExpanded}
         onLocateMe={handleLocateMe}
-        onRefresh={() => fetchScooters()}
+        onRefresh={refresh}
       />
 
       <MapCredits />
@@ -600,7 +509,11 @@ export default function Home() {
         onMinBatteryChange={value => { track('battery_filter', { value }); setMinBattery(value); }}
         onProviderToggle={handleProviderToggle}
         onResetFilters={resetFilters}
-        onTileLayerChange={style => { track('map_style', { style }); setTileLayer(style); }}
+        onTileLayerChange={style => {
+          track('map_style', { style });
+          setMapStyle(style === 'osm' ? 'detailed' : 'calm');
+          if (style !== 'osm') setTheme(style);
+        }}
       />
     </div>
   );
