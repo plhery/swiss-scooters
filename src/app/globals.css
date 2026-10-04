@@ -959,6 +959,8 @@ svg {
 }
 .field input {
   flex: 1;
+  /* As tall as the field around it: all of it can be pressed. */
+  align-self: stretch;
   min-width: 0;
   background: transparent;
   border: 0;
@@ -1629,6 +1631,22 @@ svg {
   border-radius: 50%;
   color: inherit;
   background: transparent;
+}
+/* The capsule stays small; what can be pressed around its link and its button is 44 px. */
+.map-attribution > a,
+.map-attribution > button {
+  position: relative;
+}
+.map-attribution > a::after,
+.map-attribution > button::after {
+  content: '';
+  position: absolute;
+}
+.map-attribution > a::after {
+  inset: -9px 0 -9px -10px;
+}
+.map-attribution > button::after {
+  inset: -6px;
 }
 .map-credits {
   position: fixed;

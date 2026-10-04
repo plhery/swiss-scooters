@@ -7,6 +7,11 @@ const desktopLayout = (page: Page) => page.evaluate(() => matchMedia('(min-width
 /** What holds the card of the selected scooter or bay: the dock on a phone, the popover on a desktop. */
 const cardSurface = async (page: Page) => await desktopLayout(page) ? '.marker-popover' : '.sheet';
 
+type Box = { x: number; y: number; width: number; height: number };
+const overlap = (a: Box, b: Box) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+const centre = (box: Box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+
 async function zoomTo(page: Page, target: number) {
   const map = page.locator('.leaflet-container');
   // Touch screens have no zoom buttons; there the keyboard stands in for a pinch.
@@ -1501,6 +1506,18 @@ test('first launch shows the map at once, a labelled Near me button and compact 
   expect(accessibility.violations).toEqual([]);
 
   const infoButton = page.getByRole('button', { name: 'Map & data credits' });
+  // The capsule is small, but what can be pressed around its link and its button is 44 px high.
+  const pressedAt = (x: number, y: number) => page.evaluate(
+    ([x, y]) => document.elementFromPoint(x, y)?.closest('a, button')?.textContent?.trim() || document.elementFromPoint(x, y)?.closest('a, button')?.getAttribute('aria-label'),
+    [x, y],
+  );
+  const info = centre((await infoButton.boundingBox())!);
+  expect(await pressedAt(info.x, info.y - 21)).toBe('Map & data credits');
+  expect(await pressedAt(info.x, info.y + 21)).toBe('Map & data credits');
+  expect(await pressedAt(info.x + 21, info.y)).toBe('Map & data credits');
+  const link = centre((await page.getByRole('link', { name: '© OpenStreetMap', exact: true }).boundingBox())!);
+  expect(await pressedAt(link.x, link.y - 21)).toBe('© OpenStreetMap');
+  expect(await pressedAt(link.x, link.y + 21)).toBe('© OpenStreetMap');
   await infoButton.click();
   await expect(credits).toBeVisible();
   await expect(credits.getByRole('link', { name: '© swisstopo' })).toBeVisible();
@@ -1786,6 +1803,9 @@ test('parking bays appear at street zoom, open one selection at a time and follo
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '16');
   const marker = page.getByRole('button', { name: 'Dott parking: Place test', exact: true });
   await expect(marker).toBeVisible();
+  // The sign is small; what can be pressed around it is not.
+  const sign = (await marker.boundingBox())!;
+  expect(Math.min(sign.width, sign.height)).toBeGreaterThanOrEqual(44);
   // Bays are not scooters.
   await expect(page.locator('.sheet-count')).toHaveText(/^1\s*scooter on this map$/);
 
@@ -1838,11 +1858,6 @@ test('parking bays appear at street zoom, open one selection at a time and follo
   await zoomTo(page, 15);
   await expect(marker).toHaveCount(0);
 });
-
-type Box = { x: number; y: number; width: number; height: number };
-const overlap = (a: Box, b: Box) =>
-  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-const centre = (box: Box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 
 test.describe('on a desktop', () => {
   test.skip(({ isMobile }) => isMobile, 'The desktop layout needs a wide window with a mouse.');

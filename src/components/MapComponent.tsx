@@ -37,8 +37,9 @@ function createParkingIcon(provider: string, selected: boolean): L.DivIcon {
   return L.divIcon({
     className: 'parking-marker-wrap',
     html: `<span class="parking-marker${selected ? ' parking-marker-selected' : ''}" style="--parking-provider:${PROVIDERS[provider]?.color ?? '#2166c2'}">P</span>`,
-    iconSize: [36, 36],
-    iconAnchor: [8, 28],
+    // The sign is small; what can be pressed around it is 44 px, as for a scooter.
+    iconSize: [44, 44],
+    iconAnchor: [12, 32],
   });
 }
 
