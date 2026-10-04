@@ -51,7 +51,7 @@ struct ScooterSearchIsland: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, isSearching ? 10 : 6)
+        .padding(.vertical, isSearching ? 10 : Self.collapsedPadding)
         .frame(maxWidth: 560)
         .background {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -71,6 +71,9 @@ struct ScooterSearchIsland: View {
         )
     }
 
+    /// The room above and under the collapsed bar's content, inside the glass.
+    private static let collapsedPadding: CGFloat = 6
+
     private var collapsedBar: some View {
         HStack(spacing: 2) {
             Button {
@@ -82,13 +85,18 @@ struct ScooterSearchIsland: View {
                     barText
                     Spacer(minLength: 4)
                 }
+                // A plain button is tapped on its label only, so the label
+                // fills the bar: its whole height, up to the bar's edges.
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: usesAccessibilityLayout ? 60 : 50,
+                    alignment: .leading
+                )
+                .padding(.vertical, Self.collapsedPadding)
                 .contentShape(Rectangle())
+                .padding(.vertical, -Self.collapsedPadding)
             }
             .buttonStyle(.plain)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: usesAccessibilityLayout ? 60 : 50
-            )
             .accessibilityLabel(state.accessibilityLabel)
 
             if case .place = state {
