@@ -1824,7 +1824,9 @@ struct FloatingMapControls: View {
                         Text("Near me")
                     }
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
+                    // While locating the button is disabled and the system greys the pill:
+                    // white would be lost on that grey.
+                    .foregroundStyle(model.isLocating ? Color.primary : Color.white)
                     .padding(.horizontal, 4)
                     .frame(minHeight: 40)
                 }
