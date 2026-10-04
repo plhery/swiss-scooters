@@ -3,13 +3,16 @@ import { REGIONAL_SCOOTER_CITIES } from '@/lib/regionalScooterSystems';
 
 const MAX_CITIES = 5;
 
-// display_name is decoded by app versions that predate title and subtitle, and
-// those always received the English name.
-const COUNTRY_NAMES: Record<CoveredCountry, string> = {
-  CH: 'Switzerland',
-  FR: 'France',
-  DE: 'Germany',
-  IT: 'Italy',
+/** The languages the apps are shown in; a result's second line is written in the one asked for. */
+export const GEOCODE_LANGUAGES = ['en', 'de', 'fr', 'it'] as const;
+export type GeocodeLanguage = typeof GEOCODE_LANGUAGES[number];
+
+// A table rather than Intl.DisplayNames, whose locale data is not a given on the server.
+const COUNTRY_NAMES: Record<CoveredCountry, Record<GeocodeLanguage, string>> = {
+  CH: { en: 'Switzerland', de: 'Schweiz', fr: 'Suisse', it: 'Svizzera' },
+  FR: { en: 'France', de: 'Frankreich', fr: 'France', it: 'Francia' },
+  DE: { en: 'Germany', de: 'Deutschland', fr: 'Allemagne', it: 'Germania' },
+  IT: { en: 'Italy', de: 'Italien', fr: 'Italie', it: 'Italia' },
 };
 
 // Typed beside a city to say which one is meant: "Lindau Deutschland".
@@ -60,8 +63,9 @@ export interface CityMatch {
 /**
  * The cities with scooter data that a query names, found without a geocoding
  * request: a city typed in full first, then those that only start like it, by name.
+ * The second line is the country in the language asked for.
  */
-export function searchCoveredCities(query: string): CityMatch[] {
+export function searchCoveredCities(query: string, language: GeocodeLanguage = 'en'): CityMatch[] {
   const words = normalize(query).split(' ');
   const countries = Object.keys(COUNTRY_WORDS) as CoveredCountry[];
   const country = countries.find(code => COUNTRY_WORDS[code].some(word => words.includes(word)));
@@ -78,9 +82,10 @@ export function searchCoveredCities(query: string): CityMatch[] {
     .map(({ city }) => ({
       lat: city.center[0],
       lng: city.center[1],
-      display_name: `${city.city}, ${COUNTRY_NAMES[city.country]}`,
+      // Decoded by app versions that predate title and subtitle; those always received English.
+      display_name: `${city.city}, ${COUNTRY_NAMES[city.country].en}`,
       title: city.city,
-      subtitle: COUNTRY_NAMES[city.country],
+      subtitle: COUNTRY_NAMES[city.country][language],
       covered: isPointCovered(city.center[0], city.center[1]),
     }));
 }

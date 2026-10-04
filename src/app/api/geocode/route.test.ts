@@ -115,6 +115,32 @@ describe('GET /api/geocode', () => {
     ]);
   });
 
+  it.each([
+    ['de', 'Deutschland', 'Schweiz'],
+    ['fr', 'Allemagne', 'Suisse'],
+    ['it', 'Germania', 'Svizzera'],
+    ['en', 'Germany', 'Switzerland'],
+    // Upper case is the same language; a language the apps are not shown in gets English.
+    ['DE', 'Deutschland', 'Schweiz'],
+    ['es', 'Germany', 'Switzerland'],
+    [undefined, 'Germany', 'Switzerland'],
+  ])('writes the country of a city in the language asked for (%s)', async (language, germany, switzerland) => {
+    vi.stubGlobal('fetch', vi.fn());
+    const expected = [
+      { lat: 47.1368, lng: 7.2468, display_name: 'Biel/Bienne, Switzerland', title: 'Biel/Bienne', subtitle: switzerland, covered: true },
+      { lat: 52.0224, lng: 8.535, display_name: 'Bielefeld, Germany', title: 'Bielefeld', subtitle: germany, covered: true },
+    ];
+
+    await expect((await GET(request('Biel', language))).json()).resolves.toEqual(expected);
+    await expect((await POST(postRequest('Biel', language))).json()).resolves.toEqual(expected);
+  });
+
+  it('asks in English when the language sent is not text', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const [munich] = await (await POST(postRequest('München', 7))).json() as { subtitle: string }[];
+    expect(munich.subtitle).toBe('Germany');
+  });
+
   it('validates query length before contacting GeoAdmin', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

@@ -1101,6 +1101,30 @@ test('typing lists places with a second line, tags those without scooter data, a
   expect(await page.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }]))).not.toMatch(/HB|47\.37/);
 });
 
+test('the address search itself finds a typed city with scooter data first, with its country in the language on screen', async ({ page }) => {
+  // Nothing stands in for /api/geocode here: it answers cities with scooter data without asking swisstopo.
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('scooters-locale', 'de'));
+  await page.reload();
+  const island = page.locator('.search-island');
+  await page.getByRole('button', { name: 'Stadt oder Adresse suchen' }).click();
+  const answer = page.waitForResponse(response => new URL(response.url()).pathname === '/api/geocode');
+  await page.getByRole('combobox').fill('Biel');
+  expect(await (await answer).json()).toEqual([
+    // The Swiss city before the German one that only starts the same way; display_name stays English for older apps.
+    { lat: 47.1368, lng: 7.2468, display_name: 'Biel/Bienne, Switzerland', title: 'Biel/Bienne', subtitle: 'Schweiz', covered: true },
+    { lat: 52.0224, lng: 8.535, display_name: 'Bielefeld, Germany', title: 'Bielefeld', subtitle: 'Deutschland', covered: true },
+  ]);
+  const options = page.getByRole('listbox', { name: 'Vorschläge' }).getByRole('option');
+  await expect(options).toHaveText(['Biel/BienneSchweiz', 'BielefeldDeutschland']);
+
+  // Enter takes the first row, and the map goes to Biel.
+  await page.keyboard.press('Enter');
+  await expect(island.getByRole('combobox')).toHaveCount(0);
+  await expect(island).toContainText('Biel/Bienne');
+  await expect(page.getByTitle('Gesuchte Adresse: Biel/Bienne, Schweiz')).toBeVisible();
+});
+
 test('the search says that it is searching, that nothing was found, and that it is not available', async ({ page }) => {
   let answer: 'wait' | 'nothing' | 'broken' | 'places' = 'wait';
   let release = () => {};

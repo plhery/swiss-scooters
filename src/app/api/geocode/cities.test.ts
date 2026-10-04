@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { searchCoveredCities } from '@/app/api/geocode/cities';
+import { GEOCODE_LANGUAGES, searchCoveredCities } from '@/app/api/geocode/cities';
 import { COVERED_CITIES } from '@/lib/coveredCities';
 import { searchRegionalScooterCities } from '@/lib/regionalScooterSystems';
 
@@ -54,6 +54,39 @@ describe('searchCoveredCities', () => {
     expect(names('Lyon Italia')).toEqual([]);
     // A country alone names no city.
     expect(names('Schweiz')).toEqual([]);
+  });
+
+  it('writes the country in the language asked for, and English when none is', () => {
+    const lines = (query: string, language?: 'en' | 'de' | 'fr' | 'it') =>
+      searchCoveredCities(query, language).map(city => `${city.title} / ${city.subtitle}`);
+    expect(lines('Biel')).toEqual(['Biel/Bienne / Switzerland', 'Bielefeld / Germany']);
+    expect(lines('Biel', 'en')).toEqual(['Biel/Bienne / Switzerland', 'Bielefeld / Germany']);
+    expect(lines('Biel', 'de')).toEqual(['Biel/Bienne / Schweiz', 'Bielefeld / Deutschland']);
+    expect(lines('Biel', 'fr')).toEqual(['Biel/Bienne / Suisse', 'Bielefeld / Allemagne']);
+    expect(lines('Biel', 'it')).toEqual(['Biel/Bienne / Svizzera', 'Bielefeld / Germania']);
+    expect(lines('Lyon', 'de')).toEqual(['Lyon / Frankreich']);
+    expect(lines('Lyon', 'fr')).toEqual(['Lyon / France']);
+    expect(lines('Lyon', 'it')).toEqual(['Lyon / Francia']);
+    expect(lines('Rome', 'de')).toEqual(['Roma / Italien']);
+    expect(lines('Rome', 'fr')).toEqual(['Roma / Italie']);
+    expect(lines('Rome', 'it')).toEqual(['Roma / Italia']);
+  });
+
+  it('keeps display_name in English in every language, as older app versions decode it', () => {
+    for (const language of GEOCODE_LANGUAGES) {
+      expect(searchCoveredCities('Munich', language)[0].display_name, language).toBe('München, Germany');
+      expect(searchCoveredCities('Zürich', language)[0].display_name, language).toBe('Zürich, Switzerland');
+    }
+  });
+
+  it('names countries as the "Cities with scooters" chips of the web app do', () => {
+    // src/lib/places.ts asks Intl.DisplayNames; a typed city and a chip must read the same.
+    for (const language of GEOCODE_LANGUAGES) {
+      const regions = new Intl.DisplayNames(`${language}-CH`, { type: 'region' });
+      for (const [query, country] of [['Zürich', 'CH'], ['Lyon', 'FR'], ['Berlin', 'DE'], ['Roma', 'IT']]) {
+        expect(searchCoveredCities(query, language)[0].subtitle, `${country} in ${language}`).toBe(regions.of(country));
+      }
+    }
   });
 
   it('leaves streets, stations and towns without scooter data to the address search', () => {

@@ -2,7 +2,7 @@ import { BodyTooLargeError, readJsonBody } from '@/lib/readJsonBody';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimitAllows } from '@/lib/rateLimit';
 import { isPointCovered } from '@/lib/coveredCities';
-import { searchCoveredCities } from './cities';
+import { GEOCODE_LANGUAGES, searchCoveredCities } from './cities';
 
 const MAX_QUERY_LENGTH = 160;
 // Twice what is returned, so places with scooter data can be ranked first.
@@ -10,7 +10,6 @@ const UPSTREAM_RESULT_LIMIT = 10;
 const MAX_RESULTS = 5;
 const GEOCODE_TIMEOUT_MS = 10_000;
 const GEOADMIN_SEARCH_URL = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
-const SUPPORTED_LANGUAGES = new Set(['de', 'fr', 'it', 'en']);
 // Not places to ride from: the centres of whole cantons and districts, and land parcels.
 const SKIPPED_ORIGINS = new Set(['kantone', 'district', 'parcel']);
 // Motorway exits and interchanges, which read like quarters ("Zürich-West") once their class is dropped.
@@ -163,10 +162,11 @@ async function geocode(input: GeocodeInput) {
     return errorResponse('Address search must contain between 2 and 160 characters.', 400);
   }
 
+  // The language the app is shown in: for swisstopo's labels and for the countries of cities.
   const requestedLanguage = input.requestedLanguage.toLowerCase();
-  const language = SUPPORTED_LANGUAGES.has(requestedLanguage) ? requestedLanguage : 'en';
+  const language = GEOCODE_LANGUAGES.find(code => code === requestedLanguage) ?? 'en';
   // A city with scooter data is found by its name alone, before and without swisstopo.
-  const cities = searchCoveredCities(query);
+  const cities = searchCoveredCities(query, language);
   if (cities.length) {
     return NextResponse.json(cities, {
       headers: {
