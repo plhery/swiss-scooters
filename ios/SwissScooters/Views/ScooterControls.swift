@@ -776,12 +776,15 @@ private struct QuickProviderFilterChip: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(ScooterPalette.warning)
                 } else {
+                    // The count keeps its own colours: taken from a selected chip
+                    // they are small blue digits on a blue badge on a blue tint.
                     Text(count, format: .number)
                         .font(.caption2.weight(.bold))
                         .monospacedDigit()
+                        .foregroundStyle(Color.primary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
+                        .background(Color.primary.opacity(0.08), in: Capsule())
                         .contentTransition(.numericText())
                 }
             }

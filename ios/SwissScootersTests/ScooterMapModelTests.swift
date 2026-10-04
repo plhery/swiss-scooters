@@ -2338,8 +2338,14 @@ extension ScooterMapModelTests {
         guard case .parking = model.dock else { return XCTFail("Expected the bay card") }
         assertRenders(ScooterControlDock(model: model), "parking bay")
 
-        // Filters that hide everything.
+        // One provider chosen: its chip is the selected one, with its count.
         model.clearSelection()
+        model.showProviders([.lime])
+        guard case let .summary(chosen) = model.dock else { return XCTFail("Expected the summary") }
+        XCTAssertEqual(chosen.chips.filter(\.isSelected).map(\.provider), [.lime])
+        assertRenders(ScooterControlDock(model: model), "summary with a provider chosen")
+
+        // Filters that hide everything.
         model.showProviders([.pony])
         guard case .filtersHideEverything = model.dock else { return XCTFail("Expected the filters card") }
         assertRenders(ScooterControlDock(model: model), "filters hide everything")
