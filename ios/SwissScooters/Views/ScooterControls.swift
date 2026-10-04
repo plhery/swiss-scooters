@@ -528,21 +528,76 @@ private struct DockSymbolTile: View {
     }
 }
 
-/// One or two buttons side by side; stacked when the text is very large.
+/// One or two buttons whose labels stay on one line: side by side where
+/// they fit, one above the other where they do not or the text is very large.
 private struct DockActionRow<Content: View>: View {
     @ViewBuilder let content: Content
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(spacing: 9) { content }
-            } else {
-                HStack(spacing: 9) { content }
+        DockActionLayout(alwaysStacks: dynamicTypeSize.isAccessibilitySize) { content }
+            .font(.subheadline.weight(.semibold))
+            .controlSize(.large)
+    }
+}
+
+/// Buttons share the row equally while every label fits on one line. When
+/// equal shares are too narrow the last button takes the room the others
+/// leave, and when that is too narrow as well each button gets a row.
+private struct DockActionLayout: Layout {
+    var spacing: CGFloat = 9
+    var alwaysStacks = false
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let frames = frames(for: subviews, width: proposal.width)
+        return CGSize(
+            width: frames.map(\.maxX).max() ?? 0,
+            height: frames.map(\.maxY).max() ?? 0
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, frames(for: subviews, width: bounds.width)) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(frame.size)
+            )
+        }
+    }
+
+    private func frames(for subviews: Subviews, width: CGFloat?) -> [CGRect] {
+        // What each button needs to keep its label on one line.
+        let ideal = subviews.map { $0.sizeThatFits(.unspecified).width }
+        let widest = ideal.max() ?? 0
+        let count = CGFloat(subviews.count)
+        let gaps = spacing * max(0, count - 1)
+        let available = width ?? widest * count + gaps
+
+        var widths: [CGFloat]?
+        if subviews.count == 1 || (!alwaysStacks && widest * count + gaps <= available + 0.5) {
+            widths = Array(repeating: (available - gaps) / max(1, count), count: subviews.count)
+        } else if !alwaysStacks, ideal.reduce(0, +) + gaps <= available + 0.5 {
+            widths = ideal
+            widths?[subviews.count - 1] = available - gaps - ideal.dropLast().reduce(0, +)
+        }
+
+        guard let widths else {
+            var y: CGFloat = 0
+            return subviews.map { subview in
+                let height = subview.sizeThatFits(ProposedViewSize(width: available, height: nil)).height
+                defer { y += height + spacing }
+                return CGRect(x: 0, y: y, width: available, height: height)
             }
         }
-        .font(.subheadline.weight(.semibold))
-        .controlSize(.large)
+
+        let height = zip(subviews, widths)
+            .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }
+            .max() ?? 0
+        var x: CGFloat = 0
+        return widths.map { width in
+            defer { x += width + spacing }
+            return CGRect(x: x, y: 0, width: width, height: height)
+        }
     }
 }
 
