@@ -130,7 +130,12 @@ function createScooterDataController() {
     let failure: LoadFailure = 'failed';
     let cause: unknown;
     try {
-      const res = await fetch(`/api/scooters?${scooterQueryParams(requestQuery)}`, { signal: deadline.signal });
+      // Past the browser's cache: the response may be served stale while it is
+      // revalidated, which would answer every refresh with the previous one.
+      const res = await fetch(`/api/scooters?${scooterQueryParams(requestQuery)}`, {
+        cache: 'no-store',
+        signal: deadline.signal,
+      });
       if (res.ok) {
         const data = await res.json() as ScooterResponse;
         if (!Array.isArray(data.vehicles) || !data.meta) throw new Error('Invalid scooter response');

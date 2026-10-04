@@ -170,6 +170,18 @@ describe('useScooterData', () => {
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
+  it('asks the network for the first load and for every refresh, never the browser cache', async () => {
+    // The response may be reused for 30 s and served stale for 60 s more: a
+    // refresh 60 s later would get the previous answer from the cache.
+    fetcher.mockImplementation(ok());
+    mount();
+    await advance(180);
+    await advance(60_000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0][1].cache).toBe('no-store');
+    expect(fetcher.mock.calls[1][1].cache).toBe('no-store');
+  });
+
   it('refreshes five seconds before the expiry when that is sooner than the interval', async () => {
     fetcher.mockImplementation(async () => Response.json(body({ expiresAt: iso(Date.now() + 40_000) })));
     mount();
