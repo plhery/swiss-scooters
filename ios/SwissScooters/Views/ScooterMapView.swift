@@ -1104,6 +1104,7 @@ final class ScooterClusterAnnotationView: MKAnnotationView {
     private let countLabel = UILabel()
     private var renderedProviderCounts: [ScooterProvider: Int] = [:]
     private var renderedCount = 0
+    private var renderedCity: String?
 
     override var annotation: MKAnnotation? {
         didSet { refreshAppearance() }
@@ -1187,6 +1188,8 @@ final class ScooterClusterAnnotationView: MKAnnotationView {
         var providerCounts: [ScooterProvider: Int] = [:]
         providerCounts.reserveCapacity(ScooterProvider.allCases.count)
         let count: Int
+        // Only a city total has a name.
+        var city: String?
 
         if let cluster = annotation as? MKClusterAnnotation {
             for case let member as ScooterMapAnnotation in cluster.memberAnnotations {
@@ -1202,19 +1205,38 @@ final class ScooterClusterAnnotationView: MKAnnotationView {
                 }
             }
             count = annotation.cluster.count
+            city = annotation.cluster.city
         } else {
             return
         }
 
-        guard count != renderedCount || providerCounts != renderedProviderCounts else { return }
+        // A reused view with the same numbers must not keep another city's name.
+        guard count != renderedCount || providerCounts != renderedProviderCounts || city != renderedCity else {
+            return
+        }
         renderedCount = count
         renderedProviderCounts = providerCounts
+        renderedCity = city
         countLabel.text = "\(count)"
-        accessibilityLabel = String(
-            format: String(localized: "%@ scooters"),
-            count.formatted()
-        )
+        accessibilityLabel = Self.accessibilityLabel(count: count, city: city)
         applyProviderGradient(providerCounts, total: count)
+    }
+
+    /// "Zürich, 1’288 scooters" for a city total, so a rider who cannot see the
+    /// map can pick a city; "40 scooters" for any other cluster.
+    static func accessibilityLabel(count: Int, city: String?) -> String {
+        guard let city, !city.isEmpty else {
+            return String(format: String(localized: "%@ scooters"), count.formatted())
+        }
+        if count == 1 {
+            return String(format: String(localized: "%@, one scooter"), city)
+        }
+        return String(
+            format: String(localized: "%@, %lld scooters"),
+            locale: .current,
+            city,
+            Int64(count)
+        )
     }
 
     private func applyProviderGradient(_ counts: [ScooterProvider: Int], total: Int) {

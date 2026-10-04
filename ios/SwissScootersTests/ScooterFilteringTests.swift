@@ -350,6 +350,40 @@ final class ScooterFilteringTests: XCTestCase {
     }
 
     @MainActor
+    func testCityTotalsAreAnnouncedWithTheNameOfTheCity() {
+        let zurich = ScooterCluster(id: "city:ch:zurich", latitude: 47.38, longitude: 8.54,
+            count: 1_288, providers: ["lime": 1_288], city: "Zürich")
+        let view = ScooterClusterAnnotationView(annotation: nil, reuseIdentifier: nil)
+        view.annotation = ScooterServerClusterAnnotation(cluster: zurich)
+
+        let label = view.accessibilityLabel ?? ""
+        XCTAssertTrue(label.hasPrefix("Zürich, "), label)
+        XCTAssertEqual(label, ScooterClusterAnnotationView.accessibilityLabel(count: 1_288, city: "Zürich"))
+        XCTAssertTrue(view.accessibilityTraits.contains(.button))
+
+        // A view reused for a city with the same numbers takes the new name.
+        view.annotation = ScooterServerClusterAnnotation(cluster: ScooterCluster(
+            id: "city:ch:bern", latitude: 46.948, longitude: 7.4474,
+            count: 1_288, providers: ["lime": 1_288], city: "Bern"
+        ))
+        XCTAssertTrue(view.accessibilityLabel?.hasPrefix("Bern, ") == true)
+
+        // A cluster inside a city has no name and keeps its count alone.
+        view.annotation = ScooterServerClusterAnnotation(cluster: ScooterCluster(
+            id: "13:4290:2868", latitude: 47.3769, longitude: 8.5417, count: 1_288, providers: ["lime": 1_288]
+        ))
+        XCTAssertEqual(
+            view.accessibilityLabel,
+            String(format: String(localized: "%@ scooters"), 1_288.formatted())
+        )
+
+        XCTAssertEqual(
+            ScooterClusterAnnotationView.accessibilityLabel(count: 1, city: "Bulle"),
+            String(format: String(localized: "%@, one scooter"), "Bulle")
+        )
+    }
+
+    @MainActor
     func testBirdMarkerAccentRemainsDistinctAgainstTheDarkMarkerSurface() {
         let darkTraits = UITraitCollection(userInterfaceStyle: .dark)
         let surfaceColor = UIColor.secondarySystemBackground.resolvedColor(with: darkTraits)
