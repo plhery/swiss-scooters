@@ -130,9 +130,17 @@ function placeLines(label: string, origin: string | undefined, displayName: stri
   return { title, subtitle: subtitle === title ? '' : subtitle, category };
 }
 
+// Letters swisstopo does not read: it takes "Bahnhofstraße" apart at the ß and
+// answers with boundary stones. Swiss addresses are written without them.
+const LIGATURES: Record<string, string> = { 'ß': 'ss', 'ẞ': 'SS', 'œ': 'oe', 'Œ': 'OE', 'æ': 'ae', 'Æ': 'AE' };
+
+function withoutLigatures(text: string): string {
+  return text.replace(/[ßẞœŒæÆ]/g, letter => LIGATURES[letter]);
+}
+
 /** The words of a text in one spelling: "Zuerich" and "Zürich" are both "zurich". */
 function searchWords(text: string): string[] {
-  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return withoutLigatures(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/([aou])e/g, '$1').split(/[^a-z0-9]+/).filter(Boolean);
 }
 
@@ -174,10 +182,12 @@ function errorResponse(message: string, status: number, retryAfter?: string) {
 }
 
 async function geocode(input: GeocodeInput) {
-  const query = input.query.trim();
-  if (query.length < 2 || query.length > MAX_QUERY_LENGTH) {
+  const typedText = input.query.trim();
+  if (typedText.length < 2 || typedText.length > MAX_QUERY_LENGTH) {
     return errorResponse('Address search must contain between 2 and 160 characters.', 400);
   }
+  // "Bahnhofstraße 5" is searched, and ranked, as "Bahnhofstrasse 5".
+  const query = withoutLigatures(typedText);
 
   // The language the app is shown in: for swisstopo's labels and for the countries of cities.
   const requestedLanguage = input.requestedLanguage.toLowerCase();

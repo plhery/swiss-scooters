@@ -420,6 +420,41 @@ describe('address search results', () => {
     expect(await lines('Tiefbahnhof')).toEqual([['Basel SBB Tiefbahnhof', ''], ['Untiefbahnhof', 'Basel BS']]);
   });
 
+  it('searches and ranks an address typed with ß as the same address typed with ss', async () => {
+    // Einsiedeln starts with the "e" that is left of "Straße" when the ß is taken for a space.
+    const rows: GeoAdminRow[] = [
+      ['address', 'Bahnhofstrasse 5 <b>8840 Einsiedeln</b>', 47.1281, 8.7529],
+      ['address', 'Bahnhofstrasse 5 <b>8001 Zürich</b>', ...ZURICH],
+      ['address', 'Bahnhofstrasse 50 <b>8001 Zürich</b>', 47.3712, 8.5391],
+    ];
+    const answers = async (query: string) => {
+      const fetchMock = stubGeoAdmin(rows);
+      const results = await (await POST(postRequest(query))).json() as { title: string; subtitle: string }[];
+      return { asked: (fetchMock.mock.calls[0][0] as URL).searchParams.get('searchText'), results };
+    };
+
+    const typed = await answers('Bahnhofstraße 5');
+    const swiss = await answers('Bahnhofstrasse 5');
+    // swisstopo takes the ß for a separator and finds boundary stones named "5.A".
+    expect(typed.asked).toBe('Bahnhofstrasse 5');
+    expect(typed.results).toEqual(swiss.results);
+    expect(typed.results.map(result => [result.title, result.subtitle])).toEqual([
+      ['Bahnhofstrasse 5', '8001 Zürich'], ['Bahnhofstrasse 50', '8001 Zürich'], ['Bahnhofstrasse 5', '8840 Einsiedeln'],
+    ]);
+    expect((await answers('GROẞE STRAẞE')).asked).toBe('GROSSE STRASSE');
+    expect((await answers('Rue du Vieux-Chœur, Cæsar')).asked).toBe('Rue du Vieux-Choeur, Caesar');
+  });
+
+  it('ranks a place written with œ for the same word typed with oe', async () => {
+    stubGeoAdmin([
+      ['address', 'Chemin du Cœur 1 <b>1003 Lausanne</b>', ...LAUSANNE],
+      ['gazetteer', '<i>Populated Place</i> <b>Recoeurbe</b> (VD) - Lausanne', ...LAUSANNE],
+    ]);
+    const results = await (await GET(request('Coeur'))).json() as { title: string }[];
+    // The address starts a word with what was typed; the hamlet only has it inside.
+    expect(results.map(result => result.title)).toEqual(['Chemin du Cœur 1']);
+  });
+
   it('shows matches inside words only when nothing starts with what was typed', async () => {
     const rows: GeoAdminRow[] = [
       ['gazetteer', '<i>Populated Place</i> <b>Uettligenfeld</b> (BE) - Wohlen bei Bern', ...ZURICH],
