@@ -128,28 +128,29 @@ struct ScooterControlDock: View {
 
     private func summaryContent(_ summary: ScooterDockSummary) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
+            // Very large text leaves no room for the pill beside the count
+            // and the status, so it goes under them.
+            let header = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(spacing: 10))
+
+            header {
                 VStack(alignment: .leading, spacing: 1) {
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Text(summary.count, format: .number)
-                            .font(.headline.weight(.bold))
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                        Text(summary.countLabel)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .accessibilityElement(children: .combine)
+                    countLine(summary)
 
                     TimelineView(.periodic(from: .now, by: 30)) { context in
                         DockStatusLabel(status: summary.status(at: context.date))
                     }
                 }
-                .frame(minHeight: Self.headerHeight, alignment: .leading)
-
-                Spacer(minLength: 8)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: Self.headerHeight,
+                    alignment: .leading
+                )
 
                 if summary.showsTryAgain {
                     TryAgainPill(isLoading: model.isLoading, action: model.retryLoad)
+                        .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
                         .transition(.opacity)
                 }
             }
@@ -171,6 +172,19 @@ struct ScooterControlDock: View {
                 )
             }
         }
+    }
+
+    /// "22 scooters nearby": the count stands out, and the two are one
+    /// text, so a long line wraps like a sentence.
+    private func countLine(_ summary: ScooterDockSummary) -> some View {
+        var count = AttributedString(summary.count.formatted(.number))
+        count.swiftUI.font = .headline.weight(.bold).monospacedDigit()
+        var label = AttributedString(" \(summary.countLabel)")
+        label.swiftUI.font = .subheadline.weight(.semibold)
+
+        return Text(count + label)
+            .contentTransition(.numericText())
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func providerChips(_ chips: [ScooterProviderEntry]) -> some View {
@@ -409,10 +423,10 @@ struct FlowLayout: Layout {
     }
 }
 
-/// The status line under the count, and at the top of a card while data is failing.
+/// The status line under the count, and at the top of a card while data is
+/// failing. It wraps rather than lose the time at its end.
 private struct DockStatusLabel: View {
     let status: ScooterDockStatus
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: 5) {
@@ -427,7 +441,6 @@ private struct DockStatusLabel: View {
             Text(status.text)
                 .font(.caption)
                 .monospacedDigit()
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(status.isWarning ? ScooterPalette.warning : Color.secondary)
@@ -646,27 +659,43 @@ private struct DockCloseButton: View {
 /// delayed data is reported here. Nothing shows while the data is healthy.
 private struct CardStatusLine: View {
     let model: ScooterMapModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         if let status = model.cardStatus {
-            HStack(spacing: 8) {
-                DockStatusLabel(status: status)
-                Spacer(minLength: 4)
-                if status.isWarning {
-                    Button(action: model.retryLoad) {
-                        Text("Try again")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(ScooterPalette.actionText)
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
+            if dynamicTypeSize.isAccessibilitySize {
+                // Very large text: the status keeps the whole width.
+                VStack(alignment: .leading, spacing: 0) {
+                    DockStatusLabel(status: status)
+                    if status.isWarning {
+                        tryAgain
                     }
-                    .buttonStyle(.plain)
-                    .disabled(model.isLoading)
                 }
+            } else {
+                HStack(spacing: 8) {
+                    DockStatusLabel(status: status)
+                    Spacer(minLength: 4)
+                    if status.isWarning {
+                        tryAgain
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                }
+                // The button keeps its 44 pt target; the line stays compact.
+                .padding(.vertical, status.isWarning ? -8 : 0)
             }
-            // The button keeps its 44 pt target; the line stays compact.
-            .padding(.vertical, status.isWarning ? -8 : 0)
         }
+    }
+
+    private var tryAgain: some View {
+        Button(action: model.retryLoad) {
+            Text("Try again")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(ScooterPalette.actionText)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isLoading)
     }
 }
 
