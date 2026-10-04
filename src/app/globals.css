@@ -22,7 +22,8 @@
   --map-control-disabled-bg: rgba(245, 245, 245, 0.78);
   --warning-ink: #895100;
   --warning-bg: rgba(255, 149, 0, 0.14);
-  --success-ink: #24833b;
+  /* Green text that keeps 4.5:1 on its own tint over glass. */
+  --success-ink: #1d7533;
   --success-bg: rgba(52, 199, 89, 0.13);
   --danger: #c9252d;
   --danger-ink: #b3261e;
@@ -622,7 +623,7 @@ svg {
     transform 200ms var(--spring);
 }
 .chip-selected {
-  color: var(--blue);
+  color: var(--blue-ink);
   border-color: color-mix(in srgb, var(--blue) 28%, transparent);
   background: color-mix(in srgb, var(--blue) 11%, transparent);
 }
@@ -646,7 +647,7 @@ svg {
   font-variant-numeric: tabular-nums;
 }
 .chip-selected .chip-count {
-  color: var(--blue);
+  color: var(--blue-ink);
   background: color-mix(in srgb, var(--blue) 9%, transparent);
 }
 /* A provider that is not sharing data and has nothing in view. */
