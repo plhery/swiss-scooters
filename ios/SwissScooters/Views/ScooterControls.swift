@@ -10,7 +10,7 @@ enum ScooterPalette {
     static let actionFill = Color(red: 0, green: 0.42, blue: 0.9)
     /// Blue text on glass or on a blue tint.
     static let actionText = adaptive(
-        light: UIColor(red: 0, green: 0.38, blue: 0.8, alpha: 1),
+        light: UIColor(red: 0, green: 0.35, blue: 0.745, alpha: 1),
         dark: UIColor(red: 0.36, green: 0.69, blue: 1, alpha: 1)
     )
     static let warning = adaptive(
@@ -27,11 +27,13 @@ enum ScooterPalette {
     )
     /// Red under white text.
     static let criticalFill = Color(red: 0.76, green: 0.15, blue: 0.14)
+    /// How much black the glass over the map gets in dark appearance, and how
+    /// much white in light appearance.
+    static let darkGlassTint = 0.62
+    static let lightGlassTint = 0.3
     /// Grey for small text and its icons. The system's secondary label is
     /// about 3.5:1 on the light dock and on a light sheet; this is 5:1 there.
     /// In dark appearance it is the system's colour, which is light enough.
-    /// How much black the glass over the map gets in dark appearance.
-    static let darkGlassTint = 0.4
     static let secondaryText = adaptive(
         light: UIColor(red: 0.38, green: 0.39, blue: 0.42, alpha: 1),
         dark: UIColor.secondaryLabel.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
@@ -44,9 +46,10 @@ enum ScooterPalette {
     }
 }
 
-/// Liquid Glass for the dock and for what floats at the top of the map. In
-/// dark appearance the map shows through too brightly for small text, so the
-/// glass is tinted darker there.
+/// Liquid Glass for the dock and for what floats at the top of the map. The
+/// map shows through too strongly for small text: too brightly in dark
+/// appearance, and too saturated over water in light appearance. So the glass
+/// is tinted, darker in dark appearance and lighter in light appearance.
 private struct ChromeGlass<S: Shape>: ViewModifier {
     let shape: S
     let isInteractive: Bool
@@ -55,7 +58,7 @@ private struct ChromeGlass<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         let glass = colorScheme == .dark
             ? Glass.regular.tint(Color.black.opacity(ScooterPalette.darkGlassTint))
-            : Glass.regular
+            : Glass.regular.tint(Color.white.opacity(ScooterPalette.lightGlassTint))
         content.glassEffect(glass.interactive(isInteractive), in: shape)
     }
 }
