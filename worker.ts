@@ -8,6 +8,7 @@
 import openNextWorker from './.open-next/worker.js';
 import { documentContentSecurityPolicy } from './src/lib/contentSecurityPolicy';
 import { legacyHostRedirect } from './src/lib/legacyHost';
+import { pageRequest } from './src/lib/pageRequest';
 import { proxyScooterSnapshot } from './src/lib/scooterProxy';
 
 function secureDocumentResponse(request: Request, response: Response): Response {
@@ -54,7 +55,7 @@ const swissScootersWorker = {
       return proxyScooterSnapshot(request, env);
     }
 
-    const response = await openNextWorker.fetch(request, env, ctx);
+    const response = await openNextWorker.fetch(pageRequest(request), env, ctx);
     return secureDocumentResponse(request, response);
   },
 };
