@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import MapKit
+import SwiftUI
 import XCTest
 @testable import SwissScooters
 
@@ -1941,5 +1942,170 @@ extension ScooterMapModelTests {
     /// Long enough for a refresh that was going to start to have reached the API.
     private func settle() async {
         try? await Task.sleep(for: .milliseconds(60))
+    }
+}
+
+// The views of the main states. Nothing is compared: each state is built and
+// drawn once, so a view that traps on some state fails here.
+extension ScooterMapModelTests {
+    func testMainStatesOfTheDockRenderWithoutCrashing() async throws {
+        let origin = GeoPoint(latitude: 47.3779, longitude: 8.5417)
+        let bay = ScooterParking(id: "dott:bay", provider: "dott", name: "Rue Faidherbe",
+            latitude: 47.3769, longitude: 8.5417, mandatory: true)
+        let priced = Scooter(
+            provider: "lime", latitude: 47.3769, longitude: 8.5417, battery: 82, rangeMeters: 24_000,
+            vehicleID: "priced", deepLink: nil,
+            rentalURIs: ScooterRentalURIs(ios: "https://li.me/ride", android: nil, web: nil),
+            distanceMeters: 0,
+            pricing: ScooterRidePricing(currency: "CHF", unlockFeeMinorUnits: 100, minuteFeeMinorUnits: 35)
+        )
+        let clock = TestClock()
+        let formatter = ISO8601DateFormatter()
+        let api = StubScooterAPI(response: ScooterResponse(
+            vehicles: [priced, scooter(id: "bare", provider: "bird", battery: nil)],
+            meta: ScooterResponseMetadata(
+                partial: true,
+                failedSources: ["national:voi_zurich"],
+                generatedAt: formatter.string(from: clock.now),
+                truncated: true,
+                totalVehicles: 5_412,
+                parkingStatus: "stale",
+                expiresAt: formatter.string(from: clock.now.addingTimeInterval(300))
+            ),
+            parking: [bay]
+        ))
+        let model = makeModel(api: api, clock: clock)
+
+        guard case .finding = model.dock else { return XCTFail("Expected the first load") }
+        assertRenders(ScooterControlDock(model: model), "finding")
+
+        model.updateViewport(zurichRegion, zoom: 16)
+        let loaded = await waitUntil { model.lastUpdated != nil && !model.isLoading }
+        XCTAssertTrue(loaded)
+        guard case .summary = model.dock else { return XCTFail("Expected the summary") }
+        assertRenders(ScooterControlDock(model: model), "summary with notices")
+
+        // The scooter card: without an origin and without a price, then with everything.
+        model.selectScooter("bird:bare")
+        guard case .scooter = model.dock else { return XCTFail("Expected the scooter card") }
+        assertRenders(ScooterControlDock(model: model), "scooter without origin, price or link")
+        model.userLocation = origin
+        model.setRidePass(ProviderRidePass(enabled: true, freeUnlock: true, freeMinutes: 5), for: .lime)
+        model.selectScooter("lime:priced")
+        assertRenders(ScooterControlDock(model: model), "scooter with a pass")
+        model.searchedDestination = MapDestination(title: "Zürich HB", point: origin)
+        assertRenders(ScooterControlDock(model: model), "scooter from a place")
+        model.searchedDestination = nil
+
+        model.selectParking(bay.id)
+        guard case .parking = model.dock else { return XCTFail("Expected the bay card") }
+        assertRenders(ScooterControlDock(model: model), "parking bay")
+
+        // Filters that hide everything.
+        model.clearSelection()
+        model.showProviders([.pony])
+        guard case .filtersHideEverything = model.dock else { return XCTFail("Expected the filters card") }
+        assertRenders(ScooterControlDock(model: model), "filters hide everything")
+        model.resetFilters()
+        model.selectParking(bay.id)
+
+        // A failed refresh: in the dock, and at the top of a card.
+        await api.setFailure(.offline)
+        model.retryLoad()
+        let refreshFailed = await waitUntil { model.loadIssue != nil && !model.isLoading }
+        XCTAssertTrue(refreshFailed)
+        assertRenders(ScooterControlDock(model: model), "parking bay while offline")
+        model.clearSelection()
+        assertRenders(ScooterControlDock(model: model), "refresh failed")
+
+        // Out of date: the data expired and the refresh after that failed.
+        clock.advance(400)
+        model.retryLoad()
+        let expired = await waitUntil {
+            if case .outOfDate = model.loadIssue { return !model.isLoading }
+            return false
+        }
+        XCTAssertTrue(expired)
+        guard case .outOfDate = model.dock else { return XCTFail("Expected the out-of-date card") }
+        assertRenders(ScooterControlDock(model: model), "out of date")
+
+        // Outside coverage.
+        let outside = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        outside.updateViewport(lungernRegion, zoom: 14)
+        let outsideLoaded = await waitUntil { outside.lastUpdated != nil && !outside.isLoading }
+        XCTAssertTrue(outsideLoaded)
+        guard case .outsideCoverage = outside.dock else { return XCTFail("Expected the coverage card") }
+        assertRenders(ScooterControlDock(model: outside), "outside coverage")
+
+        // A first load that failed.
+        let failing = StubScooterAPI(response: ScooterResponse(vehicles: []))
+        await failing.setFailure(.httpStatus(503))
+        let waiting = makeModel(api: failing)
+        waiting.refresh()
+        let failed = await waitUntil { waiting.loadIssue != nil && !waiting.isLoading }
+        XCTAssertTrue(failed)
+        guard case .waiting = waiting.dock else { return XCTFail("Expected the waiting dock") }
+        assertRenders(ScooterControlDock(model: waiting), "waiting")
+    }
+
+    func testTopOfTheMapRendersWithoutCrashing() {
+        let covered = MapDestination(title: "Zürich HB", point: GeoPoint(latitude: 47.3782, longitude: 8.5402))
+        let uncovered = MapDestination(
+            title: "Paradeplatz",
+            subtitle: "Lungern OW",
+            point: GeoPoint(latitude: 46.7741, longitude: 8.1558)
+        )
+        for state in [ScooterSearchBarState.empty, .nearYou, .place(covered), .place(uncovered), .locating] {
+            assertRenders(
+                ScooterSearchIsland(
+                    state: state,
+                    isSearching: .constant(false),
+                    hasActiveFilters: state == .nearYou,
+                    onSelect: { _ in },
+                    onClear: {},
+                    onUseCurrentLocation: {},
+                    onShowFilters: {},
+                    onShowSettings: {}
+                ),
+                "search bar: \(state.title)"
+            )
+        }
+
+        for failure in ScooterLoadFailure.allCases {
+            assertRenders(
+                MapStatusBanner(message: failure.message, actionTitle: String(localized: "Try again"), action: {}),
+                "banner: \(failure.rawValue)"
+            )
+        }
+
+        for issue in [ScooterLocationIssue.denied, .restricted, .notFound] {
+            assertRenders(
+                LocationIssueCard(issue: issue, onOpenSettings: {}, onSearchPlace: {}, onRetry: {}, onDismiss: {}),
+                "location card: \(issue)"
+            )
+        }
+
+        let model = makeModel(api: StubScooterAPI(response: ScooterResponse(vehicles: [])))
+        assertRenders(FloatingMapControls(model: model), "Near me")
+    }
+
+    /// Draws the view off screen in light appearance at the standard text
+    /// size, and in dark appearance with very large text.
+    private func assertRenders(
+        _ view: some View,
+        _ name: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        for (scheme, size) in [(ColorScheme.light, DynamicTypeSize.large), (.dark, .accessibility3)] {
+            let renderer = ImageRenderer(
+                content: view
+                    .frame(width: 390)
+                    .environment(\.colorScheme, scheme)
+                    .environment(\.dynamicTypeSize, size)
+            )
+            let image = renderer.uiImage
+            XCTAssertGreaterThan(image?.size.height ?? 0, 0, "\(name), \(scheme), \(size)", file: file, line: line)
+        }
     }
 }
