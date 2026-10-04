@@ -1977,6 +1977,242 @@ svg {
     max-height: 48dvh;
   }
 }
+/* The desktop layout: a wide window with a mouse or trackpad. The dock is a
+   legend under the search bar, the card of a scooter or a bay opens beside its
+   marker, and the keys are listed in a corner. useDesktopLayout() asks the same
+   question for what React renders; phones and tablets keep the layout above. */
+.map-corner {
+  display: contents;
+}
+/* The providers one under the other: all in view, with the behaviour of the chips. */
+.legend {
+  margin: 0 -14px;
+  border-top: 1px solid var(--hairline);
+}
+.legend:last-child {
+  margin-bottom: -8px;
+}
+.legend button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+.legend button + button {
+  border-top: 1px solid var(--hairline);
+}
+.legend button:focus-visible {
+  outline-offset: -3px;
+}
+.legend .chip-dot {
+  width: 10px;
+  height: 10px;
+}
+.legend-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.legend-count {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.legend-check {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  color: var(--blue);
+}
+/* Switched off, or not sharing data and with nothing in view. */
+.legend [aria-pressed='false'],
+.legend-down {
+  color: var(--ink-2);
+}
+.legend-down .chip-dot {
+  opacity: 0.45;
+}
+.legend-down[aria-pressed='true'] .legend-check {
+  border: 1.5px dashed var(--ink-3);
+  border-radius: 50%;
+}
+.legend + .dock-hint {
+  margin: 0 -14px;
+  padding: 10px 14px 4px;
+  border-top: 1px solid var(--hairline);
+}
+/* The card of the selected scooter or bay, beside its marker. It is placed by
+   followMarker(); until then it is in the page but not in view. */
+.marker-popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: calc(var(--z-sheet) + 50);
+  box-sizing: border-box;
+  width: 320px;
+  padding: 14px;
+  border-radius: 24px;
+  color: var(--ink);
+  animation: content-in 220ms var(--spring);
+}
+.marker-popover:not([data-placed]) {
+  opacity: 0;
+  pointer-events: none;
+}
+.marker-popover:focus {
+  outline: none;
+}
+.marker-popover:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+/* The popover arrives as one piece; the card inside does not move again. */
+.marker-popover .dock-card {
+  padding: 0;
+  animation: none;
+}
+/* A square on its corner, cut to the half that points at the marker. It is
+   made of what the card is made of, also where the glass is replaced. */
+.marker-popover-arrow {
+  position: absolute;
+  top: calc(var(--arrow-top, 59px) - 7px);
+  left: -7px;
+  width: 14px;
+  height: 14px;
+  background: inherit;
+  -webkit-backdrop-filter: inherit;
+  backdrop-filter: inherit;
+  box-shadow: inset 1px -1px 0 var(--glass-edge);
+  clip-path: polygon(0 0, 0 100%, 100% 100%);
+  transform: rotate(45deg);
+}
+.marker-popover[data-side='left'] .marker-popover-arrow {
+  left: auto;
+  right: -7px;
+  box-shadow: inset -1px 1px 0 var(--glass-edge);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+.app-shell[data-searching='true'] .marker-popover {
+  visibility: hidden;
+}
+/* What a scooter under the pointer is, just above it. */
+.map-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: calc(var(--z-top) + 1);
+  padding: 6px 10px;
+  border-radius: 12px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.map-tip[hidden] {
+  display: none;
+}
+.key-hints {
+  position: fixed;
+  left: 24px;
+  bottom: max(24px, var(--sab));
+  z-index: var(--z-map-actions);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 16px;
+  list-style: none;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.key-hints li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.key-hints kbd {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--fill-tertiary);
+  color: var(--ink);
+  font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (min-width: 900px) and (pointer: fine) {
+  .sheet {
+    top: calc(var(--sat) + 102px);
+    bottom: auto;
+    width: 232px;
+    border-radius: 24px;
+    transform-origin: top left;
+  }
+  /* The cards that take the place of the count are as wide as the search bar. */
+  .sheet:has(.dock-card) {
+    width: 380px;
+  }
+  .sheet-content {
+    padding: 12px 14px 8px;
+    /* Down to the keys in the corner. */
+    max-height: calc(100dvh - var(--sat) - 102px - max(24px, var(--sab)) - 56px);
+  }
+  .sheet:has(.dock-card) .sheet-content {
+    padding: 14px;
+  }
+  /* "Try again" moves under the status where the two do not fit side by side. */
+  .sheet-title-row {
+    flex-wrap: wrap;
+    padding: 0 0 8px;
+  }
+  .dock-notes {
+    margin-top: -2px;
+    padding: 0 0 10px;
+  }
+  /* Beside the search bar: the dock is under it. */
+  .map-notices {
+    top: calc(var(--sat) + 24px);
+    left: 416px;
+  }
+  /* The credits and the locate button share the bottom right corner, whatever the width of the button. */
+  .map-corner {
+    position: fixed;
+    right: 24px;
+    bottom: max(24px, var(--sab));
+    z-index: var(--z-map-actions);
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 12px;
+    pointer-events: none;
+  }
+  .map-corner > * {
+    position: static;
+    pointer-events: auto;
+  }
+  .map-credits {
+    inset: auto 24px calc(max(24px, var(--sab)) + 62px) auto;
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .legend button:hover {
+    background: var(--fill-quaternary);
+  }
+}
 @keyframes content-in {
   from {
     opacity: 0;

@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { NearbyCoveredCity } from '@/lib/coveredCities';
 import {
   formatCoverageCity,
+  type DockChip,
   type DockChips,
   type DockIssue,
   type DockModel,
@@ -27,6 +28,11 @@ interface BottomSheetProps {
   /** A scooter or a parking bay, never both: selecting one clears the other. */
   selectedVehicle: SelectedVehicle | null;
   selectedParking: SelectedParking | null;
+  /**
+   * The desktop layout: the providers are a legend, one under the other, and
+   * the card of a selected scooter or bay opens beside its marker instead of here.
+   */
+  desktop?: boolean;
   hidden: boolean;
   onShowAllProviders: () => void;
   onProviderToggle: (provider: string) => void;
@@ -76,6 +82,7 @@ function ProviderChips({ chips, onShowAll, onToggle }: {
   onToggle: (provider: string) => void;
 }) {
   const { t, formatNumber } = useI18n();
+  const chipLabel = useChipLabel();
   return (
     <div className="chips" role="group" aria-label={t('providers.filter')}>
       <button
@@ -99,13 +106,7 @@ function ProviderChips({ chips, onShowAll, onToggle }: {
           className={`chip ${chip.down ? 'chip-down' : chip.selected ? 'chip-selected' : ''}`}
           onClick={tap(() => onToggle(chip.provider))}
           aria-pressed={chip.enabled}
-          aria-label={chip.down
-            ? t('dock.down.chip', { name: chip.name })
-            : t('providers.toggleLabel', {
-                name: chip.name,
-                count: formatNumber(chip.count),
-                state: t(chip.enabled ? 'providers.selected' : 'providers.notSelected'),
-              })}
+          aria-label={chipLabel(chip)}
         >
           <span
             className="chip-dot"
@@ -116,6 +117,52 @@ function ProviderChips({ chips, onShowAll, onToggle }: {
           {chip.down
             ? <Icon name="warning" size={14} className="chip-warning" />
             : <span className="chip-count">{formatNumber(chip.count)}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The chip's accessible name: what the provider is, how many it has in view, and whether they are shown. */
+function useChipLabel() {
+  const { t, formatNumber } = useI18n();
+  return (chip: DockChip) => chip.down
+    ? t('dock.down.chip', { name: chip.name })
+    : t('providers.toggleLabel', {
+        name: chip.name,
+        count: formatNumber(chip.count),
+        state: t(chip.enabled ? 'providers.selected' : 'providers.notSelected'),
+      });
+}
+
+/** The providers of the desktop dock: all in view without scrolling sideways, with the behaviour of the chips. */
+function ProviderLegend({ chips, onToggle }: { chips: DockChips; onToggle: (provider: string) => void }) {
+  const { t, formatNumber } = useI18n();
+  const chipLabel = useChipLabel();
+  return (
+    <div className="legend" role="group" aria-label={t('providers.filter')}>
+      {chips.providers.map((chip) => (
+        <button
+          type="button"
+          key={chip.provider}
+          className={chip.down ? 'legend-down' : undefined}
+          onClick={tap(() => onToggle(chip.provider))}
+          aria-pressed={chip.enabled}
+          aria-label={chipLabel(chip)}
+        >
+          <span
+            className="chip-dot"
+            style={{ background: providerSurfaceColor(chip.provider, PROVIDERS[chip.provider].color) }}
+            aria-hidden="true"
+          />
+          <span className="legend-name">{chip.name}</span>
+          {chip.down
+            ? <Icon name="warning" size={14} className="chip-warning" />
+            : <span className="legend-count">{formatNumber(chip.count)}</span>}
+          {/* A check when shown, nothing when hidden, a dashed circle when chosen but without data. */}
+          <span className="legend-check">
+            {chip.enabled && !chip.down && <Icon name="check" size={16} strokeWidth={2.2} />}
+          </span>
         </button>
       ))}
     </div>
@@ -163,6 +210,7 @@ export default function BottomSheet({
   issue,
   selectedVehicle,
   selectedParking,
+  desktop = false,
   hidden,
   onShowAllProviders,
   onProviderToggle,
@@ -200,7 +248,7 @@ export default function BottomSheet({
   }, []);
 
   let content: ReactNode;
-  if (selectedVehicle) {
+  if (selectedVehicle && !desktop) {
     const { vehicle } = selectedVehicle;
     content = (
       <>
@@ -213,7 +261,7 @@ export default function BottomSheet({
         />
       </>
     );
-  } else if (selectedParking) {
+  } else if (selectedParking && !desktop) {
     content = (
       <>
         {issue && <CardIssue issue={issue} onRetry={onRetry} />}
@@ -325,8 +373,9 @@ export default function BottomSheet({
           </div>
         )}
 
-        {dock.chips && (
-          <ProviderChips chips={dock.chips} onShowAll={onShowAllProviders} onToggle={onProviderToggle} />
+        {dock.chips && (desktop
+          ? <ProviderLegend chips={dock.chips} onToggle={onProviderToggle} />
+          : <ProviderChips chips={dock.chips} onShowAll={onShowAllProviders} onToggle={onProviderToggle} />
         )}
 
         {dock.hint && (

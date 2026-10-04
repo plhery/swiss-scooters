@@ -227,6 +227,13 @@ const en = {
   'set.credits': 'Map & data credits',
   'set.privacy': 'Privacy notice',
   'set.source': 'Source code on GitHub',
+  'keys.search': 'Search',
+  'keys.nearMe': 'Near me',
+  'keys.zoom': 'Zoom',
+  'keys.close': 'Close',
+  'tip.scooter': '{name} · {battery}% · {minutes} min',
+  'tip.scooter.battery': '{name} · {battery}%',
+  'tip.scooter.walk': '{name} · {minutes} min',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -456,6 +463,13 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'set.credits': 'Karten- & Datenquellen',
     'set.privacy': 'Datenschutzerklärung',
     'set.source': 'Quellcode auf GitHub',
+    'keys.search': 'Suchen',
+    'keys.nearMe': 'In meiner Nähe',
+    'keys.zoom': 'Zoom',
+    'keys.close': 'Schliessen',
+    'tip.scooter': '{name} · {battery}% · {minutes} Min.',
+    'tip.scooter.battery': '{name} · {battery}%',
+    'tip.scooter.walk': '{name} · {minutes} Min.',
   },
   fr: {
     "common.done": "Terminé",
@@ -679,6 +693,13 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'set.credits': 'Crédits de la carte et des données',
     'set.privacy': 'Déclaration de confidentialité',
     'set.source': 'Code source sur GitHub',
+    'keys.search': 'Rechercher',
+    'keys.nearMe': 'Près de moi',
+    'keys.zoom': 'Zoom',
+    'keys.close': 'Fermer',
+    'tip.scooter': '{name} · {battery}% · {minutes} min',
+    'tip.scooter.battery': '{name} · {battery}%',
+    'tip.scooter.walk': '{name} · {minutes} min',
   },
   it: {
     "common.done": "Fine",
@@ -902,6 +923,13 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'set.credits': 'Fonti della mappa e dei dati',
     'set.privacy': 'Informativa sulla privacy',
     'set.source': 'Codice sorgente su GitHub',
+    'keys.search': 'Cerca',
+    'keys.nearMe': 'Vicino a me',
+    'keys.zoom': 'Zoom',
+    'keys.close': 'Chiudi',
+    'tip.scooter': '{name} · {battery}% · {minutes} min',
+    'tip.scooter.battery': '{name} · {battery}%',
+    'tip.scooter.walk': '{name} · {minutes} min',
   },
 };
 

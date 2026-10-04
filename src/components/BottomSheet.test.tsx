@@ -391,4 +391,89 @@ describe('BottomSheet', () => {
     expect(sheet).toHaveAttribute('inert');
     expect(sheet).toHaveAttribute('aria-hidden', 'true');
   });
+
+  describe('on a desktop', () => {
+    it('lists the providers one under the other, most scooters first, without "All"', () => {
+      renderSheet({ desktop: true, dock: dock({ providerCounts: { bolt: 2, lime: 7, voi: 6, hopp: 4 }, count: 19 }) });
+
+      expect(screen.getByRole('group', { name: 'Filter scooters by provider' })).toHaveClass('legend');
+      expect(chipNames()).toEqual([
+        'Lime, 7. Shown.',
+        'Voi, 6. Shown.',
+        'Hopp, 4. Shown.',
+        'Bolt, 2. Shown.',
+        'Bird, 0. Shown.',
+        'Dott, 0. Shown.',
+        'PubliBike / Velospot, 0. Shown.',
+      ]);
+      const lime = screen.getByRole('button', { name: 'Lime, 7. Shown.' });
+      expect(lime.querySelector('.legend-name')).toHaveTextContent('Lime');
+      expect(lime.querySelector('.legend-count')).toHaveTextContent('7');
+      expect(lime.querySelector('.legend-check svg')).toBeInTheDocument();
+      // The count and the status stay above the legend.
+      expect(count()).toHaveTextContent(/^19\s*scooters on this map$/);
+      expect(screen.getByText('Live')).toBeVisible();
+    });
+
+    it('marks a row as shown with a check and toggles a provider like its chip', () => {
+      const props = renderSheet({ desktop: true, dock: dock({ enabledProviders: new Set(['lime']), count: 3 }) });
+
+      const lime = screen.getByRole('button', { name: 'Lime, 3. Shown.' });
+      const bolt = screen.getByRole('button', { name: 'Bolt, 2. Hidden.' });
+      expect(lime).toHaveAttribute('aria-pressed', 'true');
+      expect(lime.querySelector('.legend-check svg')).toBeInTheDocument();
+      expect(bolt).toHaveAttribute('aria-pressed', 'false');
+      expect(bolt.querySelector('.legend-check svg')).not.toBeInTheDocument();
+      // A hidden provider keeps its count: it says what switching it on would add.
+      expect(bolt.querySelector('.legend-count')).toHaveTextContent('2');
+
+      fireEvent.click(bolt);
+      expect(props.onProviderToggle).toHaveBeenCalledWith('bolt');
+      expect(props.onShowAllProviders).not.toHaveBeenCalled();
+    });
+
+    it('puts a provider that is not sharing data first, with a warning in place of its count and no check', () => {
+      renderSheet({ desktop: true, dock: dock({ meta: meta({ partial: true, failedSources: ['national:bird_zurich'] }) }) });
+
+      expect(screen.getByText('Bird isn’t sharing data right now.')).toBeVisible();
+      expect(chipNames()[0]).toBe('Bird: not sharing data right now');
+      const bird = screen.getByRole('button', { name: 'Bird: not sharing data right now' });
+      expect(bird).toHaveClass('legend-down');
+      expect(bird.querySelector('.chip-warning')).toBeInTheDocument();
+      expect(bird.querySelector('.legend-count')).not.toBeInTheDocument();
+      expect(bird.querySelector('.legend-check svg')).not.toBeInTheDocument();
+    });
+
+    it('keeps the count, the status and the providers while a scooter or a bay is selected', () => {
+      // Their card opens beside the marker, so the dock has nothing to replace.
+      renderSheet({ desktop: true, selectedVehicle: { vehicle: lime, walk: null } });
+
+      expect(count()).toHaveTextContent(/^5\s*scooters on this map$/);
+      expect(screen.getByRole('group', { name: 'Filter scooters by provider' })).toBeInTheDocument();
+      expect(document.querySelector('.dock-card')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Close scooter details' })).not.toBeInTheDocument();
+    });
+
+    it('keeps a failed refresh in its status line while a bay is selected, with Try again', () => {
+      const props = renderSheet({
+        desktop: true,
+        ...data({ failure: 'unavailable' }),
+        selectedParking: { parking: bay, walk: null },
+      });
+
+      expect(screen.getByText(`Couldn’t refresh · showing ${SHOWING}`)).toBeVisible();
+      expect(document.querySelector('.dock-issue')).not.toBeInTheDocument();
+      expect(document.querySelector('.dock-card')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(props.onRetry).toHaveBeenCalledOnce();
+    });
+
+    it('still replaces the count with the card that explains why there is nothing to show', () => {
+      renderSheet({ desktop: true, dock: dock({ outOfDate: true, failure: 'offline' }) });
+
+      expect(count()).not.toBeInTheDocument();
+      expect(screen.queryByRole('group')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'These positions are out of date' })).toBeVisible();
+    });
+  });
 });

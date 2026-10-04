@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import type { AddressResult } from '@/components/AddressSearch';
+import type { MapPopover } from './MapComponent';
 
 const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
@@ -25,6 +26,9 @@ interface MapWrapperProps {
   onVehicleSelect: (vehicle: Vehicle) => void;
   selectedParkingId: string | null;
   onParkingSelect: (location: ParkingLocation) => void;
+  hoverTips?: boolean;
+  popover?: MapPopover | null;
+  zoomStep?: { direction: 1 | -1; version: number };
 }
 
 export default function MapWrapper(props: MapWrapperProps) {

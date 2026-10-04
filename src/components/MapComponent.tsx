@@ -4,11 +4,12 @@ import { track } from '@/lib/analytics';
 
 import { prefersReducedMotion, selectionFeedback } from '@/lib/feedback';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import L from 'leaflet';
 import '@tomickigrzegorz/leaflet-rotate';
 import 'leaflet/dist/leaflet.css';
 import MapCompass from './MapCompass';
+import MarkerPopover, { followMarker } from './MarkerPopover';
 import UserLocationMarker from './UserLocationMarker';
 import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
@@ -16,6 +17,7 @@ import { useI18n, type TranslationKey } from '@/lib/i18n';
 import type { AddressResult } from '@/components/AddressSearch';
 import { haversineM } from '@/lib/geo';
 import { stopMapRotation, syncRotationMotion } from '@/lib/mapRotation';
+import { scooterTip } from '@/lib/scooterTip';
 import './map.css';
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -52,6 +54,11 @@ function createDestinationIcon(): L.DivIcon {
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>';
+
+// A scooter's disc is 34 px inside the 44 px its marker takes; the hover tip sits just above the disc.
+const MARKER_INSET = 5;
+const TIP_GAP = 8;
+const TIP_MARGIN = 8;
 
 function formatDistance(meters: number, t: Translate, formatNumber: FormatNumber): string {
   return meters < 1000
@@ -109,21 +116,28 @@ function clusterTitle(cluster: ScooterCluster, t: Translate, formatNumber: Forma
   return t('marker.cluster', { count: formatNumber(cluster.count), providers });
 }
 
-function labelMarker(marker: L.Marker, label: string) {
-  const applyLabel = () => {
-    const element = marker.getElement();
-    element?.setAttribute('aria-label', label);
-    element?.setAttribute('title', label);
-  };
+/** The name of a marker, and the browser's own tooltip unless the map shows one itself. */
+function updateMarkerLabel(marker: L.Marker, label: string, tooltip = true) {
+  // Leaflet writes this to the icon whenever it draws it.
+  marker.options.title = tooltip ? label : '';
+  const element = marker.getElement();
+  element?.setAttribute('aria-label', label);
+  if (tooltip) element?.setAttribute('title', label);
+  else element?.removeAttribute('title');
+}
+
+function labelMarker(marker: L.Marker, label: string, tooltip = true) {
+  const applyLabel = () => updateMarkerLabel(marker, label, tooltip);
   marker.on('add', applyLabel);
   applyLabel();
 }
 
-function updateMarkerLabel(marker: L.Marker, label: string) {
-  marker.options.title = label;
-  const element = marker.getElement();
-  element?.setAttribute('aria-label', label);
-  element?.setAttribute('title', label);
+/** Leaflet makes a marker a button that can be reached with Tab, but only a pointer presses it: Enter and Space do too. */
+function onMarkerPress(marker: L.Marker, press: () => void): L.Marker {
+  return marker.on('click', press).on('keypress', (event) => {
+    const { key } = event.originalEvent;
+    if (key === 'Enter' || key === ' ') press();
+  });
 }
 
 function vehicleMarkerKey(vehicle: Vehicle): string {
@@ -184,6 +198,18 @@ interface MapComponentProps {
   onVehicleSelect: (vehicle: Vehicle) => void;
   selectedParkingId: string | null;
   onParkingSelect: (location: ParkingLocation) => void;
+  /** Desktop: a scooter under the pointer says what it is, in place of the browser's tooltip. */
+  hoverTips?: boolean;
+  /** Desktop: the card of the selected scooter or parking bay, shown beside its marker. */
+  popover?: MapPopover | null;
+  /** A step in or out asked for from the keyboard; each new version is one step. */
+  zoomStep?: { direction: 1 | -1; version: number };
+}
+
+export interface MapPopover {
+  /** Names the card for screen readers: "Lime scooter", "Dott parking bay". */
+  label: string;
+  content: ReactNode;
 }
 
 export default function MapComponent({
@@ -205,6 +231,9 @@ export default function MapComponent({
   onVehicleSelect,
   selectedParkingId,
   onParkingSelect,
+  hoverTips = false,
+  popover = null,
+  zoomStep,
 }: MapComponentProps) {
   const { t, formatNumber } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -218,6 +247,8 @@ export default function MapComponent({
   const vehicleDataRef = useRef<Map<string, Vehicle>>(new Map());
   const parkingDataRef = useRef<Map<string, ParkingLocation>>(new Map());
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
   const initialOriginRef = useRef(origin);
   const onViewportChangeRef = useRef(onViewportChange);
   const onVehicleSelectRef = useRef(onVehicleSelect);
@@ -357,12 +388,13 @@ export default function MapComponent({
         existing.signature = signature;
         continue;
       }
-      const marker = L.marker([location.lat, location.lng], { icon, title: label, zIndexOffset: 100 })
-        .on('click', () => {
+      const marker = onMarkerPress(
+        L.marker([location.lat, location.lng], { icon, title: label, zIndexOffset: 100 }),
+        () => {
           const current = parkingDataRef.current.get(id);
           if (current) onParkingSelectRef.current(current);
-        })
-        .addTo(map);
+        }
+      ).addTo(map);
       labelMarker(marker, label);
       markers.set(id, { marker, signature });
     }
@@ -402,6 +434,14 @@ export default function MapComponent({
       easeLinearity: 0.25,
     });
   }, [focusLocation, focusVersion, focusZoom, readyMap]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!readyMap || !map || !zoomStep || zoomStep.version === 0) return;
+    const options = { animate: !prefersReducedMotion() };
+    if (zoomStep.direction > 0) map.zoomIn(1, options);
+    else map.zoomOut(1, options);
+  }, [readyMap, zoomStep]);
 
   useEffect(() => {
     const layer = destinationLayerRef.current;
@@ -451,7 +491,7 @@ export default function MapComponent({
       const distanceM = distanceFor(vehicle);
       const label = labelFor(vehicle, distanceM);
       const selected = key === selectedVehicleKey;
-      const signature = JSON.stringify([vehicle, selected, distanceM, label]);
+      const signature = JSON.stringify([vehicle, selected, distanceM, label, hoverTips]);
       if (markerSignaturesRef.current.get(`v:${key}`) === signature) continue;
       markerSignaturesRef.current.set(`v:${key}`, signature);
       const icon = selected
@@ -461,15 +501,16 @@ export default function MapComponent({
       if (existing) {
         if (!existing.getLatLng().equals([vehicle.lat, vehicle.lng])) existing.setLatLng([vehicle.lat, vehicle.lng]);
         if (existing.options.icon !== icon) existing.setIcon(icon);
-        updateMarkerLabel(existing, label);
+        updateMarkerLabel(existing, label, !hoverTips);
       } else {
-        const marker = L.marker([vehicle.lat, vehicle.lng], { icon, riseOnHover: true, title: label })
-          .on('click', () => {
+        const marker = onMarkerPress(
+          L.marker([vehicle.lat, vehicle.lng], { icon, riseOnHover: true, title: hoverTips ? '' : label }),
+          () => {
             const current = vehicleDataRef.current.get(key);
             if (current) onVehicleSelectRef.current(current);
-          })
-          .addTo(layer);
-        labelMarker(marker, label);
+          }
+        ).addTo(layer);
+        labelMarker(marker, label, !hoverTips);
         vehicleMarkersRef.current.set(key, marker);
       }
     }
@@ -494,15 +535,16 @@ export default function MapComponent({
         existing.setIcon(createClusterIcon(cluster));
         updateMarkerLabel(existing, label);
       } else {
-        const marker = L.marker(center, { icon: createClusterIcon(cluster), zIndexOffset: 500, title: label })
-          .on('click', () => {
+        const marker = onMarkerPress(
+          L.marker(center, { icon: createClusterIcon(cluster), zIndexOffset: 500, title: label }),
+          () => {
             selectionFeedback();
             track('cluster_select');
             map.flyTo(marker.getLatLng(), cluster.city ? 13 : Math.min(map.getZoom() + 2, 20), {
               animate: !prefersReducedMotion(), duration: 0.55,
             });
-          })
-          .addTo(layer);
+          }
+        ).addTo(layer);
         labelMarker(marker, label);
         clusterMarkersRef.current.set(cluster.id, marker);
       }
@@ -512,6 +554,7 @@ export default function MapComponent({
     clusters,
     distanceOrigin,
     formatNumber,
+    hoverTips,
     iconMap,
     readyMap,
     selectedIconMap,
@@ -520,6 +563,67 @@ export default function MapComponent({
     vehicles,
     zoom,
   ]);
+
+  // On a desktop a scooter under the pointer, or reached with the keyboard, says
+  // who runs it, how charged it is and how far the walk is.
+  useEffect(() => {
+    const map = mapRef.current;
+    const tip = tipRef.current;
+    if (!readyMap || !map || !tip || !hoverTips) return;
+    const container = map.getContainer();
+    const hide = () => { tip.hidden = true; };
+    const show = (event: Event) => {
+      const icon = event.target instanceof Element ? event.target.closest<HTMLElement>('.scooter-marker-wrap') : null;
+      const key = icon && [...vehicleMarkersRef.current].find(([, marker]) => marker.getElement() === icon)?.[0];
+      const vehicle = key ? vehicleDataRef.current.get(key) : undefined;
+      // The card of the selected scooter already says all of it.
+      if (!icon || !vehicle || key === selectedVehicleKey) {
+        hide();
+        return;
+      }
+      const distanceM = distanceOrigin
+        ? haversineM(distanceOrigin[0], distanceOrigin[1], vehicle.lat, vehicle.lng)
+        : null;
+      tip.textContent = scooterTip(vehicle, distanceM, { t, formatNumber });
+      tip.hidden = false;
+      const target = icon.getBoundingClientRect();
+      const centred = target.left + target.width / 2 - tip.offsetWidth / 2;
+      const above = target.top + MARKER_INSET - TIP_GAP - tip.offsetHeight;
+      tip.style.left = `${Math.round(Math.max(TIP_MARGIN, Math.min(centred, window.innerWidth - tip.offsetWidth - TIP_MARGIN)))}px`;
+      // Under the scooter where there is no room above it.
+      tip.style.top = `${Math.round(above < TIP_MARGIN ? target.bottom - MARKER_INSET + TIP_GAP : above)}px`;
+    };
+    container.addEventListener('mouseover', show);
+    container.addEventListener('mouseleave', hide);
+    container.addEventListener('focusin', show);
+    container.addEventListener('focusout', hide);
+    map.on('movestart zoomstart', hide);
+    return () => {
+      hide();
+      container.removeEventListener('mouseover', show);
+      container.removeEventListener('mouseleave', hide);
+      container.removeEventListener('focusin', show);
+      container.removeEventListener('focusout', hide);
+      map.off('movestart zoomstart', hide);
+    };
+  }, [distanceOrigin, formatNumber, hoverTips, readyMap, selectedVehicleKey, t]);
+
+  const popoverAnchor = useCallback(() => {
+    const marker = selectedVehicleKey !== null
+      ? vehicleMarkersRef.current.get(selectedVehicleKey)
+      : selectedParkingId !== null ? parkingMarkersRef.current.get(selectedParkingId)?.marker : undefined;
+    return marker?.getElement() ?? null;
+  }, [selectedParkingId, selectedVehicleKey]);
+  const hasPopover = popover !== null;
+
+  // The card stays beside its marker. Declared after the effects that draw the
+  // markers, so that the marker is there to stand beside; new data may move it.
+  useEffect(() => {
+    const map = mapRef.current;
+    const card = popoverRef.current;
+    if (!readyMap || !map || !card || !hasPopover) return;
+    return followMarker(map, card, popoverAnchor);
+  }, [hasPopover, parking, popoverAnchor, readyMap, vehicles]);
 
   return (
     <>
@@ -531,6 +635,17 @@ export default function MapComponent({
         <MapCompass map={readyMap} />
         <MapZoomControls mapRef={mapRef} />
       </div>
+      <div ref={tipRef} className="map-tip glass" aria-hidden="true" hidden />
+      {readyMap && popover && (
+        <MarkerPopover
+          cardRef={popoverRef}
+          label={popover.label}
+          selectionKey={selectedVehicleKey ?? selectedParkingId ?? ''}
+          anchor={popoverAnchor}
+        >
+          {popover.content}
+        </MarkerPopover>
+      )}
     </>
   );
 }

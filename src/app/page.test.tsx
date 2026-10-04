@@ -11,7 +11,9 @@ import { recentPlaces } from '@/lib/places';
 const viewport = vi.hoisted(() => ({ bounds: { south: 47.36, west: 8.52, north: 47.39, east: 8.57 } }));
 vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
   onViewportChange, onVehicleSelect, onParkingSelect, selectedParkingId, vehicles, parking, focusLocation, focusZoom, destination,
+  hoverTips, popover, zoomStep,
 }: {
+  hoverTips: boolean; popover: { label: string; content: React.ReactNode } | null; zoomStep: { direction: number; version: number };
   onViewportChange: (bounds: MapBounds, zoom: number) => void; onVehicleSelect: (vehicle: Vehicle) => void;
   onParkingSelect: (location: ParkingLocation) => void; selectedParkingId: string | null;
   vehicles: Vehicle[]; parking: ParkingLocation[]; focusLocation: [number, number] | null; focusZoom: number | null;
@@ -21,13 +23,17 @@ vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
   return <><span data-testid="vehicles">{vehicles.length}</span><span data-testid="parking">{parking.length}</span>
     <span data-testid="focus">{focusLocation ? `${focusLocation.join(',')} zoom ${focusZoom}` : 'none'}</span>
     <span data-testid="pin">{destination ? destination.display_name : 'none'}</span>
+    <span data-testid="tips">{String(hoverTips)}</span><span data-testid="zoom-steps">{zoomStep.version}:{zoomStep.direction}</span>
+    {popover && <div role="dialog" aria-label={popover.label}>{popover.content}</div>}
     {vehicles.map(vehicle => <button key={vehicle.vehicle_id} onClick={() => onVehicleSelect(vehicle)}>Marker {vehicle.vehicle_id}</button>)}
     {parking.map(location => <button key={location.id} aria-pressed={location.id === selectedParkingId} onClick={() => onParkingSelect(location)}>Parking {location.id}</button>)}
     {[15, 16].map(zoom => <button key={zoom} onClick={() => onViewportChange(viewport.bounds, zoom)}>Zoom to {zoom}</button>)}</>;
 } }));
 vi.mock('@/components/SearchIsland', () => ({ default: ({
   place, placeHasData, hasLocation, locating, recentPlaces, nearbyCities, onExpandedChange, onSelect, onClear,
+  expanded, onShowFilters,
 }: {
+  expanded: boolean; onShowFilters: () => void;
   place: { title: string } | null; placeHasData: boolean; hasLocation: boolean; locating: boolean;
   recentPlaces: { title: string }[]; nearbyCities: { city: string }[];
   onExpandedChange: (expanded: boolean) => void; onSelect: (place: object) => void; onClear: () => void;
@@ -36,13 +42,15 @@ vi.mock('@/components/SearchIsland', () => ({ default: ({
   <button onClick={() => onSelect({ lat: 47.1662, lng: 8.5155, display_name: 'Zug, Switzerland', title: 'Zug', subtitle: 'Switzerland', covered: true, city: true })}>Choose the city of Zug</button>
   <button onClick={() => onExpandedChange(true)}>Open the search</button><button onClick={() => onExpandedChange(false)}>Close the search</button>
   <button onClick={onClear}>Clear the place</button><span data-testid="place-has-data">{String(placeHasData)}</span>
+  <button onClick={onShowFilters}>Open the filters</button><span data-testid="search">{expanded ? 'open' : 'closed'}</span>
   <span data-testid="bar">{place ? place.title : locating ? 'locating' : hasLocation ? 'near you' : 'nothing chosen'}</span>
   <span data-testid="recent">{recentPlaces.map(recent => recent.title).join(', ')}</span>
   <span data-testid="cities">{nearbyCities.map(city => city.city).join(', ')}</span></> }));
 vi.mock('@/components/ControlSheet', () => ({ default: ({
   showCount, providerCounts, downProviders, hasActiveFilters, theme, mapStyle,
-  onProviderToggle, onMinBatteryChange, onThemeChange, onMapStyleChange,
+  onProviderToggle, onMinBatteryChange, onThemeChange, onMapStyleChange, open, onClose,
 }: {
+  open: boolean; onClose: () => void;
   showCount: number | null; providerCounts: Record<string, number>; downProviders: string[]; hasActiveFilters: boolean;
   theme: string; mapStyle: string;
   onProviderToggle: (provider: string) => void; onMinBatteryChange: (value: number) => void;
@@ -52,7 +60,8 @@ vi.mock('@/components/ControlSheet', () => ({ default: ({
   <span data-testid="filters">{JSON.stringify({ show: showCount, counts: providerCounts, down: downProviders, active: hasActiveFilters })}</span>
   {['auto', 'light', 'dark'].map(name => <button key={name} onClick={() => onThemeChange(name)}>Appearance {name}</button>)}
   {['calm', 'detailed'].map(name => <button key={name} onClick={() => onMapStyleChange(name)}>Map {name}</button>)}
-  <span data-testid="settings">{theme} {mapStyle}</span></> }));
+  <span data-testid="settings">{theme} {mapStyle}</span>
+  {open && <button onClick={onClose}>Close the sheet</button>}</> }));
 vi.mock('@/components/MapCredits', () => ({ default: () => null }));
 
 const response = (): ScooterResponse => ({ vehicles: [{ provider: 'lime', vehicle_id: 'one', lat: 47.377, lng: 8.542,
@@ -749,4 +758,158 @@ it('restores and saves provider preferences without overwriting them during hydr
   mount();
   await act(async () => vi.advanceTimersByTimeAsync(180));
   expect(localStorage.getItem('scooters-providers')).toBe(saved);
+});
+
+/** A wide window with a mouse: the layout of src/lib/useDesktopLayout.ts. */
+function stubDesktop() {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 900px) and (pointer: fine)' }));
+}
+const press = (key: string, init: KeyboardEventInit = {}) =>
+  act(async () => { fireEvent.keyDown(document.body, { key, ...init }); });
+
+it('on a desktop opens the card beside the marker, keeps the count and the providers, and closes it with Escape', async () => {
+  stubDesktop();
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(screen.getByTestId('tips')).toHaveTextContent('true');
+  // The providers are a legend: one row each, and no "All".
+  const legend = screen.getByRole('group', { name: 'Filter scooters by provider' });
+  expect(legend).toHaveClass('legend');
+  expect(within(legend).getByRole('button', { name: 'Lime, 1. Shown.' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(legend).queryByRole('button', { name: /^All providers/ })).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  const card = screen.getByRole('dialog', { name: 'Lime scooter' });
+  expect(within(card).getByRole('heading', { name: 'Lime' })).toBeVisible();
+  expect(within(card).getByRole('link', { name: 'Directions' })).toBeVisible();
+  // The dock keeps what it showed.
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+  expect(screen.getByRole('group', { name: 'Filter scooters by provider' })).toBe(legend);
+  expect(document.querySelector('.sheet .dock-card')).toBeNull();
+
+  // A bay takes the scooter's place, one card at a time.
+  fireEvent.click(screen.getByRole('button', { name: 'Parking bay' }));
+  expect(screen.queryByRole('dialog', { name: 'Lime scooter' })).toBeNull();
+  expect(within(screen.getByRole('dialog', { name: 'Lime parking bay' })).getByText('You must park in a bay in this zone.')).toBeVisible();
+
+  await press('Escape');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Parking bay' })).toHaveAttribute('aria-pressed', 'false');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Lime scooter' })).getByRole('button', { name: 'Close scooter details' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('on a desktop a legend row behaves like its chip: alone on the first click, everything again on the second', async () => {
+  stubDesktop();
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  const row = (name: RegExp) => screen.getByRole('button', { name });
+
+  fireEvent.click(row(/^Lime, 1\./));
+  expect(row(/^Lime, 1\./)).toHaveAttribute('aria-pressed', 'true');
+  expect(row(/^Bolt, 0\./)).toHaveAttribute('aria-pressed', 'false');
+  expect(row(/^Bolt, 0\./)).toHaveAccessibleName('Bolt, 0. Hidden.');
+  expect(JSON.parse(localStorage.getItem('scooters-providers')!)).toEqual(['lime']);
+
+  fireEvent.click(row(/^Lime, 1\./));
+  expect(row(/^Bolt, 0\./)).toHaveAttribute('aria-pressed', 'true');
+});
+
+it('on a desktop lists the keys in the corner and follows them', async () => {
+  stubDesktop();
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  const getCurrentPosition = stubGeolocation(position);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  const hints = [...document.querySelectorAll('.key-hints li')].map(hint => hint.textContent);
+  expect(hints).toEqual(['/Search', 'LNear me', '+ −Zoom', 'EscClose']);
+
+  // "+" and "-" zoom one step each.
+  await press('+');
+  expect(screen.getByTestId('zoom-steps')).toHaveTextContent('1:1');
+  await press('-');
+  expect(screen.getByTestId('zoom-steps')).toHaveTextContent('2:-1');
+  // The browser's own zoom is left alone.
+  await press('+', { metaKey: true });
+  await press('-', { ctrlKey: true });
+  expect(screen.getByTestId('zoom-steps')).toHaveTextContent('2:-1');
+
+  await press('l');
+  expect(getCurrentPosition).toHaveBeenCalledOnce();
+  expect(screen.getByTestId('focus')).toHaveTextContent('47.3769,8.5417 zoom 17');
+
+  // "/" opens the search, and the character does not reach its field.
+  const slash = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+  await act(async () => { document.body.dispatchEvent(slash); });
+  expect(slash.defaultPrevented).toBe(true);
+  expect(screen.getByTestId('search')).toHaveTextContent('open');
+  // While the search is open the letters belong to it, and Escape closes it first.
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  await press('l');
+  expect(getCurrentPosition).toHaveBeenCalledOnce();
+  await press('Escape');
+  expect(screen.getByTestId('search')).toHaveTextContent('closed');
+  expect(screen.getByRole('dialog', { name: 'Lime scooter' })).toBeVisible();
+  await press('Escape');
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('on a desktop leaves the keys alone while typing and while a sheet is open', async () => {
+  stubDesktop();
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  const getCurrentPosition = stubGeolocation(position);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+
+  const field = document.body.appendChild(document.createElement('input'));
+  await act(async () => { fireEvent.keyDown(field, { key: 'l' }); });
+  await act(async () => { fireEvent.keyDown(field, { key: '+' }); });
+  await act(async () => { fireEvent.keyDown(field, { key: 'Escape' }); });
+  field.remove();
+  expect(getCurrentPosition).not.toHaveBeenCalled();
+  expect(screen.getByTestId('zoom-steps')).toHaveTextContent('0:1');
+  expect(screen.getByRole('dialog', { name: 'Lime scooter' })).toBeVisible();
+
+  // A sheet closes itself with Escape; the card under it stays.
+  fireEvent.click(screen.getByRole('button', { name: 'Open the filters' }));
+  await press('Escape');
+  await press('l');
+  await press('/');
+  expect(screen.getByRole('dialog', { name: 'Lime scooter' })).toBeVisible();
+  expect(getCurrentPosition).not.toHaveBeenCalled();
+  expect(screen.getByTestId('search')).toHaveTextContent('closed');
+  fireEvent.click(screen.getByRole('button', { name: 'Close the sheet' }));
+  await press('Escape');
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('on a phone keeps the card in the dock, the chips, and no keys', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  const getCurrentPosition = stubGeolocation(position);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(screen.getByTestId('tips')).toHaveTextContent('false');
+  expect(document.querySelector('.key-hints')).toBeNull();
+  expect(screen.getByRole('group', { name: 'Filter scooters by provider' })).toHaveClass('chips');
+  expect(screen.getByRole('button', { name: 'All providers, 1. Show all.' })).toBeVisible();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(document.querySelector('.sheet .dock-card')).not.toBeNull();
+  expect(dockCount()).toBeNull();
+
+  await press('Escape');
+  await press('l');
+  await press('+');
+  await press('/');
+  expect(document.querySelector('.sheet .dock-card')).not.toBeNull();
+  expect(getCurrentPosition).not.toHaveBeenCalled();
+  expect(screen.getByTestId('zoom-steps')).toHaveTextContent('0:1');
+  expect(screen.getByTestId('search')).toHaveTextContent('closed');
 });

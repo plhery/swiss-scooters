@@ -2,6 +2,10 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 const coarsePointer = (page: Page) => page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+/** A wide window with a mouse: the card of a scooter or bay opens beside its marker, and the providers are a legend. */
+const desktopLayout = (page: Page) => page.evaluate(() => matchMedia('(min-width: 900px) and (pointer: fine)').matches);
+/** What holds the card of the selected scooter or bay: the dock on a phone, the popover on a desktop. */
+const cardSurface = async (page: Page) => await desktopLayout(page) ? '.marker-popover' : '.sheet';
 
 async function zoomTo(page: Page, target: number) {
   const map = page.locator('.leaflet-container');
@@ -213,10 +217,18 @@ test('does not invent a distance without location and offers walking directions'
   await expect(card.getByRole('link')).toHaveCount(1);
   await expect(card.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /travelmode=walking/);
   await expect(card.getByText('Open the Bird app to rent this scooter.')).toBeVisible();
-  // While a scooter is selected the dock shows only its card.
-  await expect(page.locator('.sheet-count')).toHaveCount(0);
-  await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toHaveCount(0);
-  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  if (await desktopLayout(page)) {
+    // On a desktop the card is beside the marker, and the dock keeps the count and the providers.
+    await expect(page.getByRole('dialog', { name: 'Bird scooter' })).toBeVisible();
+    await expect(page.locator('.sheet .dock-card')).toHaveCount(0);
+    await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
+    await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toBeVisible();
+  } else {
+    // While a scooter is selected the dock shows only its card.
+    await expect(page.locator('.sheet-count')).toHaveCount(0);
+    await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toHaveCount(0);
+  }
+  const accessibility = await new AxeBuilder({ page }).include(await cardSurface(page)).withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
 
   await card.getByRole('button', { name: 'Close scooter details' }).click();
@@ -244,7 +256,8 @@ test('scooter card shows the walk, the battery and a ride estimate whose duratio
   await expect(card.getByText(/for 10 min/)).toHaveText(/^≈ CHF\s4\.50 for 10 min$/);
   const picker = card.getByRole('combobox', { name: 'Ride estimate, 10 minutes. Change duration.' });
   // Measured once the card has settled in: it arrives slightly scaled down.
-  await card.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+  await page.locator(await desktopLayout(page) ? '.marker-popover' : '.dock-card')
+    .evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
   const target = await picker.boundingBox();
   expect(target!.height).toBeGreaterThanOrEqual(44);
   expect(target!.width).toBeGreaterThanOrEqual(44);
@@ -259,7 +272,7 @@ test('scooter card shows the walk, the battery and a ride estimate whose duratio
   expect(await open.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(0, 112, 235)');
   await expect(card.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /destination=47\.3769%2C8\.5417/);
   await expect(card.getByText('Opens the Lime app. It won’t reserve the scooter.')).toBeVisible();
-  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  const accessibility = await new AxeBuilder({ page }).include(await cardSurface(page)).withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
 
   // The chosen duration is still there for the next scooter and the next visit.
@@ -297,22 +310,28 @@ test('a refresh that fails keeps the scooters, says so in the dock and recovers 
   const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
 
-  // With a scooter selected the card hides the status line, so the failure moves above it.
   await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
   await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
-  const issue = page.locator('.dock-issue');
-  await expect(issue).toHaveText(/Couldn’t refresh · showing \d\d:\d\d/);
   await expect(page.locator('.dock-card').getByRole('heading', { name: 'Bird' })).toBeVisible();
+  const issue = page.locator('.dock-issue');
+  if (await desktopLayout(page)) {
+    // On a desktop the card is beside the marker: the dock keeps its status line and its button.
+    await expect(status).toBeVisible();
+    await expect(issue).toHaveCount(0);
+  } else {
+    // With a scooter selected the card hides the status line, so the failure moves above it.
+    await expect(issue).toHaveText(/Couldn’t refresh · showing \d\d:\d\d/);
+  }
 
   fail = false;
-  await issue.getByRole('button', { name: 'Try again' }).click();
+  await page.locator('.sheet').getByRole('button', { name: 'Try again' }).click();
   await expect(issue).toHaveCount(0);
   await expect(page.locator('.cluster-marker')).toHaveCount(1);
   await expect(status).toHaveCount(0);
   await expect(page.locator('.sheet').getByRole('button', { name: 'Try again' })).toHaveCount(0);
 });
 
-test('a provider that is not sharing data gets a dashed chip after All and a calm notice', async ({ page }) => {
+test('a provider that is not sharing data comes first among the providers, dashed, with a calm notice', async ({ page }) => {
   await page.route('**/api/scooters?**', async route => {
     const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
@@ -326,13 +345,19 @@ test('a provider that is not sharing data gets a dashed chip after All and a cal
   await page.goto('/?origin=47.3769,8.5417');
   await expect(page.locator('.scooter-marker')).toHaveCount(2);
   await expect(page.getByText('Bird isn’t sharing data right now.')).toBeVisible();
+  const desktop = await desktopLayout(page);
+  // The chips of a phone start with "All"; the legend of a desktop has a row for each provider only.
   const chips = page.getByRole('group', { name: 'Filter scooters by provider' }).getByRole('button');
-  await expect(chips.nth(0)).toHaveAccessibleName('All providers, 2. Show all.');
-  await expect(chips.nth(1)).toHaveAccessibleName('Bird: not sharing data right now');
-  expect(await chips.nth(1).evaluate(element => getComputedStyle(element).borderTopStyle)).toBe('dashed');
+  const first = desktop ? 0 : 1;
+  if (!desktop) await expect(chips.nth(0)).toHaveAccessibleName('All providers, 2. Show all.');
+  await expect(chips.nth(first)).toHaveAccessibleName('Bird: not sharing data right now');
+  // Dashed: the outline of the chip, or the circle where the row of the legend would have its check.
+  const dashed = desktop ? chips.nth(first).locator('.legend-check') : chips.nth(first);
+  expect(await dashed.evaluate(element => getComputedStyle(element).borderTopStyle)).toBe('dashed');
+  await expect(chips.nth(first).locator('svg')).toHaveCount(1);
   // Then by count; ties keep the catalogue order.
-  await expect(chips.nth(2)).toHaveAccessibleName('Bolt, 1. Shown.');
-  await expect(chips.nth(3)).toHaveAccessibleName('Lime, 1. Shown.');
+  await expect(chips.nth(first + 1)).toHaveAccessibleName('Bolt, 1. Shown.');
+  await expect(chips.nth(first + 2)).toHaveAccessibleName('Lime, 1. Shown.');
   // Calm: nothing in the app is announced as an alert, and nothing is shown under the search bar.
   await expect(page.locator('.app-shell').getByRole('alert')).toHaveCount(0);
   await expect(page.locator('.map-notices')).toBeEmpty();
@@ -1678,7 +1703,7 @@ test('two-finger rotation updates the compass and can be reset', async ({ page, 
   await expect(compass).toBeHidden();
 });
 
-test('parking bays appear at street zoom, open in the dock one selection at a time and follow provider filters', async ({ page }) => {
+test('parking bays appear at street zoom, open one selection at a time and follow provider filters', async ({ page }) => {
   await page.route('**/api/scooters?**', async route => {
     const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
@@ -1705,11 +1730,18 @@ test('parking bays appear at street zoom, open in the dock one selection at a ti
   await expect(card.getByRole('link')).toHaveCount(1);
   await expect(card.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /destination=45\.75%2C4\.85&travelmode=walking/);
   await expect(card.getByText('Check the Dott app before you end your ride.')).toBeVisible();
-  // The card takes the dock, nothing opens over the map, and the bay is marked on it.
-  await expect(page.locator('.sheet-count')).toHaveCount(0);
+  if (await desktopLayout(page)) {
+    // On a desktop the card is beside the bay, and the dock keeps the count.
+    await expect(page.getByRole('dialog', { name: 'Dott parking bay' })).toBeVisible();
+    await expect(page.locator('.sheet-count')).toHaveText(/^1\s*scooter on this map$/);
+  } else {
+    // The card takes the dock.
+    await expect(page.locator('.sheet-count')).toHaveCount(0);
+  }
+  // Leaflet's own popup is not used, and the bay is marked on the map.
   await expect(page.locator('.leaflet-popup')).toHaveCount(0);
   await expect(marker.locator('.parking-marker')).toHaveClass(/parking-marker-selected/);
-  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+  const accessibility = await new AxeBuilder({ page }).include(await cardSurface(page)).withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
 
   // A scooter takes the bay's place, and the bay the scooter's.
@@ -1737,4 +1769,257 @@ test('parking bays appear at street zoom, open in the dock one selection at a ti
   await expect(marker).toBeVisible();
   await zoomTo(page, 15);
   await expect(marker).toHaveCount(0);
+});
+
+type Box = { x: number; y: number; width: number; height: number };
+const overlap = (a: Box, b: Box) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+const centre = (box: Box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+
+test.describe('on a desktop', () => {
+  test.skip(({ isMobile }) => isMobile, 'The desktop layout needs a wide window with a mouse.');
+
+  test('the providers are a legend under the search bar, one row each, with the behaviour of the chips', async ({ page }) => {
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await expect(page.locator('.sheet-count')).toHaveText(/^3\s*scooters on this map$/);
+    const legend = page.getByRole('group', { name: 'Filter scooters by provider' });
+    const rows = legend.getByRole('button');
+    // Most scooters first, ties in catalogue order, and no "All".
+    await expect(rows).toHaveCount(7);
+    await expect(rows.nth(0)).toHaveAccessibleName('Bolt, 1. Shown.');
+    await expect(rows.nth(1)).toHaveAccessibleName('Bird, 1. Shown.');
+    await expect(rows.nth(2)).toHaveAccessibleName('Lime, 1. Shown.');
+    await expect(legend.getByRole('button', { name: /^All providers/ })).toHaveCount(0);
+
+    // One under the other, all in view without scrolling sideways.
+    const boxes = await rows.evaluateAll(list => list.map(row => row.getBoundingClientRect().toJSON() as Box));
+    for (const [index, box] of boxes.entries()) {
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBe(boxes[0].x);
+      if (index > 0) expect(box.y).toBeGreaterThanOrEqual(boxes[index - 1].y + boxes[index - 1].height);
+    }
+    expect(await legend.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect(rows.last()).toBeInViewport({ ratio: 1 });
+    // Under the search bar, in the same corner.
+    const bar = (await page.locator('.search-island').boundingBox())!;
+    const dock = (await page.locator('.sheet').boundingBox())!;
+    expect(dock.x).toBe(bar.x);
+    expect(dock.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+    const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(accessibility.violations).toEqual([]);
+
+    // The first click shows that provider alone, the second everything again.
+    await rows.nth(2).click();
+    await expect(page.locator('.scooter-marker')).toHaveCount(1);
+    await expect(rows.nth(0)).toHaveAccessibleName('Bolt, 1. Hidden.');
+    await expect(rows.nth(0).locator('.legend-check svg')).toHaveCount(0);
+    await expect(rows.nth(2).locator('.legend-check svg')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Lime, 1. Shown.', exact: true }).click();
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await expect(rows.nth(0)).toHaveAccessibleName('Bolt, 1. Shown.');
+  });
+
+  test('the card of a scooter opens beside its marker, stays beside it and closes with Escape', async ({ page }) => {
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    // The fixtures share one spot; isolate Lime so that its marker takes the click.
+    await page.getByRole('button', { name: 'Lime, 1. Shown.', exact: true }).click();
+    const marker = page.getByRole('button', { name: /^Lime scooter/ });
+    await marker.click();
+
+    const card = page.getByRole('dialog', { name: 'Lime scooter' });
+    await expect(card).toHaveAttribute('data-placed', 'true');
+    await expect(card.getByRole('heading', { name: 'Lime' })).toBeVisible();
+    await expect(card.getByRole('link', { name: 'Open in Lime' })).toBeVisible();
+    // The dock keeps the count and the providers.
+    await expect(page.locator('.sheet-count')).toHaveText(/^1\s*scooter on this map$/);
+    await expect(page.getByRole('group', { name: 'Filter scooters by provider' })).toBeVisible();
+    await expect(page.locator('.sheet .dock-card')).toHaveCount(0);
+
+    // From the centre of the marker to the nearer edge of the card, and how far the arrow is from the marker's height.
+    const beside = async () => {
+      const [target, box, arrow] = await Promise.all([
+        marker.boundingBox(), card.boundingBox(), card.locator('.marker-popover-arrow').boundingBox(),
+      ]);
+      const at = centre(target!);
+      return {
+        right: Math.round(box!.x - at.x),
+        left: Math.round(at.x - (box!.x + box!.width)),
+        arrow: Math.abs(Math.round(centre(arrow!).y - at.y)) <= 1,
+      };
+    };
+    await expect(card).toHaveAttribute('data-side', 'right');
+    await expect.poll(beside).toMatchObject({ right: 31, arrow: true });
+
+    // The focus moves into the card, and back to the marker when Escape closes it.
+    await expect(card).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
+    await expect(marker).toBeFocused();
+    await expect(page.locator('.scooter-marker-selected')).toHaveCount(0);
+
+    // Dragged towards the right edge, the marker takes its card along, and the card changes sides.
+    await marker.click();
+    await expect.poll(beside).toMatchObject({ right: 31, arrow: true });
+    await page.mouse.move(640, 620);
+    await page.mouse.down();
+    await page.mouse.move(930, 620, { steps: 12 });
+    // Held before it is released, as a deliberate drag without a fling.
+    await page.waitForTimeout(180);
+    await page.mouse.up();
+    await expect(card).toHaveAttribute('data-side', 'left');
+    await expect.poll(beside).toMatchObject({ left: 31, arrow: true });
+    const viewport = page.viewportSize()!;
+    const box = (await card.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+
+    // Zooming moves the marker on the screen; the card ends up beside it again.
+    await page.keyboard.press('+');
+    await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
+    await expect(card).toBeVisible();
+    await expect.poll(async () => {
+      const gap = await beside();
+      return gap.arrow && (gap.left === 31 || gap.right === 31);
+    }).toBe(true);
+    const accessibility = await new AxeBuilder({ page }).include('.marker-popover').withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(accessibility.violations).toEqual([]);
+
+    await card.getByRole('button', { name: 'Close scooter details' }).click();
+    await expect(card).toHaveCount(0);
+  });
+
+  test('a scooter under the pointer says who runs it, how charged it is and how far the walk is', async ({ page }) => {
+    await page.goto('/?origin=47.3769,8.5417');
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
+    // Once there is a location the marker's name also says how far it is.
+    const bird = page.getByRole('button', { name: /^Bird scooter/ });
+    const tip = page.locator('.map-tip');
+    await expect(tip).toBeHidden();
+    // The map's own tip takes the place of the browser's.
+    await expect(bird).not.toHaveAttribute('title');
+
+    // Without a location there is no walk to tell.
+    await bird.hover();
+    await expect(tip).toHaveText('Bird · 64%');
+    // Just above the scooter, and never in the way of the pointer.
+    const target = (await bird.boundingBox())!;
+    const shown = (await tip.boundingBox())!;
+    expect(Math.abs(centre(shown).x - centre(target).x)).toBeLessThanOrEqual(1);
+    expect(shown.y + shown.height).toBeLessThanOrEqual(target.y + 5);
+    expect(await tip.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none');
+    await page.mouse.move(640, 620);
+    await expect(tip).toBeHidden();
+
+    // With a location the walk is part of it.
+    await allowLocationWithCompass(page, 'granted');
+    await page.keyboard.press('l');
+    await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '17');
+    await bird.hover();
+    await expect(tip).toHaveText('Bird · 64% · 1 min');
+    await page.mouse.move(640, 620);
+    await expect(tip).toBeHidden();
+
+    // The keyboard gets the same as the pointer.
+    await bird.focus();
+    await expect(tip).toHaveText('Bird · 64% · 1 min');
+    // The card of the selected scooter says all of it.
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Bird scooter' })).toBeVisible();
+    await expect(tip).toBeHidden();
+    await bird.hover();
+    await expect(tip).toBeHidden();
+  });
+
+  test('the keys listed in the corner search, locate, zoom and close', async ({ page }) => {
+    await page.goto('/');
+    await allowLocationWithCompass(page, 'granted');
+    const map = page.locator('.leaflet-container');
+    await expect(map).toHaveAttribute('data-zoom', '8');
+    await expect(page.locator('.key-hints li')).toHaveText(['/Search', 'LNear me', '+ −Zoom', 'EscClose']);
+    // The strip has the bottom left corner; the credits and the locate button share the right one.
+    const hints = (await page.locator('.key-hints').boundingBox())!;
+    const credits = (await page.locator('.map-attribution').boundingBox())!;
+    const locate = (await page.locator('.fab-stack').boundingBox())!;
+    expect(hints.x).toBe(24);
+    expect(overlap(hints, credits)).toBe(false);
+    expect(overlap(credits, locate)).toBe(false);
+    expect(credits.x + credits.width).toBeLessThanOrEqual(locate.x);
+    const accessibility = await new AxeBuilder({ page })
+      .include('.key-hints').include('.map-corner').withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(accessibility.violations).toEqual([]);
+
+    await page.keyboard.press('+');
+    await expect(map).toHaveAttribute('data-zoom', '9');
+    await page.keyboard.press('-');
+    await expect(map).toHaveAttribute('data-zoom', '8');
+
+    // "/" opens the search on its field, and the character stays out of it.
+    await page.keyboard.press('/');
+    const field = page.getByRole('combobox', { name: 'City or address' });
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue('');
+    // In a field the keys are letters.
+    await page.keyboard.type('l+');
+    await expect(field).toHaveValue('l+');
+    await expect(map).toHaveAttribute('data-zoom', '8');
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+
+    await page.keyboard.press('l');
+    await expect(map).toHaveAttribute('data-zoom', '17');
+    await expect(page.getByRole('button', { name: 'Showing scooters near you. Search a city or address.' })).toBeVisible();
+
+    // Escape closes a sheet first and leaves the card under it open.
+    await page.getByRole('button', { name: 'Lime, 1. Shown.', exact: true }).click();
+    await page.getByRole('button', { name: /^Lime scooter/ }).click();
+    const card = page.getByRole('dialog', { name: 'Lime scooter' });
+    await expect(card).toBeVisible();
+    await page.getByRole('button', { name: 'Filters active', exact: true }).click();
+    const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
+    await expect(filters).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(filters).not.toBeVisible();
+    await expect(card).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
+  });
+
+  test('what went wrong is said beside the search bar, clear of the dock', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.cluster-marker')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Near me', exact: true }).click();
+    const notice = page.locator('.map-notices');
+    await expect(notice.getByText('Location is off')).toBeVisible();
+
+    const box = (await notice.boundingBox())!;
+    expect(overlap(box, (await page.locator('.search-island').boundingBox())!)).toBe(false);
+    expect(overlap(box, (await page.locator('.sheet').boundingBox())!)).toBe(false);
+    expect(overlap(box, (await page.locator('.map-navigation').boundingBox())!)).toBe(false);
+  });
+});
+
+test.describe('on a wide touch screen', () => {
+  test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true });
+
+  test('a tablet keeps the dock at the bottom with its chips and its card', async ({ page }) => {
+    await page.goto('/?origin=47.3769,8.5417');
+    test.skip(!await coarsePointer(page), 'This browser reports a mouse even with a touch screen.');
+    expect(await desktopLayout(page)).toBe(false);
+    await expect(page.locator('.scooter-marker')).toHaveCount(3);
+    await expect(page.locator('.key-hints')).toHaveCount(0);
+
+    const chips = page.getByRole('group', { name: 'Filter scooters by provider' });
+    await expect(chips.getByRole('button', { name: 'All providers, 3. Show all.' })).toBeVisible();
+    const dock = (await page.locator('.sheet').boundingBox())!;
+    expect(dock.y + dock.height).toBeGreaterThan(768 - 60);
+
+    await page.getByRole('button', { name: 'Bird, 1. Shown.', exact: true }).click();
+    await page.getByRole('button', { name: 'Bird scooter', exact: true }).click();
+    await expect(page.locator('.sheet .dock-card').getByRole('heading', { name: 'Bird' })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.sheet-count')).toHaveCount(0);
+  });
 });

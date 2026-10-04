@@ -2,12 +2,14 @@
 
 import { track } from '@/lib/analytics';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useEffectEvent, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import MapWrapper from '@/components/MapWrapper';
+import type { MapPopover } from '@/components/MapComponent';
 import BottomSheet from '@/components/BottomSheet';
-import type { SelectedParking } from '@/components/ParkingCard';
-import type { SelectedVehicle } from '@/components/ScooterCard';
+import KeyHints from '@/components/KeyHints';
+import ParkingCard, { type SelectedParking } from '@/components/ParkingCard';
+import ScooterCard, { type SelectedVehicle } from '@/components/ScooterCard';
 import MapControls from '@/components/MapControls';
 import MapCredits from '@/components/MapCredits';
 import MapNotices from '@/components/MapNotices';
@@ -28,9 +30,12 @@ import {
 import { nearestCoveredCities, type NearbyCoveredCity } from '@/lib/coveredCities';
 import { providerHealth } from '@/lib/dataHealth';
 import { dockIssue, dockModel, originInViewport, type DockInput } from '@/lib/dockModel';
+import { useI18n } from '@/lib/i18n';
 import { failureSurface } from '@/lib/loadFailure';
 import { unfilteredCountInView } from '@/lib/nothingToShow';
 import { recentPlaces, type Place } from '@/lib/places';
+import { shortcutFor } from '@/lib/shortcuts';
+import { useDesktopLayout } from '@/lib/useDesktopLayout';
 import { useRecentPlaces } from '@/lib/useRecentPlaces';
 import { useScooterData, type ScooterDataQuery } from '@/lib/useScooterData';
 import { mapRepresentationsMatch, providersForViewport } from '@/lib/mapCoverage';
@@ -112,6 +117,15 @@ async function locationAlreadyGranted(): Promise<boolean> {
   }
 }
 
+// The list of sources over the map closes itself with Escape.
+function creditsOpen(): boolean {
+  try {
+    return document.querySelector('.map-credits:popover-open') !== null;
+  } catch {
+    return false;
+  }
+}
+
 function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
   if (!a) return false;
   return (
@@ -123,6 +137,9 @@ function boundsEqual(a: MapBounds | null, b: MapBounds): boolean {
 }
 
 export default function Home() {
+  const { t } = useI18n();
+  // A wide window with a mouse: the dock is a legend, cards open beside their marker, keys work.
+  const desktop = useDesktopLayout();
   const [initialCenter, setInitialCenter] = useState<[number, number]>(SWITZERLAND_CENTER);
   const {
     location: userLocation,
@@ -146,6 +163,7 @@ export default function Home() {
     zoom: number | null;
     version: number;
   }>({ location: null, zoom: null, version: 0 });
+  const [zoomStep, setZoomStep] = useState<{ direction: 1 | -1; version: number }>({ direction: 1, version: 0 });
   // The origin for walking times until it is cleared; it wins over your location.
   const [searchedPlace, setSearchedPlace] = useState<Place | null>(null);
   const placeChoicesRef = useRef(0);
@@ -481,6 +499,80 @@ export default function Home() {
     setFocusRequest(current => ({ location: city.center, zoom: CITY_ZOOM, version: current.version + 1 }));
   };
 
+  const closeCard = () => {
+    if (selectedVehicle) track('vehicle_dismiss');
+    clearSelection();
+  };
+
+  // On a desktop the card of the selection opens beside its marker; the dock keeps the count.
+  const popover: MapPopover | null = !desktop
+    ? null
+    : selectedVehicle
+      ? {
+          label: t('marker.scooter', {
+            name: PROVIDERS[selectedVehicle.vehicle.provider]?.name ?? selectedVehicle.vehicle.provider,
+          }),
+          content: (
+            <ScooterCard
+              key={selectedVehicleKey}
+              selection={selectedVehicle}
+              onClose={closeCard}
+              onLocate={handleLocateFromCard}
+            />
+          ),
+        }
+      : selectedParking
+        ? {
+            label: t('bay.title', {
+              name: PROVIDERS[selectedParking.parking.provider]?.name ?? selectedParking.parking.provider,
+            }),
+            content: <ParkingCard key={selectedParking.parking.id} selection={selectedParking} onClose={closeCard} />,
+          }
+        : null;
+
+  // The keys listed in the corner of the desktop layout.
+  const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
+    // A sheet is a modal dialog: it closes itself with Escape and keeps the other keys from the map.
+    if (panelOpen || locationHelpOpen) return;
+    const shortcut = shortcutFor(event);
+    if (!shortcut) return;
+    if (searchExpanded) {
+      // The open search has the keyboard; Escape closes it wherever the focus is.
+      if (shortcut === 'close') {
+        event.preventDefault();
+        track('search_close');
+        setSearchExpanded(false);
+      }
+      return;
+    }
+    switch (shortcut) {
+      case 'search':
+        // Keeps the "/" out of the field that opens.
+        event.preventDefault();
+        openSearch();
+        break;
+      case 'locate':
+        if (!locating && !event.repeat) handleLocateMe();
+        break;
+      case 'zoomIn':
+      case 'zoomOut': {
+        const direction = shortcut === 'zoomIn' ? 1 : -1;
+        track('map_zoom', { direction: direction > 0 ? 'in' : 'out' });
+        setZoomStep(current => ({ direction, version: current.version + 1 }));
+        break;
+      }
+      case 'close':
+        if ((selectedVehicle || selectedParking) && !creditsOpen()) closeCard();
+        break;
+    }
+  });
+  useEffect(() => {
+    if (!desktop) return;
+    const onKeyDown = (event: KeyboardEvent) => handleShortcut(event);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [desktop]);
+
   const handleQuickProviderToggle = (provider: string) => {
     track('provider_filter', { provider, source: 'quick' });
     setEnabledProviders(current => {
@@ -540,6 +632,9 @@ export default function Home() {
           setSelectedVehicleKey(null);
           setSelectedParkingId(location.id);
         }}
+        hoverTips={desktop}
+        popover={popover}
+        zoomStep={zoomStep}
       />
 
       <SearchIsland
@@ -571,27 +666,30 @@ export default function Home() {
         onDismissLocation={() => setLocationNoticeDismissed(true)}
       />
 
-      <MapControls
-        locating={locating}
-        locatedOnce={locatedOnce}
-        hidden={searchExpanded}
-        onLocateMe={handleLocateMe}
-      />
+      {/* One row in the corner of a desktop; on a phone each of the two places itself. */}
+      <div className="map-corner">
+        <MapControls
+          locating={locating}
+          locatedOnce={locatedOnce}
+          hidden={searchExpanded}
+          onLocateMe={handleLocateMe}
+        />
 
-      <MapCredits />
+        <MapCredits />
+      </div>
+
+      {desktop && <KeyHints />}
 
       <BottomSheet
         dock={dock}
         issue={dockIssue(dockInput)}
         selectedVehicle={selectedVehicle}
         selectedParking={selectedParking}
+        desktop={desktop}
         hidden={searchExpanded}
         onShowAllProviders={handleShowAllProviders}
         onProviderToggle={handleQuickProviderToggle}
-        onClearSelection={() => {
-          if (selectedVehicle) track('vehicle_dismiss');
-          clearSelection();
-        }}
+        onClearSelection={closeCard}
         onResetFilters={resetFilters}
         onEditFilters={() => openPanel('filters')}
         onRetry={retryLoad}
