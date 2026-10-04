@@ -13,14 +13,15 @@ const lime: Vehicle = {
   pricing: { currency: 'CHF', unlock_fee_minor_units: 100, minute_fee_minor_units: 35 },
 };
 
-function renderCard(selection: Partial<SelectedVehicle> = {}, vehicle: Partial<Vehicle> = {}) {
+function renderCard(selection: Partial<SelectedVehicle> = {}, vehicle: Partial<Vehicle> = {}, locating = false) {
   const props = {
     selection: { vehicle: { ...lime, ...vehicle }, walk: { distanceM: 126, place: null }, ...selection },
     onClose: vi.fn(),
     onLocate: vi.fn(),
   };
-  render(<I18nProvider><ScooterCard {...props} /></I18nProvider>);
-  return props;
+  const card = (isLocating: boolean) => <I18nProvider><ScooterCard {...props} locating={isLocating} /></I18nProvider>;
+  const view = render(card(locating));
+  return { ...props, setLocating: (isLocating: boolean) => view.rerender(card(isLocating)) };
 }
 
 beforeEach(() => {
@@ -47,6 +48,31 @@ describe('ScooterCard', () => {
     expect(screen.queryByText(/min walk/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Turn on location to see walking time' }));
     expect(props.onLocate).toHaveBeenCalledOnce();
+  });
+
+  it('says that the location is on its way instead of offering to locate a second time', () => {
+    const props = renderCard({ walk: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on location to see walking time' }));
+    expect(props.onLocate).toHaveBeenCalledOnce();
+
+    // Up to ten seconds for a fix: the link is gone, so a second request cannot be started.
+    props.setLocating(true);
+    expect(screen.queryByRole('button', { name: 'Turn on location to see walking time' })).not.toBeInTheDocument();
+    const line = screen.getByText('Finding your location…');
+    expect(line).toBeVisible();
+    expect(line.querySelector('.mini-spinner')).toBeInTheDocument();
+    expect(props.onLocate).toHaveBeenCalledOnce();
+
+    // No fix after all: the offer is back.
+    props.setLocating(false);
+    expect(screen.getByRole('button', { name: 'Turn on location to see walking time' })).toBeVisible();
+  });
+
+  it('shows the walking time of a known origin also while another fix is on its way', () => {
+    renderCard({}, {}, true);
+
+    expect(screen.getByText('≈2 min walk · 126 m')).toBeVisible();
+    expect(screen.queryByText('Finding your location…')).not.toBeInTheDocument();
   });
 
   it.each([

@@ -406,6 +406,29 @@ it('locates from the scooter card without moving the map away from the scooter',
   expect(screen.getByTestId('focus')).toHaveTextContent('47.3769,8.5417 zoom 17');
 });
 
+it('says in the scooter card that the location is on its way, and cannot be asked for twice', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  const fixArrives = stubSlowGeolocation();
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  const card = screen.getByRole('group', { name: 'Lime scooter' });
+  const offer = within(card).getByRole('button', { name: 'Turn on location to see walking time' });
+  offer.focus();
+  await act(async () => { fireEvent.click(offer); });
+
+  // The link is gone until the fix arrives or fails; the focus stays with the card.
+  expect(within(card).getByText('Finding your location…')).toBeVisible();
+  expect(within(card).queryByRole('button', { name: 'Turn on location to see walking time' })).toBeNull();
+  expect(card).toHaveFocus();
+  expect(navigator.geolocation.getCurrentPosition).toHaveBeenCalledOnce();
+  expect(track.mock.calls.filter(([event]) => event === 'locate')).toHaveLength(1);
+
+  await act(async () => fixArrives());
+  expect(within(card).getByText(/^≈1 min walk · \d+ m$/)).toBeVisible();
+  expect(within(card).queryByText('Finding your location…')).toBeNull();
+});
+
 it('opens a parking bay in the dock, and only one of a bay and a scooter at a time', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
   mount();

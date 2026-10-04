@@ -24,10 +24,12 @@ interface ScooterCardProps {
   onClose: () => void;
   /** Starts locating, from the line that stands in for the walking time. */
   onLocate: () => void;
+  /** The location is on its way: the line says so instead of offering to locate again. */
+  locating?: boolean;
 }
 
 /** What the dock shows for the selected scooter: who runs it, how far it is, what a ride costs. */
-export default function ScooterCard({ selection, onClose, onLocate }: ScooterCardProps) {
+export default function ScooterCard({ selection, onClose, onLocate, locating = false }: ScooterCardProps) {
   const i18n = useI18n();
   const { locale, t, formatNumber } = i18n;
   const [duration, setDuration] = useRideDuration();
@@ -60,12 +62,19 @@ export default function ScooterCard({ selection, onClose, onLocate }: ScooterCar
                 ...(walk.place ? { place: walk.place } : {}),
               })}
             </p>
+          ) : locating ? (
+            <p className="card-locating">
+              <span className="mini-spinner" aria-hidden="true" />
+              {t('bar.locating')}
+            </p>
           ) : (
             <button
               type="button"
               className="card-link"
-              onClick={() => {
+              onClick={(event) => {
                 selectionFeedback();
+                // The link leaves while the location is on its way; the focus stays with the card.
+                event.currentTarget.closest<HTMLElement>('[tabindex="-1"]')?.focus({ preventScroll: true });
                 onLocate();
               }}
             >

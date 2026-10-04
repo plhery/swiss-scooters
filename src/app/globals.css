@@ -730,6 +730,12 @@ svg {
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
 }
+/* While the location is on its way: a small spinner before the words. */
+.card-title .card-locating {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
 /* The text button that stands in for the walking time. The line stays
    compact; the area to tap is 44 px tall. */
 .card-link {

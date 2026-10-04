@@ -562,6 +562,7 @@ export default function Home() {
               selection={selectedVehicle}
               onClose={closeCard}
               onLocate={handleLocateFromCard}
+              locating={locating}
             />
           ),
         }
@@ -746,6 +747,7 @@ export default function Home() {
         onRetry={retryLoad}
         onCitySelect={city => { handleCitySelect(city); focusSearchBar(); }}
         onLocate={handleLocateFromCard}
+        locating={locating}
       />
 
       <ControlSheet

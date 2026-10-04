@@ -45,6 +45,8 @@ interface BottomSheetProps {
   onRetry: () => void;
   onCitySelect: (city: NearbyCoveredCity) => void;
   onLocate: () => void;
+  /** The location asked for from a card is on its way. */
+  locating?: boolean;
 }
 
 function tap(action: () => void) {
@@ -254,6 +256,7 @@ export default function BottomSheet({
   onRetry,
   onCitySelect,
   onLocate,
+  locating = false,
 }: BottomSheetProps) {
   const i18n = useI18n();
   const { t, formatNumber } = i18n;
@@ -292,7 +295,13 @@ export default function BottomSheet({
         anchor={selectionAnchor}
       >
         {issue && <CardIssue issue={issue} onRetry={onRetry} />}
-        <ScooterCard key={key} selection={selectedVehicle} onClose={onClearSelection} onLocate={onLocate} />
+        <ScooterCard
+          key={key}
+          selection={selectedVehicle}
+          onClose={onClearSelection}
+          onLocate={onLocate}
+          locating={locating}
+        />
       </DockSelection>
     );
   } else if (selectedParking && !desktop) {
