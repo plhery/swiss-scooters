@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BottomSheet from '@/components/BottomSheet';
 import { dockIssue, dockModel, type DockInput } from '@/lib/dockModel';
 import { I18nProvider } from '@/lib/i18n';
-import { PROVIDERS, type ScooterResponseMeta, type Vehicle } from '@/lib/types';
+import { PROVIDERS, type ParkingLocation, type ScooterResponseMeta, type Vehicle } from '@/lib/types';
 import { formatClockTime } from '@/lib/uiText';
 
 const NOW = Date.parse('2026-10-04T12:00:00Z');
@@ -50,10 +50,15 @@ const lime: Vehicle = {
   vehicle_id: 'lime-1', deep_link: null, distance_m: null,
 };
 
+const bay: ParkingLocation = {
+  id: 'lime:bay', provider: 'lime', name: 'Bahnhofplatz', lat: 47.377, lng: 8.54, mandatory: true,
+};
+
 function renderSheet(overrides: Partial<React.ComponentProps<typeof BottomSheet>> = {}) {
   const props: React.ComponentProps<typeof BottomSheet> = {
     ...data(),
     selectedVehicle: null,
+    selectedParking: null,
     hidden: false,
     onShowAllProviders: vi.fn(),
     onProviderToggle: vi.fn(),
@@ -341,6 +346,42 @@ describe('BottomSheet', () => {
     const issue = screen.getByRole('status');
     expect(issue).toHaveTextContent(`Data delayed · showing ${SHOWING}`);
     expect(within(issue).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('shows only the card while a parking bay is selected', () => {
+    const props = renderSheet({ selectedParking: { parking: bay, walk: { distanceM: 150, place: null } } });
+
+    expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+    expect(document.querySelector('.card-title p')).toHaveTextContent(/^Bahnhofplatz · ≈2 min walk$/);
+    expect(count()).not.toBeInTheDocument();
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(document.querySelector('.dock-issue')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close parking details' }));
+    expect(props.onClearSelection).toHaveBeenCalledOnce();
+  });
+
+  it('shows a selected bay instead of the card that says the filters hide every scooter', () => {
+    renderSheet({
+      ...data({ count: 0, minBattery: 80, providerCounts: {}, unfilteredCount: 26 }),
+      selectedParking: { parking: bay, walk: null },
+    });
+
+    expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: /hidden by your filters/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps a failed refresh in view above the bay as well', () => {
+    const props = renderSheet({
+      ...data({ failure: 'offline' }),
+      selectedParking: { parking: bay, walk: null },
+    });
+
+    const issue = screen.getByRole('status');
+    expect(issue).toHaveClass('dock-issue');
+    expect(issue).toHaveTextContent(`You’re offline · showing ${SHOWING}`);
+    fireEvent.click(within(issue).getByRole('button', { name: 'Try again' }));
+    expect(props.onRetry).toHaveBeenCalledOnce();
+    expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
   });
 
   it('makes the dock inert while searching', () => {

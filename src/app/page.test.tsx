@@ -8,21 +8,27 @@ import Home from './page';
 import { I18nProvider } from '@/lib/i18n';
 
 const viewport = vi.hoisted(() => ({ bounds: { south: 47.36, west: 8.52, north: 47.39, east: 8.57 } }));
-vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({ onViewportChange, onVehicleSelect, vehicles, parking, focusLocation, focusZoom }: {
+vi.mock('@/components/MapWrapper', () => ({ default: function MapStub({
+  onViewportChange, onVehicleSelect, onParkingSelect, selectedParkingId, vehicles, parking, focusLocation, focusZoom,
+}: {
   onViewportChange: (bounds: MapBounds, zoom: number) => void; onVehicleSelect: (vehicle: Vehicle) => void;
+  onParkingSelect: (location: ParkingLocation) => void; selectedParkingId: string | null;
   vehicles: Vehicle[]; parking: ParkingLocation[]; focusLocation: [number, number] | null; focusZoom: number | null;
 }) {
   useEffect(() => onViewportChange(viewport.bounds, 16), [onViewportChange]);
   return <><span data-testid="vehicles">{vehicles.length}</span><span data-testid="parking">{parking.length}</span>
     <span data-testid="focus">{focusLocation ? `${focusLocation.join(',')} zoom ${focusZoom}` : 'none'}</span>
-    {vehicles.map(vehicle => <button key={vehicle.vehicle_id} onClick={() => onVehicleSelect(vehicle)}>Marker {vehicle.vehicle_id}</button>)}</>;
+    {vehicles.map(vehicle => <button key={vehicle.vehicle_id} onClick={() => onVehicleSelect(vehicle)}>Marker {vehicle.vehicle_id}</button>)}
+    {parking.map(location => <button key={location.id} aria-pressed={location.id === selectedParkingId} onClick={() => onParkingSelect(location)}>Parking {location.id}</button>)}
+    {[15, 16].map(zoom => <button key={zoom} onClick={() => onViewportChange(viewport.bounds, zoom)}>Zoom to {zoom}</button>)}</>;
 } }));
 vi.mock('@/components/SearchIsland', () => ({ default: ({ onSelect, onClear, placeHasData }: {
   onSelect: (place: object) => void; onClear: () => void; placeHasData: boolean;
 }) => <><button onClick={() => onSelect({ lat: 47.3779, lng: 8.5403, display_name: 'Zürich HB, Train', title: 'Zürich HB', subtitle: 'Train', covered: true })}>Search Zürich HB</button>
   <button onClick={() => onSelect({ lat: 46.7741, lng: 8.1558, display_name: 'Lungern, OW', title: 'Lungern', subtitle: 'OW', covered: false })}>Search Lungern</button>
   <button onClick={onClear}>Clear the place</button><span data-testid="place-has-data">{String(placeHasData)}</span></> }));
-vi.mock('@/components/ControlSheet', () => ({ default: () => null }));
+vi.mock('@/components/ControlSheet', () => ({ default: ({ onProviderToggle }: { onProviderToggle: (provider: string) => void }) =>
+  <button onClick={() => onProviderToggle('lime')}>Lime in the filters</button> }));
 vi.mock('@/components/MapCredits', () => ({ default: () => null }));
 
 const response = (): ScooterResponse => ({ vehicles: [{ provider: 'lime', vehicle_id: 'one', lat: 47.377, lng: 8.542,
@@ -206,6 +212,78 @@ it('locates from the scooter card without moving the map away from the scooter',
   // The locate button still brings the map to you.
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Go to my location' })); });
   expect(screen.getByTestId('focus')).toHaveTextContent('47.3769,8.5417 zoom 17');
+});
+
+it('opens a parking bay in the dock, and only one of a bay and a scooter at a time', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  const parking = () => screen.getByRole('button', { name: 'Parking bay' });
+  expect(parking()).toHaveAttribute('aria-pressed', 'false');
+
+  fireEvent.click(parking());
+  expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+  // No origin: the name of the bay alone.
+  expect(document.querySelector('.card-title p')).toHaveTextContent(/^Bay$/);
+  expect(screen.getByText('You must park in a bay in this zone.')).toBeVisible();
+  expect(screen.getByText('Check the Lime app before you end your ride.')).toBeVisible();
+  expect(dockCount()).toBeNull();
+  expect(parking()).toHaveAttribute('aria-pressed', 'true');
+
+  // A scooter takes the bay's place...
+  fireEvent.click(screen.getByRole('button', { name: 'Marker one' }));
+  expect(screen.getByRole('button', { name: 'Close scooter details' })).toBeVisible();
+  expect(screen.queryByRole('heading', { name: 'Lime parking bay' })).toBeNull();
+  expect(parking()).toHaveAttribute('aria-pressed', 'false');
+
+  // ...and a bay the scooter's.
+  fireEvent.click(parking());
+  expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Close scooter details' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Close parking details' }));
+  expect(parking()).toHaveAttribute('aria-pressed', 'false');
+  expect(dockCount()).toHaveTextContent(/^1\s*scooter on this map$/);
+  // Closing the bay does not bring the scooter's card back.
+  expect(screen.queryByRole('button', { name: 'Close scooter details' })).toBeNull();
+});
+
+it('measures the walk to a parking bay from your location or from the searched place', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  stubGeolocation(position);
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Near me' })); });
+  fireEvent.click(screen.getByRole('button', { name: 'Parking bay' }));
+  expect(document.querySelector('.card-title p')).toHaveTextContent(/^Bay · ≈1 min walk$/);
+
+  // Some 160 m from the place, and the place wins over your location.
+  fireEvent.click(screen.getByRole('button', { name: 'Search Zürich HB' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Parking bay' }));
+  expect(document.querySelector('.card-title p')).toHaveTextContent(/^Bay · ≈3 min walk from Zürich HB$/);
+});
+
+it('shows parking bays from street level, and closes the card of a bay that leaves the map', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(response())));
+  mount();
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  fireEvent.click(screen.getByRole('button', { name: 'Parking bay' }));
+  expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+
+  // Further out there are no bays on the map, so there is none to describe.
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Zoom to 15' })); });
+  expect(screen.getByTestId('parking')).toHaveTextContent('0');
+  expect(screen.queryByRole('heading', { name: 'Lime parking bay' })).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Zoom to 16' })); });
+  await act(async () => vi.advanceTimersByTimeAsync(180));
+  expect(screen.getByTestId('parking')).toHaveTextContent('1');
+
+  // Switching its provider off in the filters removes the bay, and its card with it.
+  fireEvent.click(screen.getByRole('button', { name: 'Parking bay' }));
+  expect(screen.getByRole('heading', { name: 'Lime parking bay' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Lime in the filters' }));
+  expect(screen.getByTestId('parking')).toHaveTextContent('0');
+  expect(screen.queryByRole('heading', { name: 'Lime parking bay' })).toBeNull();
 });
 
 it('explains an area without scooter data and flies to the closest city', async () => {

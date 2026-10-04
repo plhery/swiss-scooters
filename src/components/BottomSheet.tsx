@@ -15,6 +15,7 @@ import { formatFilterSummary } from '@/lib/nothingToShow';
 import { PROVIDERS } from '@/lib/types';
 import { formatUiText } from '@/lib/uiText';
 import Icon from './Icon';
+import ParkingCard, { type SelectedParking } from './ParkingCard';
 import ScooterCard, { type SelectedVehicle } from './ScooterCard';
 
 interface BottomSheetProps {
@@ -22,7 +23,9 @@ interface BottomSheetProps {
   dock: DockModel;
   /** Trouble with the data, for the line above a card, from dockIssue(). */
   issue: DockIssue | null;
+  /** A scooter or a parking bay, never both: selecting one clears the other. */
   selectedVehicle: SelectedVehicle | null;
+  selectedParking: SelectedParking | null;
   hidden: boolean;
   onShowAllProviders: () => void;
   onProviderToggle: (provider: string) => void;
@@ -158,6 +161,7 @@ export default function BottomSheet({
   dock,
   issue,
   selectedVehicle,
+  selectedParking,
   hidden,
   onShowAllProviders,
   onProviderToggle,
@@ -206,6 +210,13 @@ export default function BottomSheet({
           onClose={onClearSelection}
           onLocate={onLocate}
         />
+      </>
+    );
+  } else if (selectedParking) {
+    content = (
+      <>
+        {issue && <CardIssue issue={issue} onRetry={onRetry} />}
+        <ParkingCard key={selectedParking.parking.id} selection={selectedParking} onClose={onClearSelection} />
       </>
     );
   } else if (dock.kind === 'outOfDate') {

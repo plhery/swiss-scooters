@@ -955,25 +955,55 @@ test('two-finger rotation updates the compass and can be reset', async ({ page, 
   await expect(compass).toBeHidden();
 });
 
-test('parking markers appear at street zoom, follow provider filters and keep scooter counts separate', async ({ page }) => {
+test('parking bays appear at street zoom, open in the dock one selection at a time and follow provider filters', async ({ page }) => {
   await page.route('**/api/scooters?**', async route => {
     const zoom = Number(new URL(route.request().url()).searchParams.get('zoom'));
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
-      ...scooterResponse, vehicles: [], clusters: [], providers: {},
+      ...scooterResponse, clusters: [], providers: { dott: 1 },
+      // The scooter stands some 150 m from the bay, so that neither marker covers the other.
+      vehicles: [{ ...scooterResponse.vehicles[1], provider: 'dott', vehicle_id: 'dott-1', lat: 45.7511, lng: 4.8512 }],
       parking: [{ id: 'dott:bay', provider: 'dott', name: 'Place test', lat: 45.75, lng: 4.85, mandatory: true }],
-      meta: { ...scooterResponse.meta, mode: 'vehicles', totalVehicles: 0, zoom },
+      meta: { ...scooterResponse.meta, mode: 'vehicles', totalVehicles: 1, zoom },
     }) });
   });
   await page.goto('/?origin=45.75,4.85');
   await expect(page.locator('.leaflet-container')).toHaveAttribute('data-zoom', '16');
   const marker = page.getByRole('button', { name: 'Dott parking: Place test', exact: true });
   await expect(marker).toBeVisible();
+  // Bays are not scooters.
+  await expect(page.locator('.sheet-count')).toHaveText(/^1\s*scooter on this map$/);
+
   await marker.click();
-  await expect(page.getByText('Designated parking is required in this zone.')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Directions to parking' })).toHaveAttribute('href', /destination=45.75,4.85/);
-  const accessibility = await new AxeBuilder({ page }).include('.parking-popup').analyze();
+  const card = page.locator('.dock-card');
+  await expect(card.getByRole('heading', { name: 'Dott parking bay' })).toBeVisible();
+  // No origin, so no walking time: the name of the bay alone.
+  await expect(card.locator('.card-title p')).toHaveText('Place test');
+  await expect(card.getByText('You must park in a bay in this zone.')).toBeVisible();
+  await expect(card.getByRole('link')).toHaveCount(1);
+  await expect(card.getByRole('link', { name: 'Directions' })).toHaveAttribute('href', /destination=45\.75%2C4\.85&travelmode=walking/);
+  await expect(card.getByText('Check the Dott app before you end your ride.')).toBeVisible();
+  // The card takes the dock, nothing opens over the map, and the bay is marked on it.
+  await expect(page.locator('.sheet-count')).toHaveCount(0);
+  await expect(page.locator('.leaflet-popup')).toHaveCount(0);
+  await expect(marker.locator('.parking-marker')).toHaveClass(/parking-marker-selected/);
+  const accessibility = await new AxeBuilder({ page }).include('.sheet').withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
-  await page.locator('.leaflet-popup-close-button').click();
+
+  // A scooter takes the bay's place, and the bay the scooter's.
+  await page.getByRole('button', { name: 'Dott scooter', exact: true }).click();
+  await expect(card.getByRole('heading', { name: 'Dott', exact: true })).toBeVisible();
+  await expect(card.getByRole('heading', { name: 'Dott parking bay' })).toHaveCount(0);
+  await expect(marker.locator('.parking-marker')).not.toHaveClass(/parking-marker-selected/);
+  await expect(page.locator('.scooter-marker-selected')).toHaveCount(1);
+  await marker.click();
+  await expect(card.getByRole('heading', { name: 'Dott parking bay' })).toBeVisible();
+  await expect(page.locator('.scooter-marker-selected')).toHaveCount(0);
+
+  await card.getByRole('button', { name: 'Close parking details' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(marker.locator('.parking-marker')).not.toHaveClass(/parking-marker-selected/);
+  await expect(page.locator('.sheet-count')).toHaveText(/^1\s*scooter on this map$/);
+
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   const filters = page.getByRole('dialog', { name: 'Filters', exact: true });
   await filters.getByRole('button', { name: /Dott/ }).click();

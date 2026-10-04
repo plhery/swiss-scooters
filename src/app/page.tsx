@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import MapWrapper from '@/components/MapWrapper';
 import BottomSheet from '@/components/BottomSheet';
+import type { SelectedParking } from '@/components/ParkingCard';
 import type { SelectedVehicle } from '@/components/ScooterCard';
 import MapControls from '@/components/MapControls';
 import MapCredits from '@/components/MapCredits';
@@ -14,7 +15,7 @@ import SearchIsland from '@/components/SearchIsland';
 import ControlSheet from '@/components/ControlSheet';
 import { selectionFeedback } from '@/lib/feedback';
 import type { AddressResult } from '@/components/AddressSearch';
-import type { MapBounds, ScooterCluster, Vehicle } from '@/lib/types';
+import type { MapBounds, ParkingLocation, ScooterCluster, Vehicle } from '@/lib/types';
 import { PROVIDERS } from '@/lib/types';
 import {
   parseClientParams,
@@ -46,6 +47,8 @@ const INITIAL_ZOOM = 8;
 const LOCATE_ZOOM = 17;
 // Where a city's scooters show as clusters, the same as a tap on its total.
 const CITY_ZOOM = 13;
+// Parking bays show from street level, where the server starts to send them.
+const PARKING_MIN_ZOOM = 16;
 // How often the age of the data in the dock is worked out again.
 const CLOCK_TICK_MS = 30_000;
 const VIEWPORT_FETCH_PADDING = 0.25;
@@ -138,6 +141,7 @@ export default function Home() {
     new Set(Object.keys(PROVIDERS))
   );
   const [viewportBounds, setViewportBounds] = useState<MapBounds | null>(null);
+  const [viewportZoom, setViewportZoom] = useState(INITIAL_ZOOM);
   const [mapQuery, setMapQuery] = useState<ScooterMapQuery | null>(null);
   const [focusRequest, setFocusRequest] = useState<{
     location: [number, number] | null;
@@ -151,7 +155,9 @@ export default function Home() {
   const [activePanel, setActivePanel] = useState<'filters' | 'settings'>('filters');
   const [locatedOnce, setLocatedOnce] = useState<boolean | null>(null);
   const [locationNoticeDismissed, setLocationNoticeDismissed] = useState(false);
+  // A scooter or a parking bay, never both: selecting one clears the other.
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
+  const [selectedParkingId, setSelectedParkingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const initializedRef = useRef(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
@@ -255,7 +261,10 @@ export default function Home() {
     () => mapQuery && { ...mapQuery, minBattery: mapQuery.zoom <= 15 ? minBattery : 0 },
     [mapQuery, minBattery]
   );
-  const clearSelection = useCallback(() => setSelectedVehicleKey(null), []);
+  const clearSelection = useCallback(() => {
+    setSelectedVehicleKey(null);
+    setSelectedParkingId(null);
+  }, []);
   const {
     vehicles,
     clusters,
@@ -287,13 +296,14 @@ export default function Home() {
   const handleAddressSelect = (result: AddressResult) => {
     track('search_select');
     const location: [number, number] = [result.lat, result.lng];
-    setSelectedVehicleKey(null);
+    clearSelection();
     setSearchedAddress(result);
     setFocusRequest(current => ({ location, zoom: null, version: current.version + 1 }));
   };
 
   const handleViewportChange = useCallback((bounds: MapBounds, zoom: number) => {
     setViewportBounds(current => boundsEqual(current, bounds) ? current : bounds);
+    setViewportZoom(zoom);
 
     const current = mapQueryRef.current;
     const shouldFetch = !current || !mapRepresentationsMatch(current.zoom, zoom) ||
@@ -390,6 +400,18 @@ export default function Home() {
     return userLocation ? { point: userLocation, place: null } : null;
   }, [searchedPlace, userLocation]);
 
+  // Like the scooters: only the bays of the providers switched on, inside the exact viewport.
+  const visibleParking = useMemo<ParkingLocation[]>(() => {
+    if (!viewportBounds || viewportZoom < PARKING_MIN_ZOOM) return [];
+    return parking.filter(location => enabledProviders.has(location.provider) &&
+      boundsContainPoint(viewportBounds, location.lat, location.lng));
+  }, [enabledProviders, parking, viewportBounds, viewportZoom]);
+
+  const selectedParking = useMemo<SelectedParking | null>(() => {
+    const bay = selectedParkingId === null ? undefined : visibleParking.find(location => location.id === selectedParkingId);
+    return bay ? { parking: bay, walk: walkEstimate(walkOrigin, bay.lat, bay.lng) } : null;
+  }, [selectedParkingId, visibleParking, walkOrigin]);
+
   const selectedVehicle = useMemo<SelectedVehicle | null>(() => {
     if (!selectedVehicleKey) return null;
     const vehicle = viewportData.visibleVehicles.find(candidate => {
@@ -469,8 +491,7 @@ export default function Home() {
   return (
     <div className="app-shell" data-map-theme={tileLayer} data-searching={searchExpanded}>
       <MapWrapper
-        parking={parking.filter(location => enabledProviders.has(location.provider) &&
-          viewportBounds && boundsContainPoint(viewportBounds, location.lat, location.lng))}
+        parking={visibleParking}
         vehicles={viewportData.visibleVehicles}
         clusters={viewportData.visibleClusters}
         clustered={responseMeta?.mode === 'clusters'}
@@ -489,10 +510,18 @@ export default function Home() {
         onVehicleSelect={vehicle => {
           track('vehicle_select', { provider: vehicle.provider });
           selectionFeedback();
+          setSelectedParkingId(null);
           setSelectedVehicleKey(vehicle.vehicle_id
             ? `${vehicle.provider}:${vehicle.vehicle_id}`
             : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`
           );
+        }}
+        selectedParkingId={selectedParkingId}
+        onParkingSelect={location => {
+          track('parking_select', { provider: location.provider });
+          selectionFeedback();
+          setSelectedVehicleKey(null);
+          setSelectedParkingId(location.id);
         }}
       />
 
@@ -534,10 +563,14 @@ export default function Home() {
         dock={dock}
         issue={dockIssue(dockInput)}
         selectedVehicle={selectedVehicle}
+        selectedParking={selectedParking}
         hidden={searchExpanded}
         onShowAllProviders={handleShowAllProviders}
         onProviderToggle={handleQuickProviderToggle}
-        onClearSelection={() => { track('vehicle_dismiss'); setSelectedVehicleKey(null); }}
+        onClearSelection={() => {
+          if (selectedVehicle) track('vehicle_dismiss');
+          clearSelection();
+        }}
         onResetFilters={resetFilters}
         onEditFilters={() => openPanel('filters')}
         onRetry={retryLoad}

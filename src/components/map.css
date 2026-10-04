@@ -45,9 +45,12 @@
   box-shadow: 0 1px 5px #0004;
 }
 
-.parking-popup { max-width: 260px; }
-.parking-popup p { margin: 8px 0; }
-.parking-popup .popup-cta { background: #2166c2; color: #fff !important; }
+/* The bay whose card is in the dock, marked like a selected scooter. */
+.parking-marker-selected {
+  box-shadow: 0 0 0 5px rgba(10, 132, 255, 0.24), 0 5px 14px rgba(24, 28, 34, 0.3);
+  transform: scale(1.15);
+  animation: marker-select 260ms var(--spring);
+}
 
 .leaflet-top {
   top: calc(var(--sat) + 8px);
@@ -277,108 +280,9 @@
   transform: rotate(45deg);
 }
 
-.scooter-popup .leaflet-popup-content-wrapper {
-  background: var(--popup-bg);
-  color: var(--ink);
-  border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  padding: 8px 14px;
-}
-
-.scooter-popup .leaflet-popup-content {
-  margin: 0;
-  font-family: inherit;
-  min-width: 190px;
-}
-
-.scooter-popup .leaflet-popup-tip {
-  background: var(--popup-bg);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
-}
-
-.popup-head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.popup-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.popup-name {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  flex: 1;
-}
-
-.popup-dist {
-  font-size: 13px;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.popup-batt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 9px;
-  font-size: 12px;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.popup-batt-bar {
-  flex: 1;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--fill-tertiary);
-  overflow: hidden;
-}
-
-.popup-batt-bar > div {
-  height: 100%;
-  border-radius: 3px;
-}
-
-.popup-actions {
-  display: flex;
-  gap: 7px;
-  margin-top: 11px;
-}
-
-a.popup-cta {
-  display: grid;
-  place-items: center;
-  flex: 1;
-  min-height: 44px;
-  box-sizing: border-box;
-  padding: 8px 7px;
-  border-radius: 10px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff !important;
-  text-decoration: none;
-}
-
-a.popup-walk {
-  background: var(--fill-tertiary);
-  color: var(--ink) !important;
-}
-
 @media (hover: hover) and (pointer: fine) {
   .map-zoom-controls button:hover:not(:disabled) {
     background: var(--raised-bg);
-  }
-
-  a.popup-cta:hover {
-    filter: brightness(1.06);
   }
 }
 

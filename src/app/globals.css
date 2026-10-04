@@ -21,7 +21,6 @@
   --attribution-ink: #555c64;
   --map-control-bg: rgba(255, 255, 255, 0.84);
   --map-control-disabled-bg: rgba(245, 245, 245, 0.78);
-  --popup-bg: #fff;
   --warning-ink: #895100;
   --warning-bg: rgba(255, 149, 0, 0.14);
   --success-ink: #24833b;
@@ -96,7 +95,6 @@ body {
   --attribution-ink: #c0c0c8;
   --map-control-bg: rgba(32, 32, 36, 0.86);
   --map-control-disabled-bg: rgba(44, 44, 46, 0.8);
-  --popup-bg: #2c2c2e;
   --warning-ink: #ffd60a;
   --warning-bg: rgba(255, 214, 10, 0.14);
   --success-ink: #45d66b;
@@ -715,6 +713,47 @@ svg {
   font-size: 11px;
   line-height: 1.4;
   text-align: center;
+}
+/* The parking sign of the map marker, at the size of a card symbol. */
+.bay-symbol {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--provider-color);
+  border-radius: 14px;
+  background: #fff;
+  color: #174a91;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+/* The walking time moves to the next line whole instead of breaking in the middle. */
+.bay-walk {
+  display: inline-block;
+}
+/* Whether parking in the bay is required: amber when it is, neutral otherwise. */
+.bay-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--fill-quaternary);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.bay-notice > svg {
+  flex-shrink: 0;
+}
+.bay-notice-required {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
 }
 .state-head {
   display: flex;
@@ -1629,10 +1668,14 @@ svg {
   .origin-copy span {
     font-size: 10px;
   }
-  .card-symbol {
+  .card-symbol,
+  .bay-symbol {
     width: 40px;
     height: 40px;
     border-radius: 13px;
+  }
+  .bay-symbol {
+    font-size: 19px;
   }
   .card-head {
     gap: 10px;

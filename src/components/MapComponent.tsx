@@ -28,7 +28,15 @@ function createScooterIcon(provider: string, selected = false): L.DivIcon {
     html: `<div class="scooter-marker${selected ? ' scooter-marker-selected' : ''}" style="--marker-color:${cfg.color}"><span>${cfg.initial}</span></div>`,
     iconSize: [44, 44],
     iconAnchor: [22, 22],
-    popupAnchor: [0, -18],
+  });
+}
+
+function createParkingIcon(provider: string, selected: boolean): L.DivIcon {
+  return L.divIcon({
+    className: 'parking-marker-wrap',
+    html: `<span class="parking-marker${selected ? ' parking-marker-selected' : ''}" style="--parking-provider:${PROVIDERS[provider]?.color ?? '#2166c2'}">P</span>`,
+    iconSize: [36, 36],
+    iconAnchor: [8, 28],
   });
 }
 
@@ -101,17 +109,6 @@ function clusterTitle(cluster: ScooterCluster, t: Translate, formatNumber: Forma
   return t('marker.cluster', { count: formatNumber(cluster.count), providers });
 }
 
-function makeElement<K extends keyof HTMLElementTagNameMap>(
-  tagName: K,
-  className?: string,
-  text?: string
-): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tagName);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
-
 function labelMarker(marker: L.Marker, label: string) {
   const applyLabel = () => {
     const element = marker.getElement();
@@ -133,28 +130,6 @@ function vehicleMarkerKey(vehicle: Vehicle): string {
   return vehicle.vehicle_id
     ? `${vehicle.provider}:${vehicle.vehicle_id}`
     : `${vehicle.provider}:${vehicle.lat}:${vehicle.lng}`;
-}
-
-// The rotation adapter disables Leaflet's built-in popup autopan. Measure in
-// screen coordinates so parking details clear the floating controls at any angle.
-function keepPopupInView(map: L.Map, popup: L.Popup | null) {
-  const element = popup?.getElement();
-  if (!element) return;
-  const container = map.getContainer();
-  const shell = container.parentElement;
-  const mapRect = container.getBoundingClientRect();
-  const popupRect = element.getBoundingClientRect();
-  const searchRect = shell?.querySelector('.search-island')?.getBoundingClientRect();
-  const dockRect = shell?.querySelector('.sheet')?.getBoundingClientRect();
-  const left = mapRect.left + 16;
-  const right = mapRect.right - 74;
-  const top = Math.max(mapRect.top + 16, (searchRect?.bottom ?? 0) + 12);
-  const bottom = Math.min(mapRect.bottom - 16, (dockRect?.top ?? mapRect.bottom) - 12);
-  const dx = popupRect.right > right ? popupRect.right - right : Math.min(0, popupRect.left - left);
-  const dy = popupRect.top < top ? popupRect.top - top : Math.max(0, popupRect.bottom - bottom);
-  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-    map.panBy([dx, dy], { animate: !prefersReducedMotion(), duration: 0.25 });
-  }
 }
 
 function MapZoomControls({ mapRef }: { mapRef: { current: L.Map | null } }) {
@@ -208,6 +183,8 @@ interface MapComponentProps {
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
   selectedVehicleKey: string | null;
   onVehicleSelect: (vehicle: Vehicle) => void;
+  selectedParkingId: string | null;
+  onParkingSelect: (location: ParkingLocation) => void;
 }
 
 export default function MapComponent({
@@ -228,6 +205,8 @@ export default function MapComponent({
   onViewportChange,
   selectedVehicleKey,
   onVehicleSelect,
+  selectedParkingId,
+  onParkingSelect,
 }: MapComponentProps) {
   const { t, formatNumber } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -239,10 +218,12 @@ export default function MapComponent({
   const parkingMarkersRef = useRef<Map<string, { marker: L.Marker; signature: string }>>(new Map());
   const markerSignaturesRef = useRef<Map<string, string>>(new Map());
   const vehicleDataRef = useRef<Map<string, Vehicle>>(new Map());
+  const parkingDataRef = useRef<Map<string, ParkingLocation>>(new Map());
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const initialOriginRef = useRef(origin);
   const onViewportChangeRef = useRef(onViewportChange);
   const onVehicleSelectRef = useRef(onVehicleSelect);
+  const onParkingSelectRef = useRef(onParkingSelect);
   const [readyMap, setReadyMap] = useState<L.Map | null>(null);
   const [zoom, setZoom] = useState(initialZoom);
 
@@ -253,6 +234,10 @@ export default function MapComponent({
   useEffect(() => {
     onVehicleSelectRef.current = onVehicleSelect;
   }, [onVehicleSelect]);
+
+  useEffect(() => {
+    onParkingSelectRef.current = onParkingSelect;
+  }, [onParkingSelect]);
 
   const iconMap = useMemo(() => {
     const icons: Record<string, L.DivIcon> = {};
@@ -320,21 +305,9 @@ export default function MapComponent({
       setZoom(currentZoom);
     };
     const updateViewport = () => reportViewport(map);
-    let openPopup: L.Popup | null = null;
-    const onPopupOpen = (event: L.PopupEvent) => {
-      openPopup = event.popup;
-      keepPopupInView(map, openPopup);
-    };
-    const onPopupClose = () => { openPopup = null; };
-    const onRotateEnd = () => {
-      keepPopupInView(map, openPopup);
-      updateViewport();
-    };
     map.on('zoomend', updateZoom);
     map.on('moveend', updateViewport);
-    map.on('rotateend', onRotateEnd);
-    map.on('popupopen', onPopupOpen);
-    map.on('popupclose', onPopupClose);
+    map.on('rotateend', updateViewport);
     updateZoom();
     map.whenReady(updateViewport);
     setReadyMap(map);
@@ -343,9 +316,7 @@ export default function MapComponent({
       setReadyMap(null);
       map.off('zoomend', updateZoom);
       map.off('moveend', updateViewport);
-      map.off('rotateend', onRotateEnd);
-      map.off('popupopen', onPopupOpen);
-      map.off('popupclose', onPopupClose);
+      map.off('rotateend', updateViewport);
       motionQuery.removeEventListener('change', syncMotion);
       stopMapRotation(map);
       map.remove();
@@ -357,49 +328,47 @@ export default function MapComponent({
       parkingMarkers.clear();
       markerSignatures.clear();
       vehicleDataRef.current.clear();
+      parkingDataRef.current.clear();
       tileLayerRef.current = null;
       delete container.dataset.zoom;
     };
   }, [initialZoom, reportViewport]);
 
+  // Parking bays open in the dock, as scooters do: a tap selects, the page shows the card.
   useEffect(() => {
     const map = mapRef.current;
     if (!readyMap || !map) return;
     const markers = parkingMarkersRef.current;
-    const shown = zoom >= 16 ? parking : [];
-    const ids = new Set(shown.map(location => location.id));
+    parkingDataRef.current = new Map(parking.map(location => [location.id, location]));
     for (const [id, entry] of markers) {
-      if (!ids.has(id)) { entry.marker.remove(); markers.delete(id); }
+      if (!parkingDataRef.current.has(id)) { entry.marker.remove(); markers.delete(id); }
     }
-    for (const location of shown) {
-      const provider = PROVIDERS[location.provider];
-      const label = t('parking.label', { name: provider?.name ?? location.provider, place: location.name });
-      const signature = JSON.stringify([location, label, t('parking.check')]);
-      const old = markers.get(location.id);
-      if (old?.signature === signature) continue;
-      old?.marker.remove();
-      const popup = makeElement('div', 'parking-popup', '');
-      popup.appendChild(makeElement('strong', '', label));
-      popup.appendChild(makeElement('p', '', t(location.mandatory ? 'parking.required' : 'parking.designated')));
-      popup.appendChild(makeElement('p', '', t('parking.check')));
-      const link = makeElement('a', 'popup-cta', t('parking.directions'));
-      link.href = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}&travelmode=walking`;
-      link.addEventListener('click', () => track('directions_open', { provider: location.provider, target: 'parking' }));
-      link.target = '_blank'; link.rel = 'noopener noreferrer'; popup.appendChild(link);
-      const marker = L.marker([location.lat, location.lng], {
-        icon: L.divIcon({ className: 'parking-marker-wrap',
-          html: `<span class="parking-marker" style="--parking-provider:${provider?.color ?? '#2166c2'}">P</span>`,
-          iconSize: [36, 36], iconAnchor: [8, 28] }),
-        title: label, zIndexOffset: 100,
-      }).bindPopup(popup, {
-        maxWidth: Math.min(260, map.getSize().x - 132),
-        autoPan: false,
-      }).addTo(map);
-      marker.on('click', () => track('parking_select', { provider: location.provider }));
+    for (const location of parking) {
+      const { id } = location;
+      const label = t('parking.label', { name: PROVIDERS[location.provider]?.name ?? location.provider, place: location.name });
+      const selected = id === selectedParkingId;
+      const signature = JSON.stringify([location, label, selected]);
+      const existing = markers.get(id);
+      if (existing?.signature === signature) continue;
+      const icon = createParkingIcon(location.provider, selected);
+      if (existing) {
+        // Changed in place, so that a bay selected from the keyboard keeps the focus.
+        if (!existing.marker.getLatLng().equals([location.lat, location.lng])) existing.marker.setLatLng([location.lat, location.lng]);
+        existing.marker.setIcon(icon);
+        updateMarkerLabel(existing.marker, label);
+        existing.signature = signature;
+        continue;
+      }
+      const marker = L.marker([location.lat, location.lng], { icon, title: label, zIndexOffset: 100 })
+        .on('click', () => {
+          const current = parkingDataRef.current.get(id);
+          if (current) onParkingSelectRef.current(current);
+        })
+        .addTo(map);
       labelMarker(marker, label);
-      markers.set(location.id, { marker, signature });
+      markers.set(id, { marker, signature });
     }
-  }, [readyMap, parking, t, zoom]);
+  }, [readyMap, parking, selectedParkingId, t]);
 
   useEffect(() => {
     const map = mapRef.current;

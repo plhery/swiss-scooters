@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDistance, walkEstimate, walkingMinutes } from '@/lib/walking';
+import { formatDistance, walkEstimate, walkingDirectionsUrl, walkingMinutes } from '@/lib/walking';
 
 describe('walkingMinutes', () => {
   it('rounds up at eighty metres a minute and never says zero', () => {
@@ -25,6 +25,14 @@ describe('walkEstimate', () => {
   it('carries the name of a searched place', () => {
     expect(walkEstimate({ point: [47.3779, 8.5403], place: 'Zürich HB' }, 47.3779, 8.5403))
       .toEqual({ distanceM: 0, place: 'Zürich HB' });
+  });
+});
+
+describe('walkingDirectionsUrl', () => {
+  it('asks for a walk to the point and says nothing about where it starts', () => {
+    const url = new URL(walkingDirectionsUrl(45.75, 4.85));
+    expect(url.origin + url.pathname).toBe('https://www.google.com/maps/dir/');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ api: '1', destination: '45.75,4.85', travelmode: 'walking' });
   });
 });
 

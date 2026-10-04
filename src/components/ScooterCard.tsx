@@ -9,7 +9,7 @@ import { browserRentalLink } from '@/lib/rentalLinks';
 import { RIDE_DURATIONS, formatRidePrice, ridePriceQuote } from '@/lib/ridePrice';
 import { PROVIDERS, type Vehicle } from '@/lib/types';
 import { useRideDuration } from '@/lib/useRideDuration';
-import { formatDistance, walkingMinutes, type WalkEstimate } from '@/lib/walking';
+import { formatDistance, walkingDirectionsUrl, walkingMinutes, type WalkEstimate } from '@/lib/walking';
 import Icon from './Icon';
 
 export interface SelectedVehicle {
@@ -130,7 +130,7 @@ export default function ScooterCard({ selection, onClose, onLocate }: ScooterCar
 
       <div className="card-actions">
         <a
-          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${vehicle.lat},${vehicle.lng}`)}&travelmode=walking`}
+          href={walkingDirectionsUrl(vehicle.lat, vehicle.lng)}
           target="_blank"
           rel="noreferrer"
           onClick={() => { track('directions_open', { provider: vehicle.provider, target: 'vehicle' }); selectionFeedback(); }}

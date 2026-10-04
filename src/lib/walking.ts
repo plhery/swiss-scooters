@@ -27,6 +27,11 @@ export function walkEstimate(origin: WalkOrigin | null, lat: number, lng: number
   return { distanceM: haversineM(origin.point[0], origin.point[1], lat, lng), place: origin.place };
 }
 
+/** Walking directions to a scooter or a parking bay; the link carries the destination only. */
+export function walkingDirectionsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}&travelmode=walking`;
+}
+
 interface DistanceFormatter {
   t: (key: TranslationKey, values?: Record<string, string | number>) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;

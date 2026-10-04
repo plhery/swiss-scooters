@@ -24,6 +24,8 @@ interface MapWrapperProps {
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
   selectedVehicleKey: string | null;
   onVehicleSelect: (vehicle: Vehicle) => void;
+  selectedParkingId: string | null;
+  onParkingSelect: (location: ParkingLocation) => void;
 }
 
 export default function MapWrapper(props: MapWrapperProps) {
