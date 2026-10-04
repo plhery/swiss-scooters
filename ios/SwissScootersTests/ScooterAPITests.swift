@@ -366,6 +366,47 @@ final class AddressSearchModelTests: XCTestCase {
         XCTAssertEqual(model.status, .idle)
     }
 
+    func testEverySearchAsksForPlacesInTheLanguageOnScreen() async {
+        let api = StubAddressSearchClient(answers: [.failure, .places([zurich]), .places([lungern])])
+        let model = SwissAddressSearchModel(api: api, debounce: .zero, language: "fr")
+
+        model.query = "Paradeplatz"
+        var settled = await waitUntil { model.status != .searching }
+        XCTAssertTrue(settled)
+        model.retry()
+        settled = await waitUntil { model.status != .searching }
+        XCTAssertTrue(settled)
+        model.query = "Lungern"
+        settled = await waitUntil { model.status != .searching }
+        XCTAssertTrue(settled)
+
+        // The first search, the one after "Try again" and the next text all carry it.
+        let languages = await api.languages
+        XCTAssertEqual(languages, ["fr", "fr", "fr"])
+    }
+
+    func testSearchLanguageIsTheOneTheAppIsShownIn() async {
+        XCTAssertEqual(SwissAddressSearchModel.searchLanguage(localizations: ["de"]), "de")
+        XCTAssertEqual(SwissAddressSearchModel.searchLanguage(localizations: ["fr", "en"]), "fr")
+        XCTAssertEqual(SwissAddressSearchModel.searchLanguage(localizations: ["it-CH"]), "it")
+        XCTAssertEqual(SwissAddressSearchModel.searchLanguage(localizations: ["en-GB"]), "en")
+        // Anything the search does not answer in is asked for in English.
+        XCTAssertEqual(SwissAddressSearchModel.searchLanguage(localizations: ["es"]), "en")
+        XCTAssertEqual(SwissAddressSearchModel.searchLanguage(localizations: ["Base"]), "en")
+        XCTAssertEqual(SwissAddressSearchModel.searchLanguage(localizations: []), "en")
+
+        // Left to itself, the model sends the language this run of the app is shown in.
+        let shownIn = Bundle.main.preferredLocalizations.first ?? ""
+        XCTAssertTrue(["en", "de", "fr", "it"].contains(shownIn), shownIn)
+        let api = StubAddressSearchClient(answers: [.places([zurich])])
+        let model = SwissAddressSearchModel(api: api, debounce: .zero)
+        model.query = "Paradeplatz"
+        let settled = await waitUntil { model.status != .searching }
+        XCTAssertTrue(settled)
+        let languages = await api.languages
+        XCTAssertEqual(languages, [shownIn])
+    }
+
     private func waitUntil(_ condition: () -> Bool) async -> Bool {
         for _ in 0 ..< 200 {
             if condition() { return true }
@@ -384,6 +425,7 @@ private actor StubAddressSearchClient: AddressSearchAPIClient {
     private var answers: [Answer]
     private let delay: Duration
     private(set) var queries: [String] = []
+    private(set) var languages: [String] = []
 
     init(answers: [Answer], delay: Duration = .zero) {
         self.answers = answers
@@ -392,6 +434,7 @@ private actor StubAddressSearchClient: AddressSearchAPIClient {
 
     func search(query: String, language: String) async throws -> [AddressSearchResult] {
         queries.append(query)
+        languages.append(language)
         let answer = answers.isEmpty ? Answer.places([]) : answers.removeFirst()
         try await Task.sleep(for: delay)
         switch answer {

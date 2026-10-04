@@ -647,14 +647,18 @@ final class SwissAddressSearchModel {
 
     @ObservationIgnored private let api: any AddressSearchAPIClient
     @ObservationIgnored private let debounce: Duration
+    /// Sent with every search, so country names come back in the language on screen.
+    @ObservationIgnored private let language: String
     @ObservationIgnored private var searchTask: Task<Void, Never>?
 
     init(
         api: any AddressSearchAPIClient = AddressSearchAPI(),
-        debounce: Duration = .milliseconds(350)
+        debounce: Duration = .milliseconds(350),
+        language: String = SwissAddressSearchModel.searchLanguage()
     ) {
         self.api = api
         self.debounce = debounce
+        self.language = language
     }
 
     /// The place Return chooses.
@@ -695,7 +699,6 @@ final class SwissAddressSearchModel {
         }
 
         status = .searching
-        let language = Self.searchLanguage
         searchTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: delay)
@@ -719,8 +722,13 @@ final class SwissAddressSearchModel {
         }
     }
 
-    private static var searchLanguage: String {
-        let language = Locale.current.language.languageCode?.identifier ?? "en"
-        return ["de", "fr", "it", "en"].contains(language) ? language : "en"
+    /// The language the app is shown in, as the address search takes it: "en",
+    /// "de", "fr" or "it". `localizations` is the bundle's choice among the
+    /// languages the app is translated into, which is where its strings come from.
+    static func searchLanguage(
+        localizations: [String] = Bundle.main.preferredLocalizations
+    ) -> String {
+        let language = localizations.first.flatMap { Locale(identifier: $0).language.languageCode?.identifier }
+        return language.flatMap { ["de", "fr", "it"].contains($0) ? $0 : nil } ?? "en"
     }
 }
